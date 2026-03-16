@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -22,9 +23,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity   // enables @PreAuthorize on AdminController
 public class SecurityConfig {
 
     private final JwtService jwtService;
@@ -38,8 +41,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))  // Add CORS
-                .csrf(csrf -> csrf.disable())  // Disable CSRF for stateless API
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**", "/ws").permitAll()
@@ -48,10 +51,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/designations/**").authenticated()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/hr/**").hasRole("HR")
+                        .requestMatchers("/api/hr/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/interviewer/**").hasRole("INTERVIEWER")
                         .requestMatchers("/api/interview-requests/upcoming").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers("/api/hr/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/interview-requests/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .anyRequest().authenticated()
                 )
@@ -67,8 +69,9 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:3000"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        // Added PATCH for toggle-status endpoint
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
