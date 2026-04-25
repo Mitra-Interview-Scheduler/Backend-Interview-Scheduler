@@ -32,7 +32,11 @@ public class AuthController {
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginDto dto) {
         return ResponseEntity.ok(userService.authenticate(dto));
     }
-
+    @PostMapping("/google")
+    public ResponseEntity<LoginResponse> googleLogin(@RequestBody Map<String, String> data) {
+        String googleToken = data.get("token");
+        return ResponseEntity.ok(userService.authenticateGoogleUser(googleToken));
+    }
     @GetMapping("/verify")
     public ResponseEntity<?> verifyToken() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

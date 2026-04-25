@@ -1,5 +1,6 @@
 package com.nemal.entity;
 
+import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -65,6 +66,10 @@ public class User implements UserDetails {
     @ManyToOne
     @JoinColumn(name = "department_id")
     private Department department;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AuthProvider authProvider;
 
     @ManyToOne
     @JoinColumn(name = "current_designation_id")
