@@ -20,7 +20,9 @@ import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -28,9 +30,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import java.util.Set;
 
 @Service
 public class UserService implements UserDetailsService {
+
+//    private static final Set<String> TRUSTED_GOOGLE_ISSUERS = Set.of(
+//            "accounts.google.com",
+//            "https://accounts.google.com"
+//    );
 
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
@@ -83,23 +91,37 @@ public class UserService implements UserDetailsService {
 
         try {
             GoogleIdToken idToken = verifier.verify(idTokenString);
-            if (idToken != null) {
-                GoogleIdToken.Payload payload = idToken.getPayload();
-                String email = payload.getEmail();
-
-                // 2. Check if user exists, if not, create them
-                User user = userRepository.findByEmail(email)
-                        .orElseGet(() -> registerNewGoogleUser(payload));
-
-                // 3. Generate YOUR local JWT token (just like your normal login)
-                String jwtToken = jwtService.generateToken(user);
-
-                return new LoginResponse(jwtToken, user.getId(), user.getEmail(), user.getFirstName(), user.getLastName(), user.getRole(),user.getProfilePictureUrl());
+            if (idToken == null) {
+                throw new BadCredentialsException("Invalid Google token");
             }
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid Google Token");
+
+            GoogleIdToken.Payload payload = idToken.getPayload();
+            String email = payload.getEmail();
+            if (email == null || email.isBlank()) {
+                throw new BadCredentialsException("Invalid Google token");
+            }
+
+            if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
+                throw new BadCredentialsException("Invalid Google token");
+            }
+
+//            if (!TRUSTED_GOOGLE_ISSUERS.contains(payload.getIssuer())) {
+//                throw new BadCredentialsException("Invalid Google token");
+//            }
+
+            // 2. Check if user exists, if not, create them
+            User user = userRepository.findByEmail(email)
+                    .orElseGet(() -> registerNewGoogleUser(payload));
+
+            // 3. Generate YOUR local JWT token (just like your normal login)
+            String jwtToken = jwtService.generateToken(user);
+
+            return new LoginResponse(jwtToken, user.getId(), user.getEmail(), user.getFirstName(), user.getLastName(), user.getRole(), user.getProfilePictureUrl());
+        } catch (AuthenticationException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BadCredentialsException("Invalid Google token");
         }
-        throw new RuntimeException("Authentication failed");
     }
 
     private User registerNewGoogleUser(GoogleIdToken.Payload payload) {
