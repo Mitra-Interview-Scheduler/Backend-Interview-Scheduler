@@ -3,6 +3,7 @@ package com.nemal.controller;
 import com.nemal.dto.LoginDto;
 import com.nemal.dto.LoginResponse;
 import com.nemal.dto.UserRegistrationDto;
+import com.nemal.service.GoogleAuthService;
 import com.nemal.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +19,11 @@ import java.util.Map;
 public class AuthController {
 
     private final UserService userService;
+    private final GoogleAuthService googleAuthService;
 
-    public AuthController(UserService userService) {
+    public AuthController(UserService userService, GoogleAuthService googleAuthService) {
         this.userService = userService;
+        this.googleAuthService = googleAuthService;
     }
 
     @PostMapping("/register")
@@ -35,7 +38,7 @@ public class AuthController {
     @PostMapping("/google")
     public ResponseEntity<LoginResponse> googleLogin(@RequestBody Map<String, String> data) {
         String googleToken = data.get("token");
-        return ResponseEntity.ok(userService.authenticateGoogleUser(googleToken));
+        return ResponseEntity.ok(googleAuthService.authenticateGoogleUser(googleToken));
     }
     @GetMapping("/verify")
     public ResponseEntity<?> verifyToken() {
