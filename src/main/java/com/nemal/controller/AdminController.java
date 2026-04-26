@@ -49,7 +49,6 @@ public class AdminController {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found: " + id));
         user.setRole(request.role());
-        System.out.println("Updated role for user " + id + ": " + request.role());
         userRepository.save(user);
         return ResponseEntity.ok(AdminUserDto.from(user));
     }
