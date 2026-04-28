@@ -69,7 +69,7 @@ public class GoogleAuthService {
                     user.getEmail(),
                     user.getFirstName(),
                     user.getLastName(),
-                    user.getRole(),
+                    user.getRoles(),
                     user.getProfilePictureUrl()
             );
         } catch (Exception ex) {
@@ -91,7 +91,7 @@ public class GoogleAuthService {
                 .firstName(firstName != null ? firstName : "GoogleUser")
                 .lastName(lastName != null ? lastName : "")
                 .profilePictureUrl(pictureUrl)
-                .role(Role.INTERVIEWER)
+                .roles(Set.of(Role.INTERVIEWER))
                 .isActive(true)
                 .authProvider(AuthProvider.GOOGLE)
                 .passwordHash(null)
