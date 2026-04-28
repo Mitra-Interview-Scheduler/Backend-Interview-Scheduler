@@ -1,8 +1,10 @@
 package com.nemal.controller;
 
 import com.nemal.dto.AdminUserDto;
+import com.nemal.dto.UpdateRoleRequestDto;
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +43,15 @@ public class AdminController {
         return ResponseEntity.ok(AdminUserDto.from(user));
     }
 
+    //PATCH /api/admin/users/{id}/role  — toggles between USER and ADMIN
+    @PatchMapping("/users/{id}/role")
+    public ResponseEntity<AdminUserDto> toggleUserRole(@PathVariable Long id, @Valid @RequestBody UpdateRoleRequestDto request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found: " + id));
+        user.setRole(request.role());
+        userRepository.save(user);
+        return ResponseEntity.ok(AdminUserDto.from(user));
+    }
     // DELETE /api/admin/users/{id}
     @DeleteMapping("/users/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {

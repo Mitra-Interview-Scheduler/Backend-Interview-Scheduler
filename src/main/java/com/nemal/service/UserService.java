@@ -51,7 +51,7 @@ public class UserService implements UserDetailsService {
                 .role(dto.role())
                 .build();
         userRepository.save(user);
-        String token = jwtService.generateToken((UserDetails) user);
+        String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }
 
@@ -60,9 +60,10 @@ public class UserService implements UserDetailsService {
                 new UsernamePasswordAuthenticationToken(dto.email(), dto.password())
         );
         User user = userRepository.findByEmail(dto.email()).orElseThrow();
-        String token = jwtService.generateToken((UserDetails) user);
+        String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }
+
 
     public UserDto createUser(UserDto dto, Role role) {
         User user = User.builder()
