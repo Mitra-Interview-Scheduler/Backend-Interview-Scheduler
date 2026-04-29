@@ -21,6 +21,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 @Service
 public class UserService implements UserDetailsService {
 
@@ -48,7 +50,7 @@ public class UserService implements UserDetailsService {
                 .passwordHash(passwordEncoder.encode(dto.password()))
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
-                .role(dto.role())
+                .roles(dto.roles())
                 .build();
         userRepository.save(user);
         String token = jwtService.generateToken(user);
@@ -70,7 +72,7 @@ public class UserService implements UserDetailsService {
                 .email(dto.email())
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
-                .role(role)
+                .roles(Set.of(role))
                 .build();
         userRepository.save(user);
         return UserDto.from(user);
