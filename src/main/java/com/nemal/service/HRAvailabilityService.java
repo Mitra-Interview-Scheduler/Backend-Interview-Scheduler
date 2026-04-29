@@ -139,20 +139,6 @@ public class HRAvailabilityService {
             }
 
             // ── Step 5: tier / level hierarchy ────────────────────────────────
-            //
-            // Business rule (Tier 1 = highest, Level 1 = highest within a tier):
-            //   Interviewer may interview candidate if:
-            //     (a) ivTierOrder  <  candidateTierOrder   → strictly higher tier, OR
-            //     (b) ivTierOrder == candidateTierOrder
-            //           AND ivLevelOrder < candidateLevelOrder → strictly higher level
-            //
-            //   Same tier + same level is NOT allowed (strict less-than, not <=).
-            //
-            // The filter sends:
-            //   minTierId    = candidate's tierOrder  (the candidate's own tier order value)
-            //   minDesignationLevelInDepartment = candidate's levelOrder
-            //   departmentIdForDesignationFilter = candidate's departmentId
-            //
             if (filter.minTierId() != null && filter.departmentIdForDesignationFilter() != null) {
                 final int candidateTierOrder  = filter.minTierId().intValue();
                 final int candidateLevelOrder = filter.minDesignationLevelInDepartment() != null
@@ -171,7 +157,6 @@ public class HRAvailabilityService {
                                 || slot.getInterviewer().getCurrentDesignation() == null)
                             continue;
 
-                        // Tier filter is department-scoped
                         if (slot.getInterviewer().getDepartment() == null
                                 || !slot.getInterviewer().getDepartment().getId()
                                 .equals(filter.departmentIdForDesignationFilter()))
@@ -180,28 +165,25 @@ public class HRAvailabilityService {
                         Designation designation = slot.getInterviewer().getCurrentDesignation();
                         Tier tier = designation.getTier();
 
-                        if (tier == null
-                                || tier.getTierOrder() == null
-                                || designation.getLevelOrder() == null)
+                        if (tier == null || tier.getTierOrder() == null || designation.getLevelOrder() == null)
                             continue;
 
                         int ivTier  = tier.getTierOrder();
                         int ivLevel = designation.getLevelOrder();
 
-                        // Rule: strictly higher tier  OR  same tier + strictly higher level
+                        // UPDATED LOGIC:
+                        // 1. Interviewer is in a strictly higher Tier (ivTier < candidateTierOrder)
+                        // 2. OR Interviewer is in the SAME Tier but has equal or higher seniority level (ivLevel <= candidateLevelOrder)
                         boolean passes = ivTier < candidateTierOrder
-                                || (ivTier == candidateTierOrder && ivLevel < candidateLevelOrder);
+                                || (ivTier == candidateTierOrder && ivLevel <= candidateLevelOrder);
 
                         if (passes) passedSlots.add(slot);
 
                     } catch (Exception e) {
-                        logger.error("Error checking tier for slot {}: {}",
-                                slot.getId(), e.getMessage());
+                        logger.error("Error checking tier for slot {}: {}", slot.getId(), e.getMessage());
                     }
                 }
                 slots = passedSlots;
-                logger.info("Step 5 – after tier/level filter: {}", slots.size());
-
             } else if (filter.minDesignationLevelInDepartment() != null
                     && filter.departmentIdForDesignationFilter() != null) {
 
@@ -210,20 +192,20 @@ public class HRAvailabilityService {
                 slots = slots.stream()
                         .filter(slot -> {
                             if ("BOOKED".equals(slot.getStatus().name())) return true;
-                            if (slot.getInterviewer() == null
-                                    || slot.getInterviewer().getCurrentDesignation() == null)
+                            if (slot.getInterviewer() == null || slot.getInterviewer().getCurrentDesignation() == null)
                                 return false;
+
                             if (slot.getInterviewer().getDepartment() == null
                                     || !slot.getInterviewer().getDepartment().getId()
                                     .equals(filter.departmentIdForDesignationFilter()))
                                 return false;
-                            Integer ivLevel =
-                                    slot.getInterviewer().getCurrentDesignation().getLevelOrder();
-                            // Strictly higher level (lower number = higher seniority)
-                            return ivLevel != null && ivLevel < candidateLevelOrder;
+
+                            Integer ivLevel = slot.getInterviewer().getCurrentDesignation().getLevelOrder();
+
+                            // UPDATED LOGIC: equal or higher seniority (lower or equal numeric value)
+                            return ivLevel != null && ivLevel <= candidateLevelOrder;
                         })
                         .collect(Collectors.toList());
-                logger.info("Step 5 – after level-only filter: {}", slots.size());
             }
 
             return slots;
