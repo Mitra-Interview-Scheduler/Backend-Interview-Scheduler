@@ -237,6 +237,16 @@ public class PanelInterviewService {
                 .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, int limit) {
+        int safeLimit = Math.max(1, limit);
+        return panelRepository.findByRequestedById(userId)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewPanelDto::from)
+                .collect(Collectors.toList());
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {
