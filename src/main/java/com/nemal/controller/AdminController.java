@@ -1,6 +1,7 @@
 package com.nemal.controller;
 
 import com.nemal.dto.AdminUserDto;
+import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateRoleRequestDto;
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
@@ -8,6 +9,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Sort;
 
 import java.util.HashSet;
 import java.util.List;
@@ -28,7 +30,49 @@ public class AdminController {
 
     // GET /api/admin/users
     @GetMapping("/users")
-    public ResponseEntity<List<AdminUserDto>> getAllUsers() {
+    public ResponseEntity<?> getAllUsers(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Role role,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ) {
+        boolean hasFilters = (search != null && !search.isBlank()) || role != null;
+        if (page != null || size != null || hasFilters) {
+            int pageValue = page != null ? Math.max(0, page) : 0;
+            int sizeValue = size != null ? Math.max(1, size) : 10;
+            String q = search != null ? search.trim().toLowerCase() : null;
+
+            List<User> filteredUsers = userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
+                    .stream()
+                    .filter(u -> {
+                        if (role != null && !u.getRoles().contains(role)) return false;
+                        if (q == null || q.isBlank()) return true;
+                        String fullName = ((u.getFirstName() != null ? u.getFirstName() : "") + " " +
+                                (u.getLastName() != null ? u.getLastName() : "")).toLowerCase();
+                        String email = u.getEmail() != null ? u.getEmail().toLowerCase() : "";
+                        return fullName.contains(q) || email.contains(q);
+                    })
+                    .toList();
+
+            int total = filteredUsers.size();
+            int fromIndex = Math.min(pageValue * sizeValue, total);
+            int toIndex = Math.min(fromIndex + sizeValue, total);
+            int totalPages = Math.max(1, (int) Math.ceil((double) total / sizeValue));
+
+            List<AdminUserDto> content = filteredUsers.subList(fromIndex, toIndex)
+                    .stream().map(AdminUserDto::from).toList();
+
+            return ResponseEntity.ok(new PaginatedResponseDto<>(
+                    content,
+                    pageValue,
+                    sizeValue,
+                    total,
+                    totalPages,
+                    pageValue == 0,
+                    pageValue >= totalPages - 1
+            ));
+        }
+
         List<AdminUserDto> users = userRepository.findAll()
                 .stream()
                 .map(AdminUserDto::from)
