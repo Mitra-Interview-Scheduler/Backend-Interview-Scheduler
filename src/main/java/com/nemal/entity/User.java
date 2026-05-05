@@ -14,7 +14,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -35,7 +34,7 @@ import java.util.stream.Collectors;
 // Solution: only use `id` for equals/hashCode. Safe, stable, correct for JPA.
 // ────────────────────────────────────────────────────────────────────────────
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@ToString(exclude = {"interviewerTechnologies", "currentDesignation", "department"})
+@ToString(exclude = {"interviewerTechnologies", "currentDesignation", "department", "settings"})
 @EntityListeners(AuditingEntityListener.class)
 public class User implements UserDetails {
 
@@ -78,6 +77,9 @@ public class User implements UserDetails {
     @ManyToOne
     @JoinColumn(name = "current_designation_id")
     private Designation currentDesignation;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private UserSettings settings;
 
     // NO @Where CLAUSE - Let the code filter active technologies manually
     @OneToMany(mappedBy = "interviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

@@ -32,13 +32,19 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginDto dto) {
-        return ResponseEntity.ok(userService.authenticate(dto));
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
+    ) {
+        return ResponseEntity.ok(userService.authenticate(dto, timezone));
     }
     @PostMapping("/google")
-    public ResponseEntity<LoginResponse> googleLogin(@RequestBody Map<String, String> data) {
+    public ResponseEntity<LoginResponse> googleLogin(
+            @RequestBody Map<String, String> data,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
+    ) {
         String googleToken = data.get("token");
-        return ResponseEntity.ok(googleAuthService.authenticateGoogleUser(googleToken));
+        return ResponseEntity.ok(googleAuthService.authenticateGoogleUser(googleToken, timezone));
     }
     @GetMapping("/verify")
     public ResponseEntity<?> verifyToken() {

@@ -32,16 +32,19 @@ public class UserService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final UserSettingsService userSettingsService;
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,
-                       JwtService jwtService, AuthenticationManager authenticationManager) {
+                       JwtService jwtService, AuthenticationManager authenticationManager,
+                       UserSettingsService userSettingsService) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
+        this.userSettingsService = userSettingsService;
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
@@ -57,11 +60,12 @@ public class UserService implements UserDetailsService {
         return LoginResponse.from(token, user);
     }
 
-    public LoginResponse authenticate(LoginDto dto) {
+    public LoginResponse authenticate(LoginDto dto, String browserTimezone) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(dto.email(), dto.password())
         );
         User user = userRepository.findByEmail(dto.email()).orElseThrow();
+        userSettingsService.ensureSettingsOnFirstLogin(user, browserTimezone);
         String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }

@@ -15,7 +15,8 @@ public record ProfileDto(
         DepartmentSimpleDto department,
         DesignationSimpleDto currentDesignation,
         Integer yearsOfExperience,
-        String bio
+        String bio,
+        UserSettingsDto settings
 ) {
     public static ProfileDto from(User user) {
         return new ProfileDto(
@@ -29,7 +30,8 @@ public record ProfileDto(
                 user.getDepartment() != null ? DepartmentSimpleDto.from(user.getDepartment()) : null,
                 user.getCurrentDesignation() != null ? DesignationSimpleDto.from(user.getCurrentDesignation()) : null,
                 user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0,
-                user.getBio()
+                user.getBio(),
+                UserSettingsDto.from(user.getSettings())
         );
     }
 }
