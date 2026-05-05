@@ -30,10 +30,13 @@ public class InterviewerDashboardController {
     @GetMapping("/upcoming")
     public ResponseEntity<?> getUpcomingInterviews(
             @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer size,
             @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
             ZoneId zone = TimeZoneMapper.resolveZone(timezone);
-            List<InterviewRequestDto> result = interviewRequestService.getUpcomingInterviewsForInterviewer(user.getId());
+            List<InterviewRequestDto> result = size != null
+                    ? interviewRequestService.getUpcomingInterviewsForInterviewer(user.getId(), size)
+                    : interviewRequestService.getUpcomingInterviewsForInterviewer(user.getId());
             return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewRequests(result, zone));
         } catch (Exception e) {
             logger.error("Failed to get upcoming interviews for interviewer {}: {}", user.getId(), e.getMessage(), e);

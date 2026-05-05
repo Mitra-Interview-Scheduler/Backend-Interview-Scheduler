@@ -51,10 +51,13 @@ public class InterviewRequestController {
     @GetMapping("/my-requests")
     public ResponseEntity<?> getMyRequests(
             @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer size,
             @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
             ZoneId zone = TimeZoneMapper.resolveZone(timezone);
-            List<InterviewRequestDto> result = interviewRequestService.getRequestsByUser(user.getId());
+            List<InterviewRequestDto> result = size != null
+                    ? interviewRequestService.getRequestsByUser(user.getId(), size)
+                    : interviewRequestService.getRequestsByUser(user.getId());
             return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewRequests(result, zone));
         } catch (Exception e) {
             logger.error("Failed to get requests for user {}: {}", user.getId(), e.getMessage(), e);

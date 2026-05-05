@@ -11,6 +11,7 @@ import com.nemal.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -175,8 +176,18 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByUser(Long userId) {
-        return interviewRequestRepository.findByRequestedById(userId)
+        return interviewRequestRepository.findByRequestedByIdOrderByCreatedAtDesc(userId)
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewRequestDto> getRequestsByUser(Long userId, int limit) {
+        int safeLimit = Math.max(1, limit);
+        return interviewRequestRepository.findByRequestedByIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewRequestDto::from)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -189,6 +200,18 @@ public class InterviewRequestService {
     public List<InterviewRequestDto> getUpcomingInterviewsForInterviewer(Long interviewerId) {
         return interviewRequestRepository
                 .findUpcomingInterviewsForInterviewer(interviewerId, LocalDateTime.now())
+                .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewRequestDto> getUpcomingInterviewsForInterviewer(Long interviewerId, int limit) {
+        int safeLimit = Math.max(1, limit);
+        return interviewRequestRepository
+                .findUpcomingInterviewsForInterviewer(
+                        interviewerId,
+                        LocalDateTime.now(),
+                        PageRequest.of(0, safeLimit)
+                )
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
     }
 

@@ -9,5 +9,6 @@ import java.time.LocalDateTime;
 public record UpdateAvailabilitySlotDto(
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
+        LocalDateTime currentTime,
         String description
 ) {}

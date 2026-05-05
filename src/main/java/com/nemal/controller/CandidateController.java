@@ -2,6 +2,7 @@ package com.nemal.controller;
 
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.enums.CandidateStatus;
 import com.nemal.service.CandidateService;
@@ -23,11 +24,22 @@ public class CandidateController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CandidateDto>> getAllCandidates(
+    public ResponseEntity<?> getAllCandidates(
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) CandidateStatus status,
-            @RequestParam(required = false) String search
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
     ) {
+        if (page != null || size != null) {
+            int pageValue = page != null ? page : 0;
+            int sizeValue = size != null ? size : 10;
+            PaginatedResponseDto<CandidateDto> result = candidateService.findWithFiltersPaged(
+                    departmentId, status, search, pageValue, sizeValue
+            );
+            return ResponseEntity.ok(result);
+        }
+
         if (departmentId != null || status != null || search != null) {
             return ResponseEntity.ok(
                     candidateService.findWithFilters(departmentId, status, search));

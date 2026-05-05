@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.Department;
@@ -13,6 +14,7 @@ import com.nemal.repository.DesignationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -93,6 +95,44 @@ public class CandidateService {
         }
 
         return candidates.stream().map(CandidateDto::from).collect(Collectors.toList());
+    }
+
+    public PaginatedResponseDto<CandidateDto> findWithFiltersPaged(
+            Long departmentId,
+            CandidateStatus status,
+            String searchTerm,
+            int page,
+            int size
+    ) {
+        List<CandidateDto> all = findWithFilters(departmentId, status, searchTerm);
+        int safeSize = Math.max(1, size);
+        int safePage = Math.max(0, page);
+        int fromIndex = safePage * safeSize;
+
+        if (fromIndex >= all.size()) {
+            return new PaginatedResponseDto<>(
+                    Collections.emptyList(),
+                    safePage,
+                    safeSize,
+                    all.size(),
+                    Math.max(1, (int) Math.ceil((double) all.size() / safeSize)),
+                    safePage == 0,
+                    true
+            );
+        }
+
+        int toIndex = Math.min(fromIndex + safeSize, all.size());
+        int totalPages = Math.max(1, (int) Math.ceil((double) all.size() / safeSize));
+
+        return new PaginatedResponseDto<>(
+                all.subList(fromIndex, toIndex),
+                safePage,
+                safeSize,
+                all.size(),
+                totalPages,
+                safePage == 0,
+                safePage >= totalPages - 1
+        );
     }
 
     // ── Mutations ─────────────────────────────────────────────────────────────
