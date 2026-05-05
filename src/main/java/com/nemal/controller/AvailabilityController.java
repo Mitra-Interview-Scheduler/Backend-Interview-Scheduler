@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.google.api.client.util.DateTime;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
@@ -67,8 +68,10 @@ public class AvailabilityController {
         CreateAvailabilitySlotDto utcDto = new CreateAvailabilitySlotDto(
                 TimeZoneMapper.toUtc(dto.startDateTime(), zone),
                 TimeZoneMapper.toUtc(dto.endDateTime(), zone),
+                TimeZoneMapper.toUtc(dto.currentTime(), zone),
                 dto.description()
         );
+
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(TimeZoneMapper.fromUtc(availabilityService.createAvailabilitySlot(user, utcDto), zone));
     }
@@ -84,6 +87,7 @@ public class AvailabilityController {
                 dto.slots().stream().map(slot -> new CreateAvailabilitySlotDto(
                         TimeZoneMapper.toUtc(slot.startDateTime(), zone),
                         TimeZoneMapper.toUtc(slot.endDateTime(), zone),
+                        TimeZoneMapper.toUtc(slot.currentTime(), zone),
                         slot.description()
                 )).toList()
         );
@@ -107,6 +111,7 @@ public class AvailabilityController {
             UpdateAvailabilitySlotDto utcDto = new UpdateAvailabilitySlotDto(
                     TimeZoneMapper.toUtc(dto.startDateTime(), zone),
                     TimeZoneMapper.toUtc(dto.endDateTime(), zone),
+                    TimeZoneMapper.toUtc(dto.currentTime(), zone),
                     dto.description()
             );
             AvailabilitySlotDto result = availabilityService.updateAvailabilitySlot(user, slotId, utcDto);

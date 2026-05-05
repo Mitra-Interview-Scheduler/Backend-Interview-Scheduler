@@ -32,7 +32,7 @@ public class AvailabilityService {
      * Prevents interviewers from accidentally accepting last-minute sessions
      * without enough prep time.
      */
-    private static final int SAME_DAY_MIN_LEAD_HOURS = 2;
+    private static final double SAME_DAY_MIN_LEAD_HOURS = 0.25;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
 
@@ -70,10 +70,11 @@ public class AvailabilityService {
      *  - Future days are always allowed.
      *  - End must be after start.
      */
-    private void validateSlotTimes(LocalDateTime start, LocalDateTime end) {
-        LocalDateTime now  = LocalDateTime.now();
-        LocalDate     today = LocalDate.now();
+    private void validateSlotTimes(LocalDateTime start, LocalDateTime end,LocalDateTime now) {
+        LocalDate     today = now.toLocalDate();
 
+
+        System.out.println("Validating slot times: start=" + start + ", end=" + end + ", now=" +  now);
         // Reject past dates
         if (start.toLocalDate().isBefore(today)) {
             throw new RuntimeException("Cannot create availability slots for past dates");
@@ -81,7 +82,7 @@ public class AvailabilityService {
 
         // Same-day: require at least SAME_DAY_MIN_LEAD_HOURS hours of lead time
         if (start.toLocalDate().equals(today)) {
-            LocalDateTime minAllowed = now.plusHours(SAME_DAY_MIN_LEAD_HOURS);
+            LocalDateTime minAllowed = now.plusHours((long) SAME_DAY_MIN_LEAD_HOURS);
             if (start.isBefore(minAllowed)) {
                 String earliest = minAllowed.format(DateTimeFormatter.ofPattern("HH:mm"));
                 throw new RuntimeException(
@@ -99,7 +100,7 @@ public class AvailabilityService {
 
     @Transactional
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
@@ -138,7 +139,7 @@ public class AvailabilityService {
             throw new RuntimeException("Cannot edit an inactive slot");
         }
 
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
         // Conflict check — exclude the slot being edited
         List<AvailabilitySlot> conflicts = availabilitySlotRepository
