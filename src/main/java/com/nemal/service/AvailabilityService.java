@@ -74,7 +74,6 @@ public class AvailabilityService {
         LocalDate     today = now.toLocalDate();
 
 
-        System.out.println("Validating slot times: start=" + start + ", end=" + end + ", now=" +  now);
         // Reject past dates
         if (start.toLocalDate().isBefore(today)) {
             throw new RuntimeException("Cannot create availability slots for past dates");
