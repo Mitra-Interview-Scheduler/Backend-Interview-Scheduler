@@ -27,16 +27,18 @@ public class GoogleAuthService {
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
+    private final UserSettingsService userSettingsService;
 
     @Value("${google.client.id}")
     private String googleClientId;
 
-    public GoogleAuthService(UserRepository userRepository, JwtService jwtService) {
+    public GoogleAuthService(UserRepository userRepository, JwtService jwtService, UserSettingsService userSettingsService) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
+        this.userSettingsService = userSettingsService;
     }
 
-    public LoginResponse authenticateGoogleUser(String idTokenString) {
+    public LoginResponse authenticateGoogleUser(String idTokenString, String browserTimezone) {
         GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
                 .setAudience(Collections.singletonList(googleClientId))
                 .build();
@@ -61,6 +63,8 @@ public class GoogleAuthService {
 
             User user = userRepository.findByEmail(email)
                     .orElseGet(() -> registerNewGoogleUser(payload));
+
+            userSettingsService.ensureSettingsOnFirstLogin(user, browserTimezone);
 
             String jwtToken = jwtService.generateToken(user);
             return new LoginResponse(

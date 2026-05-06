@@ -35,6 +35,7 @@ public class ProfileService {
         this.tierRepository = tierRepository;
     }
 
+    @Transactional(readOnly = true)
     public ProfileDto getProfile(User user) {
         User freshUser = userRepository.findById(user.getId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
