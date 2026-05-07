@@ -1,36 +1,52 @@
 package com.nemal.service;
 
 import com.nemal.dto.CandidateDto;
+import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
+import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.enums.CandidateStatus;
+import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class CandidateService {
 
     private final CandidateRepository  candidateRepository;
+    private final CandidateDocumentRepository candidateDocumentRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
+    private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
 
     public CandidateService(
             CandidateRepository  candidateRepository,
+            CandidateDocumentRepository candidateDocumentRepository,
             DepartmentRepository departmentRepository,
             DesignationRepository designationRepository
     ) {
         this.candidateRepository  = candidateRepository;
+        this.candidateDocumentRepository = candidateDocumentRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
     }
@@ -46,6 +62,24 @@ public class CandidateService {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
         return CandidateDto.from(candidate);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidateDocumentDto> getCandidateDocuments(Long candidateId) {
+        ensureActiveCandidate(candidateId);
+        return candidateDocumentRepository.findByCandidateIdOrderByCreatedAtDesc(candidateId)
+                .stream().map(CandidateDocumentDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CandidateDocument getCandidateDocumentFile(Long candidateId, Long documentId) {
+        ensureActiveCandidate(candidateId);
+        CandidateDocument document = candidateDocumentRepository.findByIdAndCandidateId(documentId, candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate document not found"));
+        if (document.getFileData().length < 0) {
+            throw new RuntimeException("Candidate document data is invalid");
+        }
+        return document;
     }
 
     public List<CandidateDto> getCandidatesByDepartment(Long departmentId) {
@@ -246,5 +280,97 @@ public class CandidateService {
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
         candidate.setActive(false);
         candidateRepository.save(candidate);
+    }
+
+    @Transactional
+    public CandidateDocumentDto uploadCandidateDocument(Long candidateId, String documentType, MultipartFile file) {
+        Candidate candidate = ensureActiveCandidate(candidateId);
+        validateDocument(file);
+
+        try {
+            CandidateDocument document = CandidateDocument.builder()
+                    .candidate(candidate)
+                    .documentType(normalizeDocumentType(documentType))
+                    .fileName(safeFileName(file.getOriginalFilename()))
+                    .contentType(resolveContentType(file))
+                    .fileSize(file.getSize())
+                    .fileData(file.getBytes())
+                    .build();
+
+            return CandidateDocumentDto.from(candidateDocumentRepository.save(document));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read uploaded document", e);
+        }
+    }
+
+    @Transactional
+    public CandidateDocumentDto replaceCandidateDocument(Long candidateId, Long documentId, String documentType, MultipartFile file) {
+        ensureActiveCandidate(candidateId);
+        validateDocument(file);
+
+        CandidateDocument document = candidateDocumentRepository.findByIdAndCandidateId(documentId, candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate document not found"));
+
+        try {
+            document.setDocumentType(normalizeDocumentType(documentType));
+            document.setFileName(safeFileName(file.getOriginalFilename()));
+            document.setContentType(resolveContentType(file));
+            document.setFileSize(file.getSize());
+            document.setFileData(file.getBytes());
+            return CandidateDocumentDto.from(candidateDocumentRepository.save(document));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read uploaded document", e);
+        }
+    }
+
+    @Transactional
+    public void deleteCandidateDocument(Long candidateId, Long documentId) {
+        ensureActiveCandidate(candidateId);
+        CandidateDocument document = candidateDocumentRepository.findByIdAndCandidateId(documentId, candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate document not found"));
+        candidateDocumentRepository.delete(document);
+    }
+
+    private Candidate ensureActiveCandidate(Long candidateId) {
+        return candidateRepository.findByIdAndIsActiveTrue(candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate not found"));
+    }
+
+    private void validateDocument(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Document file is required");
+        }
+        if (file.getSize() > MAX_DOCUMENT_BYTES) {
+            throw new IllegalArgumentException("Document file must be 10 MB or smaller");
+        }
+
+        String contentType = resolveContentType(file);
+        String fileName = safeFileName(file.getOriginalFilename()).toLowerCase(Locale.ROOT);
+        boolean allowedExtension = fileName.endsWith(".pdf") || fileName.endsWith(".doc") || fileName.endsWith(".docx");
+        if (!ALLOWED_CONTENT_TYPES.contains(contentType) && !allowedExtension) {
+            throw new IllegalArgumentException("Only PDF, DOC, and DOCX documents are supported");
+        }
+    }
+
+    private String normalizeDocumentType(String documentType) {
+        String value = documentType == null || documentType.trim().isEmpty()
+                ? "OTHER"
+                : documentType.trim().toUpperCase(Locale.ROOT);
+        return value.length() > 50 ? value.substring(0, 50) : value;
+    }
+
+    private String safeFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            return "candidate-document";
+        }
+        String cleaned = fileName.replace("\\", "/");
+        cleaned = cleaned.substring(cleaned.lastIndexOf('/') + 1).trim();
+        return cleaned.length() > 255 ? cleaned.substring(cleaned.length() - 255) : cleaned;
+    }
+
+    private String resolveContentType(MultipartFile file) {
+        return file.getContentType() == null || file.getContentType().isBlank()
+                ? "application/octet-stream"
+                : file.getContentType();
     }
 }
