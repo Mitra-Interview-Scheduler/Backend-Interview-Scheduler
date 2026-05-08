@@ -122,7 +122,7 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "WHERE s.interviewer.id = :interviewerId " +
             "AND s.isActive = true " +
             "AND s.status = 'AVAILABLE' " +
-            "AND s.startDateTime <= :end AND s.endDateTime >= :start")
+            "AND s.startDateTime < :end AND s.endDateTime > :start")
     List<AvailabilitySlot> findConflictingSlots(
             @Param("interviewerId") Long interviewerId,
             @Param("start") LocalDateTime start,
