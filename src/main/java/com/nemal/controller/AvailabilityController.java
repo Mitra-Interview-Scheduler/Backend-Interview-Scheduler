@@ -72,6 +72,8 @@ public class AvailabilityController {
                 dto.description()
         );
 
+        System.out.println(  "StartTime = "+ utcDto.startDateTime() +"EndTime = "+ " - " + utcDto.endDateTime() +"NowTime = "+ " - " + utcDto.currentTime() );
+
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(TimeZoneMapper.fromUtc(availabilityService.createAvailabilitySlot(user, utcDto), zone));
     }
@@ -133,11 +135,14 @@ public class AvailabilityController {
 
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Long>> getAvailabilityStats(
-            @AuthenticationPrincipal User user
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        LocalDateTime utcStart = TimeZoneMapper.toUtc(LocalDateTime.now(), zone);        
         return ResponseEntity.ok(Map.of(
-                "availableSlots", availabilityService.getAvailableSlotCount(user.getId()),
-                "bookedSlots", availabilityService.getBookedSlotCount(user.getId())
+                "availableSlots", availabilityService.getAvailableSlotCount(user.getId(), utcStart),
+                "bookedSlots", availabilityService.getBookedSlotCount(user.getId(), utcStart)
         ));
     }
 }

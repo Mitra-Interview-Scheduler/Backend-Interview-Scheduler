@@ -12,6 +12,7 @@ public record AvailabilitySlotDto(
         String status,
         String description,
         Long interviewScheduleId,
+        Double durationHours,   // new field for duration in hours
         String candidateName   // populated for BOOKED slots via description or schedule chain
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
@@ -41,6 +42,7 @@ public record AvailabilitySlotDto(
                 slot.getStatus().name(),
                 slot.getDescription(),
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
+                slot.getDurationHours(),
                 candidateName
         );
     }
