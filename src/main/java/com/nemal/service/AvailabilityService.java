@@ -103,10 +103,8 @@ public class AvailabilityService {
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
 
         if (!conflicts.isEmpty()) {
-            System.out.println( "Conflict detected with existing slots: " + conflicts.stream().map(s -> s.getId()).collect(Collectors.toList()) );
             throw new RuntimeException("This time slot conflicts with existing availability");
         }
-        System.out.println( "No conflicts detected, creating slot for interviewer " + conflicts.stream().map(s -> s.getId()).collect(Collectors.toList()));
 
         AvailabilitySlot slot = AvailabilitySlot.builder()
                 .interviewer(interviewer)
