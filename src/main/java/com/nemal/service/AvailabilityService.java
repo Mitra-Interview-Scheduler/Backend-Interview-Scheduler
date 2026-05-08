@@ -71,16 +71,13 @@ public class AvailabilityService {
      *  - End must be after start.
      */
     private void validateSlotTimes(LocalDateTime start, LocalDateTime end,LocalDateTime now) {
-        LocalDate     today = now.toLocalDate();
-
-
+        LocalDate currentTime = now.toLocalDate();
         // Reject past dates
-        if (start.toLocalDate().isBefore(today)) {
+        if (start.toLocalDate().isBefore(currentTime)) {
             throw new RuntimeException("Cannot create availability slots for past dates");
         }
-
         // Same-day: require at least SAME_DAY_MIN_LEAD_HOURS hours of lead time
-        if (start.toLocalDate().equals(today)) {
+        if (start.toLocalDate().equals(currentTime)) {
             LocalDateTime minAllowed = now.plusHours((long) SAME_DAY_MIN_LEAD_HOURS);
             if (start.isBefore(minAllowed)) {
                 String earliest = minAllowed.format(DateTimeFormatter.ofPattern("HH:mm"));
@@ -101,6 +98,7 @@ public class AvailabilityService {
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
         validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
+        System.out.println( "Validating slot times: start=" + dto.startDateTime() + ", end=" + dto.endDateTime() + ", now=" + dto.currentTime() );
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
 
@@ -187,14 +185,14 @@ public class AvailabilityService {
 
     // ── Stats ─────────────────────────────────────────────────────────────────
 
-    public long getAvailableSlotCount(Long interviewerId) {
+    public long getAvailableSlotCount(Long interviewerId ,LocalDateTime now) {
         return availabilitySlotRepository.countAvailableSlotsFrom(
-                interviewerId, LocalDateTime.now());
+                interviewerId, now);
     }
 
-    public long getBookedSlotCount(Long interviewerId) {
+    public long getBookedSlotCount(Long interviewerId, LocalDateTime now) {
         return availabilitySlotRepository.countBookedSlotsFrom(
-                interviewerId, LocalDateTime.now());
+                interviewerId, now);
     }
 
     public long getRecentBookedSlotCount(Long interviewerId, int lookbackDays) {

@@ -41,6 +41,7 @@ public final class TimeZoneMapper {
                 dto.status(),
                 dto.description(),
                 dto.interviewScheduleId(),
+                dto.durationHours(),
                 dto.candidateName()
         );
     }

@@ -37,6 +37,9 @@ public class AvailabilitySlot {
 
     private String description;
 
+    @Column(name = "duration_hours", insertable = false, updatable = false)
+    private Double durationHours;
+
     @ManyToOne
     @JoinColumn(name = "interview_schedule_id")
     private InterviewSchedule interviewSchedule;
@@ -56,5 +59,9 @@ public class AvailabilitySlot {
 
     public boolean isActive() {
         return isActive;
+    }
+
+    public Double getDurationHours() {
+        return durationHours;
     }
 }
