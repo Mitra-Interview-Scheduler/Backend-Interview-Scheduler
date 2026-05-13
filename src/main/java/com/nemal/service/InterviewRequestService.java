@@ -175,6 +175,12 @@ public class InterviewRequestService {
     // ── Read ──────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
+    public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {
+        System.out.println(interviewRequestRepository.findInterviewRequestsById(interviewScheduleId));
+        return interviewRequestRepository.findInterviewRequestsById(interviewScheduleId);
+    }
+
+    @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByUser(Long userId) {
         return interviewRequestRepository.findByRequestedByIdOrderByCreatedAtDesc(userId)
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());

@@ -1,5 +1,6 @@
 package com.nemal.repository;
 
+import com.nemal.dto.InterviewScheduleDto;
 import com.nemal.entity.InterviewRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -13,7 +14,7 @@ import java.util.List;
 @Repository
 public interface InterviewRequestRepository extends JpaRepository<InterviewRequest, Long> {
 
-    List<InterviewRequest> findByRequestedById(Long userId);
+    List<InterviewRequest> findInterviewRequestsById(Long id);
     List<InterviewRequest> findByRequestedByIdOrderByCreatedAtDesc(Long userId);
 
     List<InterviewRequest> findByCandidateId(Long candidateId);
