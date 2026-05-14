@@ -1,6 +1,5 @@
 package com.nemal.controller;
 
-import com.google.api.client.util.DateTime;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
@@ -71,8 +70,6 @@ public class AvailabilityController {
                 TimeZoneMapper.toUtc(dto.currentTime(), zone),
                 dto.description()
         );
-
-        System.out.println(  "StartTime = "+ utcDto.startDateTime() +"EndTime = "+ " - " + utcDto.endDateTime() +"NowTime = "+ " - " + utcDto.currentTime() );
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(TimeZoneMapper.fromUtc(availabilityService.createAvailabilitySlot(user, utcDto), zone));

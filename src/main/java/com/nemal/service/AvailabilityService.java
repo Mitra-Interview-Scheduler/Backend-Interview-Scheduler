@@ -98,7 +98,6 @@ public class AvailabilityService {
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
         validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
-        System.out.println( "Validating slot times: start=" + dto.startDateTime() + ", end=" + dto.endDateTime() + ", now=" + dto.currentTime() );
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
 

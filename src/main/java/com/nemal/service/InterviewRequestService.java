@@ -176,7 +176,6 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {
-        System.out.println(interviewRequestRepository.findInterviewRequestsById(interviewScheduleId));
         return interviewRequestRepository.findInterviewRequestsById(interviewScheduleId);
     }
 
