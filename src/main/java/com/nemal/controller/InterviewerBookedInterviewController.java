@@ -42,7 +42,6 @@ public class InterviewerBookedInterviewController {
             List<InterviewRequestSimpleDto> dtos = requests.stream()
                     .map(InterviewRequestSimpleDto::from)
                     .collect(Collectors.toList());
-            System.out.println("controller "+ dtos);
             return ResponseEntity.status(HttpStatus.OK).body(dtos);
         } catch (Exception e) {
             logger.error("Failed to get requests for Booked Slot If {}: {}", interviewScheduleId, e.getMessage(), e);
