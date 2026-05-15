@@ -8,6 +8,7 @@ import com.nemal.dto.UserRegistrationDto;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.entity.User;
+import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
@@ -54,6 +55,7 @@ public class UserService implements UserDetailsService {
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
                 .roles(dto.roles())
+                .authProvider(AuthProvider.LOCAL)
                 .build();
         userRepository.save(user);
         String token = jwtService.generateToken(user);
