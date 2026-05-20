@@ -69,7 +69,8 @@ public class AvailabilityController {
                 TimeZoneMapper.toUtc(dto.startDateTime(), zone),
                 TimeZoneMapper.toUtc(dto.endDateTime(), zone),
                 TimeZoneMapper.toUtc(dto.currentTime(), zone),
-                dto.description()
+                dto.description(),
+                dto.recurrenceGroupId()
         );
 
         System.out.println(  "StartTime = "+ utcDto.startDateTime() +"EndTime = "+ " - " + utcDto.endDateTime() +"NowTime = "+ " - " + utcDto.currentTime() );
@@ -90,7 +91,8 @@ public class AvailabilityController {
                         TimeZoneMapper.toUtc(slot.startDateTime(), zone),
                         TimeZoneMapper.toUtc(slot.endDateTime(), zone),
                         TimeZoneMapper.toUtc(slot.currentTime(), zone),
-                        slot.description()
+                        slot.description(),
+                        slot.recurrenceGroupId()
                 )).toList()
         );
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -106,7 +108,8 @@ public class AvailabilityController {
             @AuthenticationPrincipal User user,
             @PathVariable Long slotId,
             @RequestBody UpdateAvailabilitySlotDto dto,
-            @RequestHeader(value = "X-Timezone", required = false) String timezone
+            @RequestHeader(value = "X-Timezone", required = false) String timezone,
+            @RequestParam(value = "scope", defaultValue = "SINGLE") String scope
     ) {
         try {
             ZoneId zone = TimeZoneMapper.resolveZone(timezone);
@@ -116,7 +119,7 @@ public class AvailabilityController {
                     TimeZoneMapper.toUtc(dto.currentTime(), zone),
                     dto.description()
             );
-            AvailabilitySlotDto result = availabilityService.updateAvailabilitySlot(user, slotId, utcDto);
+            AvailabilitySlotDto result = availabilityService.updateAvailabilitySlot(user, slotId, utcDto, scope);
             return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -127,9 +130,10 @@ public class AvailabilityController {
     @DeleteMapping("/{slotId}")
     public ResponseEntity<Void> deleteAvailabilitySlot(
             @AuthenticationPrincipal User user,
-            @PathVariable Long slotId
+                        @PathVariable Long slotId,
+                        @RequestParam(value = "scope", defaultValue = "SINGLE") String scope
     ) {
-        availabilityService.deleteAvailabilitySlot(user, slotId);
+                availabilityService.deleteAvailabilitySlot(user, slotId, scope);
         return ResponseEntity.noContent().build();
     }
 

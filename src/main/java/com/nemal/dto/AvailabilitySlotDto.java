@@ -11,6 +11,8 @@ public record AvailabilitySlotDto(
         LocalDateTime endDateTime,
         String status,
         String description,
+    String recurrenceGroupId,
+    boolean isRecurring,
         Long interviewScheduleId,
         Double durationHours,   // new field for duration in hours
         String candidateName   // populated for BOOKED slots via description or schedule chain
@@ -41,6 +43,8 @@ public record AvailabilitySlotDto(
                 slot.getEndDateTime(),
                 slot.getStatus().name(),
                 slot.getDescription(),
+                slot.getRecurrenceGroupId(),
+                slot.getRecurrenceGroupId() != null,
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
                 slot.getDurationHours(),
                 candidateName

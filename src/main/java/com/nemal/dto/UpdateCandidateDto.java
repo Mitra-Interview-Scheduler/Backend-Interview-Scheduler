@@ -12,6 +12,7 @@ public record UpdateCandidateDto(
         String resumeUrl,
         String jdUrl,
         String jobReferenceCode,
+        String resourceRequestNumber,
         String location,
         String notes,
         Integer yearsOfExperience,

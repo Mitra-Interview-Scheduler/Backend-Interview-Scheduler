@@ -52,7 +52,8 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     @Query("SELECT c FROM Candidate c WHERE c.isActive = true AND " +
             "(LOWER(c.name)  LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-            " LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
+            " LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+            " LOWER(COALESCE(c.resourceRequestNumber, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
             "ORDER BY c.appliedAt DESC")
     List<Candidate> searchCandidates(@Param("searchTerm") String searchTerm);
 

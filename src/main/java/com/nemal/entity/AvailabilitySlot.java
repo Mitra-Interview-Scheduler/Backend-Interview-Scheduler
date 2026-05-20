@@ -37,6 +37,9 @@ public class AvailabilitySlot {
 
     private String description;
 
+    @Column(name = "recurrence_group_id")
+    private String recurrenceGroupId;
+
     @Column(name = "duration_hours", insertable = false, updatable = false)
     private Double durationHours;
 

@@ -211,6 +211,7 @@ public class CandidateService {
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
                 .jobReferenceCode(dto.jobReferenceCode())
+            .resourceRequestNumber(dto.resourceRequestNumber())
                 .location(dto.location())
                 .notes(dto.notes())
                 .yearsOfExperience(dto.yearsOfExperience())
@@ -245,6 +246,7 @@ public class CandidateService {
         if (dto.phone() != null)              candidate.setPhone(dto.phone());
         if (dto.jdUrl() != null)              candidate.setJdUrl(dto.jdUrl());
         if (dto.jobReferenceCode() != null)   candidate.setJobReferenceCode(dto.jobReferenceCode());
+        if (dto.resourceRequestNumber() != null) candidate.setResourceRequestNumber(dto.resourceRequestNumber());
         if (dto.location() != null)           candidate.setLocation(dto.location());
         if (dto.notes() != null)              candidate.setNotes(dto.notes());
         if (dto.yearsOfExperience() != null)  candidate.setYearsOfExperience(dto.yearsOfExperience());
