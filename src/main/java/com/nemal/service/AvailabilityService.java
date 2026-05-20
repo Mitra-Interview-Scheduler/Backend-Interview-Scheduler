@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -145,6 +146,7 @@ public class AvailabilityService {
         boolean isRecurringEdit = updateScope != DeleteScope.SINGLE && slot.getRecurrenceGroupId() != null && !slot.getRecurrenceGroupId().isBlank();
         // capture the recurrence group id in a final local variable so it can be referenced from lambdas
         final String slotRecurrenceGroupId = slot.getRecurrenceGroupId();
+        final LocalDateTime slotStartDateTime = slot.getStartDateTime();
 
         // Conflict check — exclude the slot being edited and all slots in its recurrence group (for recurring edits)
         List<AvailabilitySlot> conflicts = availabilitySlotRepository
@@ -170,7 +172,11 @@ public class AvailabilityService {
                 : availabilitySlotRepository.findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
                         interviewer.getId(), slot.getRecurrenceGroupId());
 
+        DayOfWeek selectedDayOfWeek = slot.getStartDateTime().getDayOfWeek();
+        boolean isAllScope = updateScope == DeleteScope.ALL;
+
         List<AvailabilitySlot> editableSlots = seriesSlots.stream()
+            .filter(s -> !isAllScope || s.getStartDateTime().getDayOfWeek() == selectedDayOfWeek)
                 .filter(s -> s.getStatus() != SlotStatus.BOOKED)
                 .collect(Collectors.toList());
 
@@ -236,7 +242,11 @@ public class AvailabilityService {
                 : availabilitySlotRepository
                 .findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(interviewer.getId(), recurrenceGroupId);
 
+        DayOfWeek selectedDayOfWeek = slot.getStartDateTime().getDayOfWeek();
+        boolean isAllScope = deleteScope == DeleteScope.ALL;
+
         List<AvailabilitySlot> deletableSlots = seriesSlots.stream()
+            .filter(s -> !isAllScope || s.getStartDateTime().getDayOfWeek() == selectedDayOfWeek)
                 .filter(s -> s.getStatus() != SlotStatus.BOOKED)
                 .collect(Collectors.toList());
 
