@@ -180,4 +180,13 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
     Optional<AvailabilitySlot> findActiveAvailableSlotStartingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
+
+    List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
+            Long interviewerId,
+            String recurrenceGroupId);
+
+    List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
+            Long interviewerId,
+            String recurrenceGroupId,
+            LocalDateTime startDateTime);
 }

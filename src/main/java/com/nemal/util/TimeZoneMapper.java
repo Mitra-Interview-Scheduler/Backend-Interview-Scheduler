@@ -40,6 +40,8 @@ public final class TimeZoneMapper {
                 fromUtc(dto.endDateTime(), targetZone),
                 dto.status(),
                 dto.description(),
+                dto.recurrenceGroupId(),
+                dto.isRecurring(),
                 dto.interviewScheduleId(),
                 dto.durationHours(),
                 dto.candidateName()
