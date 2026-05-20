@@ -28,6 +28,7 @@ public class Candidate {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column( nullable = false)
     private String phone;
 
     @ManyToOne
@@ -75,6 +76,9 @@ public class Candidate {
 
     @Column(name = "is_active")
     private boolean isActive = true;
+
+    @Column(name = "resource_request_number")
+    private String resourceRequestNumber;
 
     @PrePersist
     protected void onCreate() {

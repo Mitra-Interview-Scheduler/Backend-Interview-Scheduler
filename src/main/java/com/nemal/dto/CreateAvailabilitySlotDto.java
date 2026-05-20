@@ -6,4 +6,5 @@ public record CreateAvailabilitySlotDto(
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         LocalDateTime currentTime,
-        String description) {}
+        String description,
+        String recurrenceGroupId) {}
