@@ -34,19 +34,33 @@ public class HRAvailabilityController {
         try {
             logger.info("Received filter request: {}", filter);
             ZoneId zone = TimeZoneMapper.resolveZone(timezone);
-            AvailabilityFilterDto utcFilter = filter == null ? null : new AvailabilityFilterDto(
-                    filter.departmentIds(),
-                    filter.technologyIds(),
-                    TimeZoneMapper.toUtc(filter.startDateTime(), zone),
-                    TimeZoneMapper.toUtc(filter.endDateTime(), zone),
-                    filter.minYearsOfExperience(),
-                    filter.minDesignationLevelInDepartment(),
-                    filter.departmentIdForDesignationFilter(),
-                    filter.minTierId()
-            );
-            List<InterviewerAvailabilityDto> result = hrAvailabilityService.getAllAvailableSlots(utcFilter);
-            logger.info("Returning {} availability slots", result.size());
-            return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewerAvailability(result, zone));
+                    AvailabilityFilterDto utcFilter = filter == null ? null : new AvailabilityFilterDto(
+                        filter.departmentIds(),
+                        filter.technologyIds(),
+                        TimeZoneMapper.toUtc(filter.startDateTime(), zone),
+                        TimeZoneMapper.toUtc(filter.endDateTime(), zone),
+                        filter.minYearsOfExperience(),
+                        filter.minDesignationLevelInDepartment(),
+                        filter.departmentIdForDesignationFilter(),
+                        filter.minTierId(),
+                        filter.page(),
+                        filter.size()
+                    );
+
+                    if (utcFilter != null && utcFilter.page() != null && utcFilter.size() != null) {
+                    var paged = hrAvailabilityService.getAllAvailableSlotsPaged(utcFilter);
+                    logger.info("Returning paged availability slots page {} size {} total {}", paged.page(), paged.size(), paged.total());
+                    return ResponseEntity.ok(Map.of(
+                        "items", TimeZoneMapper.fromUtcInterviewerAvailability(paged.items(), zone),
+                        "total", paged.total(),
+                        "page", paged.page(),
+                        "size", paged.size()
+                    ));
+                    }
+
+                    List<InterviewerAvailabilityDto> fullResult = hrAvailabilityService.getAllAvailableSlots(utcFilter);
+                    logger.info("Returning {} availability slots", fullResult.size());
+                    return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewerAvailability(fullResult, zone));
         } catch (Exception e) {
             logger.error("Error in getFilteredAvailability: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

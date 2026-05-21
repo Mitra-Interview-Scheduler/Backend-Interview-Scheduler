@@ -45,4 +45,22 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
             @Param("now") LocalDateTime now,
             Pageable pageable
     );
+
+    @Query("SELECT DISTINCT r FROM InterviewRequest r " +
+            "LEFT JOIN r.candidate c " +
+            "LEFT JOIN c.targetDesignation cd " +
+            "LEFT JOIN r.candidateDesignation rd " +
+            "LEFT JOIN cd.tier ct " +
+            "LEFT JOIN rd.tier rt " +
+            "WHERE r.requestedBy.id = :userId " +
+            "AND (:departmentId IS NULL OR (c.department.id = :departmentId) OR (rd.department.id = :departmentId)) " +
+            "AND (:minTierOrder IS NULL OR ( (ct.tierOrder IS NOT NULL AND ct.tierOrder >= :minTierOrder) OR (rt.tierOrder IS NOT NULL AND rt.tierOrder >= :minTierOrder) )) " +
+            "AND (:exactTierOrder IS NULL OR ( (ct.tierOrder IS NOT NULL AND ct.tierOrder = :exactTierOrder) OR (rt.tierOrder IS NOT NULL AND rt.tierOrder = :exactTierOrder) )) " +
+            "ORDER BY r.createdAt DESC")
+    List<InterviewRequest> findByRequestedByIdWithFilters(
+            @Param("userId") Long userId,
+            @Param("departmentId") Long departmentId,
+            @Param("minTierOrder") Integer minTierOrder,
+            @Param("exactTierOrder") Integer exactTierOrder
+    );
 }

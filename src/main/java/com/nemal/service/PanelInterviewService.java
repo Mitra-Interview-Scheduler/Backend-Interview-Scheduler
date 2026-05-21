@@ -31,6 +31,7 @@ public class PanelInterviewService {
     private final CandidateRepository candidateRepository;
     private final DesignationRepository designationRepository;
     private final TechnologyRepository technologyRepository;
+    private final TierRepository tierRepository;
     private final NotificationService notificationService;
 
     public PanelInterviewService(
@@ -41,6 +42,7 @@ public class PanelInterviewService {
             CandidateRepository candidateRepository,
             DesignationRepository designationRepository,
             TechnologyRepository technologyRepository,
+            TierRepository tierRepository,
             NotificationService notificationService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
@@ -49,6 +51,7 @@ public class PanelInterviewService {
         this.candidateRepository = candidateRepository;
         this.designationRepository = designationRepository;
         this.technologyRepository = technologyRepository;
+        this.tierRepository = tierRepository;
         this.notificationService = notificationService;
     }
 
@@ -238,9 +241,52 @@ public class PanelInterviewService {
     }
 
     @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, Long departmentId, Integer minTierId, Integer exactTierId) {
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return panelRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
+                .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, int limit) {
         int safeLimit = Math.max(1, limit);
         return panelRepository.findByRequestedById(userId)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewPanelDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, int limit, Long departmentId, Integer minTierId, Integer exactTierId) {
+        int safeLimit = Math.max(1, limit);
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+        }
+        return panelRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
                 .stream()
                 .limit(safeLimit)
                 .map(InterviewPanelDto::from)

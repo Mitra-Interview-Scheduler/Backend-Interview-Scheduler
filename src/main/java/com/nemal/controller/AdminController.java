@@ -33,19 +33,25 @@ public class AdminController {
     public ResponseEntity<?> getAllUsers(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Role role,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
     ) {
-        boolean hasFilters = (search != null && !search.isBlank()) || role != null;
+        boolean hasFilters = (search != null && !search.isBlank()) || role != null || (status != null && !status.isBlank());
         if (page != null || size != null || hasFilters) {
             int pageValue = page != null ? Math.max(0, page) : 0;
             int sizeValue = size != null ? Math.max(1, size) : 10;
             String q = search != null ? search.trim().toLowerCase() : null;
+            final Boolean activeFilter = (status != null && !status.isBlank() && !status.equalsIgnoreCase("ALL"))
+                    ? (status.equalsIgnoreCase("ACTIVE") ? Boolean.TRUE
+                    : status.equalsIgnoreCase("INACTIVE") ? Boolean.FALSE : null)
+                    : null;
 
             List<User> filteredUsers = userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
                     .stream()
                     .filter(u -> {
                         if (role != null && !u.getRoles().contains(role)) return false;
+                        if (activeFilter != null && u.isActive() != activeFilter) return false;
                         if (q == null || q.isBlank()) return true;
                         String fullName = ((u.getFirstName() != null ? u.getFirstName() : "") + " " +
                                 (u.getLastName() != null ? u.getLastName() : "")).toLowerCase();

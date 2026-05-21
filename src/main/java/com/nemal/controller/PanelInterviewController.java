@@ -73,11 +73,14 @@ public class PanelInterviewController {
     @GetMapping("/my-panels")
     public ResponseEntity<?> getMyPanels(
             @AuthenticationPrincipal User user,
-            @RequestParam(required = false) Integer size) {
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Integer minTierId,
+            @RequestParam(required = false) Integer exactTierId) {
         try {
             List<InterviewPanelDto> result = size != null
-                    ? panelInterviewService.getPanelsByRequestedBy(user.getId(), size)
-                    : panelInterviewService.getPanelsByRequestedBy(user.getId());
+                    ? panelInterviewService.getPanelsByRequestedBy(user.getId(), size, departmentId, minTierId, exactTierId)
+                    : panelInterviewService.getPanelsByRequestedBy(user.getId(), departmentId, minTierId, exactTierId);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Failed to get panels for user {}: {}", user.getId(), e.getMessage(), e);
