@@ -69,6 +69,148 @@ public class HRAvailabilityService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public com.nemal.dto.PagedResult<InterviewerAvailabilityDto> getAllAvailableSlotsPaged(AvailabilityFilterDto filter) {
+        try {
+            final int page = filter.page() != null ? Math.max(0, filter.page()) : 0;
+            final int size = filter.size() != null ? Math.max(1, filter.size()) : 100;
+
+            // Build dynamic criteria query
+            var cb = entityManager.getCriteriaBuilder();
+            var cq = cb.createQuery(AvailabilitySlot.class);
+            var root = cq.from(AvailabilitySlot.class);
+            root.fetch("interviewer", jakarta.persistence.criteria.JoinType.LEFT);
+            // Note: fetching nested joins may be omitted for performance, but keep for DTO mapping
+            root.fetch("interviewSchedule", jakarta.persistence.criteria.JoinType.LEFT);
+
+            cq.select(root).distinct(true);
+
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+
+            // base: active and status in (AVAILABLE, BOOKED)
+            predicates.add(cb.isTrue(root.get("isActive")));
+            predicates.add(cb.or(cb.equal(root.get("status"), com.nemal.enums.SlotStatus.AVAILABLE), cb.equal(root.get("status"), com.nemal.enums.SlotStatus.BOOKED)));
+
+            // date range
+            if (filter.startDateTime() != null && filter.endDateTime() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("startDateTime"), filter.startDateTime()));
+                predicates.add(cb.lessThanOrEqualTo(root.get("endDateTime"), filter.endDateTime()));
+            }
+
+            // joins for interviewer properties
+            var interviewerJoin = root.join("interviewer", jakarta.persistence.criteria.JoinType.LEFT);
+
+            // department filter
+            if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
+                var deptJoin = interviewerJoin.join("department", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(deptJoin.get("id").in(filter.departmentIds()));
+            }
+
+            // technology filter: available slots must match techs; booked always pass
+            if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
+                var itJoin = interviewerJoin.join("interviewerTechnologies", jakarta.persistence.criteria.JoinType.LEFT);
+                var techJoin = itJoin.join("technology", jakarta.persistence.criteria.JoinType.LEFT);
+                var techActive = cb.isTrue(itJoin.get("isActive"));
+                var techMatch = techJoin.get("id").in(filter.technologyIds());
+                var techPredicate = cb.and(techActive, techMatch);
+                predicates.add(cb.or(cb.equal(root.get("status"), com.nemal.enums.SlotStatus.BOOKED), techPredicate));
+            }
+
+            // min years of experience
+            if (filter.minYearsOfExperience() != null) {
+                var years = interviewerJoin.get("yearsOfExperience");
+                predicates.add(cb.or(cb.equal(root.get("status"), com.nemal.enums.SlotStatus.BOOKED), cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience())));
+            }
+
+            // tier/level logic (mirrors in-memory logic)
+            if (filter.minTierId() != null && filter.departmentIdForDesignationFilter() != null) {
+                var designationJoin = interviewerJoin.join("currentDesignation", jakarta.persistence.criteria.JoinType.LEFT);
+                var tierJoin = designationJoin.join("tier", jakarta.persistence.criteria.JoinType.LEFT);
+
+                // ivTier < candidateTierOrder OR (ivTier == candidateTierOrder AND ivLevel <= candidateLevelOrder)
+                int candidateTierOrder = filter.minTierId().intValue();
+                int candidateLevelOrder = filter.minDesignationLevelInDepartment() != null ? filter.minDesignationLevelInDepartment().intValue() : Integer.MAX_VALUE;
+
+                var ivTier = tierJoin.get("tierOrder");
+                var ivLevel = designationJoin.get("levelOrder");
+
+                var higherTier = cb.lessThan(ivTier, cb.literal(candidateTierOrder));
+                var sameTierHigherLevel = cb.and(cb.equal(ivTier, cb.literal(candidateTierOrder)), cb.lessThanOrEqualTo(ivLevel, cb.literal(candidateLevelOrder)));
+
+                var tierPass = cb.or(higherTier, sameTierHigherLevel);
+
+                var deptMatch = cb.equal(interviewerJoin.join("department", jakarta.persistence.criteria.JoinType.LEFT).get("id"), filter.departmentIdForDesignationFilter());
+
+                // booked slots always pass
+                predicates.add(cb.or(cb.equal(root.get("status"), com.nemal.enums.SlotStatus.BOOKED), cb.and(deptMatch, tierPass)));
+            }
+
+            cq.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            cq.orderBy(cb.asc(root.get("startDateTime")));
+
+            var query = entityManager.createQuery(cq);
+            query.setFirstResult(page * size);
+            query.setMaxResults(size);
+            var slots = query.getResultList();
+
+            // count query
+            var countCq = cb.createQuery(Long.class);
+            var countRoot = countCq.from(AvailabilitySlot.class);
+            // replicate joins/predicates for count
+            var countPredicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            countPredicates.add(cb.isTrue(countRoot.get("isActive")));
+            countPredicates.add(cb.or(cb.equal(countRoot.get("status"), com.nemal.enums.SlotStatus.AVAILABLE), cb.equal(countRoot.get("status"), com.nemal.enums.SlotStatus.BOOKED)));
+            if (filter.startDateTime() != null && filter.endDateTime() != null) {
+                countPredicates.add(cb.greaterThanOrEqualTo(countRoot.get("startDateTime"), filter.startDateTime()));
+                countPredicates.add(cb.lessThanOrEqualTo(countRoot.get("endDateTime"), filter.endDateTime()));
+            }
+            var countInterviewerJoin = countRoot.join("interviewer", jakarta.persistence.criteria.JoinType.LEFT);
+            if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
+                var deptJoin = countInterviewerJoin.join("department", jakarta.persistence.criteria.JoinType.LEFT);
+                countPredicates.add(deptJoin.get("id").in(filter.departmentIds()));
+            }
+            if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
+                var itJoin = countInterviewerJoin.join("interviewerTechnologies", jakarta.persistence.criteria.JoinType.LEFT);
+                var techJoin = itJoin.join("technology", jakarta.persistence.criteria.JoinType.LEFT);
+                var techActive = cb.isTrue(itJoin.get("isActive"));
+                var techMatch = techJoin.get("id").in(filter.technologyIds());
+                var techPredicate = cb.and(techActive, techMatch);
+                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), com.nemal.enums.SlotStatus.BOOKED), techPredicate));
+            }
+            if (filter.minYearsOfExperience() != null) {
+                var years = countInterviewerJoin.get("yearsOfExperience");
+                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), com.nemal.enums.SlotStatus.BOOKED), cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience())));
+            }
+            if (filter.minTierId() != null && filter.departmentIdForDesignationFilter() != null) {
+                var designationJoin = countInterviewerJoin.join("currentDesignation", jakarta.persistence.criteria.JoinType.LEFT);
+                var tierJoin = designationJoin.join("tier", jakarta.persistence.criteria.JoinType.LEFT);
+                int candidateTierOrder = filter.minTierId().intValue();
+                int candidateLevelOrder = filter.minDesignationLevelInDepartment() != null ? filter.minDesignationLevelInDepartment().intValue() : Integer.MAX_VALUE;
+                var ivTier = tierJoin.get("tierOrder");
+                var ivLevel = designationJoin.get("levelOrder");
+                var higherTier = cb.lessThan(ivTier, cb.literal(candidateTierOrder));
+                var sameTierHigherLevel = cb.and(cb.equal(ivTier, cb.literal(candidateTierOrder)), cb.lessThanOrEqualTo(ivLevel, cb.literal(candidateLevelOrder)));
+                var tierPass = cb.or(higherTier, sameTierHigherLevel);
+                var deptMatch = cb.equal(countInterviewerJoin.join("department", jakarta.persistence.criteria.JoinType.LEFT).get("id"), filter.departmentIdForDesignationFilter());
+                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), com.nemal.enums.SlotStatus.BOOKED), cb.and(deptMatch, tierPass)));
+            }
+
+            countCq.select(cb.countDistinct(countRoot)).where(countPredicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            Long total = entityManager.createQuery(countCq).getSingleResult();
+
+            // map to DTOs
+            var result = new java.util.ArrayList<InterviewerAvailabilityDto>();
+            for (AvailabilitySlot s : slots) {
+                try { result.add(InterviewerAvailabilityDto.from(s)); } catch (Exception e) { logger.error("Error mapping slot {}: {}", s.getId(), e.getMessage()); }
+            }
+
+            return new com.nemal.dto.PagedResult<>(result, total != null ? total : 0L, page, size);
+        } catch (Exception e) {
+            logger.error("Error in getAllAvailableSlotsPaged: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch paged availability slots", e);
+        }
+    }
+
     private List<AvailabilitySlot> filterSlots(AvailabilityFilterDto filter, LocalDateTime from) {
         List<AvailabilitySlot> slots;
 
