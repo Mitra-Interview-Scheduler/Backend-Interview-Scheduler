@@ -32,6 +32,25 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
             "LEFT JOIN FETCH p.panelRequests r " +
             "LEFT JOIN FETCH r.assignedInterviewer " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
+            "LEFT JOIN p.candidate c " +
+            "LEFT JOIN c.targetDesignation cd " +
+            "LEFT JOIN cd.tier ct " +
+            "WHERE p.requestedBy.id = :userId " +
+            "AND (:departmentId IS NULL OR c.department.id = :departmentId) " +
+            "AND (:minTierOrder IS NULL OR (ct.tierOrder IS NOT NULL AND ct.tierOrder >= :minTierOrder)) " +
+            "AND (:exactTierOrder IS NULL OR (ct.tierOrder IS NOT NULL AND ct.tierOrder = :exactTierOrder)) " +
+            "ORDER BY p.startDateTime DESC")
+    List<InterviewPanel> findByRequestedByIdWithFilters(
+            @Param("userId") Long userId,
+            @Param("departmentId") Long departmentId,
+            @Param("minTierOrder") Integer minTierOrder,
+            @Param("exactTierOrder") Integer exactTierOrder
+    );
+
+    @Query("SELECT DISTINCT p FROM InterviewPanel p " +
+            "LEFT JOIN FETCH p.panelRequests r " +
+            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.requiredTechnologies " +
             "WHERE p.id = :id")
     Optional<InterviewPanel> findByIdWithDetails(@Param("id") Long id);
 }

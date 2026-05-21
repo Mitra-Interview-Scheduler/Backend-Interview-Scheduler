@@ -32,6 +32,7 @@ public class InterviewRequestService {
     private final CandidateRepository candidateRepository;
     private final DesignationRepository designationRepository;
     private final TechnologyRepository technologyRepository;
+    private final TierRepository tierRepository;
     private final NotificationService notificationService;
 
     @Transactional
@@ -190,6 +191,50 @@ public class InterviewRequestService {
     public List<InterviewRequestDto> getRequestsByUser(Long userId, int limit) {
         int safeLimit = Math.max(1, limit);
         return interviewRequestRepository.findByRequestedByIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewRequestDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewRequestDto> getRequestsByUser(Long userId, Long departmentId, Integer minTierId, Integer exactTierId) {
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+            // ignore mapping errors — fallback to no tier filtering
+        }
+        return interviewRequestRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
+                .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewRequestDto> getRequestsByUser(Long userId, int limit, Long departmentId, Integer minTierId, Integer exactTierId) {
+        int safeLimit = Math.max(1, limit);
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+            // ignore mapping errors
+        }
+        return interviewRequestRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
                 .stream()
                 .limit(safeLimit)
                 .map(InterviewRequestDto::from)
