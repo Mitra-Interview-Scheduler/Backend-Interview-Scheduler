@@ -1,21 +1,15 @@
 package com.nemal.controller;
 
-import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewRequestSimpleDto;
-import com.nemal.dto.InterviewScheduleDto;
 import com.nemal.entity.InterviewRequest;
-import com.nemal.entity.User;
 import com.nemal.service.InterviewRequestService;
-import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
