@@ -1,6 +1,5 @@
 package com.nemal.controller;
 
-import com.google.api.client.util.DateTime;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
@@ -45,6 +44,8 @@ public class AvailabilityController {
             @AuthenticationPrincipal User user,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
         ZoneId zone = TimeZoneMapper.resolveZone(timezone);
@@ -52,7 +53,7 @@ public class AvailabilityController {
         LocalDateTime utcEnd = TimeZoneMapper.toUtc(end, zone);
         return ResponseEntity.ok(
                 TimeZoneMapper.fromUtcAvailability(
-                        availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd),
+                        availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
                         zone
                 )
         );
