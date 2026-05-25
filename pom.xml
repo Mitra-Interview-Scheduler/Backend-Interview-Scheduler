@@ -113,6 +113,12 @@
             <artifactId>google-api-client</artifactId>
             <version>2.2.0</version>
         </dependency>
+        <!-- Hibernate types for JSON mapping -->
+        <dependency>
+            <groupId>com.vladmihalcea</groupId>
+            <artifactId>hibernate-types-60</artifactId>
+            <version>2.21.1</version>
+        </dependency>
     </dependencies>
 
     <build>
