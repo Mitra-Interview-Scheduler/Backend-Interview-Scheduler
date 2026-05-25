@@ -6,6 +6,7 @@ import com.vladmihalcea.hibernate.type.json.JsonBinaryType;
 import org.hibernate.annotations.Type;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.LocalDateTime;
 
 @Entity
@@ -67,7 +68,7 @@ public class FeedbackQuestion {
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         if (updatedAt == null) updatedAt = now;
-        if (optionsJson == null) optionsJson = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+        if (optionsJson == null) optionsJson = JsonNodeFactory.instance.arrayNode();
     }
 
     @PreUpdate

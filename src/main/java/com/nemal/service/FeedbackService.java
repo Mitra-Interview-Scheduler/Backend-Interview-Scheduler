@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.nemal.dto.*;
 import com.nemal.entity.*;
 import com.nemal.repository.*;
@@ -323,7 +324,7 @@ public class FeedbackService {
         }
     }
 
-    private List<Long> parseLongList(com.fasterxml.jackson.databind.JsonNode node) {
+    private List<Long> parseLongList(JsonNode node) {
         if (node == null || node.isNull() || !node.isArray()) {
             return List.of();
         }
@@ -334,13 +335,13 @@ public class FeedbackService {
         }
     }
 
-    private List<FeedbackOptionDto> parseOptions(com.fasterxml.jackson.databind.JsonNode node) {
+    private List<FeedbackOptionDto> parseOptions(JsonNode node) {
         if (node == null || node.isNull() || !node.isArray()) {
             return List.of();
         }
         try {
             List<FeedbackOptionDto> result = new java.util.ArrayList<>();
-            for (com.fasterxml.jackson.databind.JsonNode optionNode : node) {
+            for (JsonNode optionNode : node) {
                 if (optionNode == null || optionNode.isNull()) {
                     continue;
                 }
@@ -363,7 +364,7 @@ public class FeedbackService {
         }
     }
 
-    private Map<String, Object> parseResponseMap(com.fasterxml.jackson.databind.JsonNode node) {
+    private Map<String, Object> parseResponseMap(JsonNode node) {
         if (node == null || node.isNull() || !node.isObject()) {
             return Map.of();
         }
@@ -374,7 +375,7 @@ public class FeedbackService {
         }
     }
 
-    private com.fasterxml.jackson.databind.JsonNode writeJsonNode(Object value) {
+    private JsonNode writeJsonNode(Object value) {
         try {
             return objectMapper.valueToTree(value);
         } catch (Exception e) {

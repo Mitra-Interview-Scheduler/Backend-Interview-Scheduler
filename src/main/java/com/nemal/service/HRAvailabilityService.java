@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.nemal.dto.AvailabilityFilterDto;
 import com.nemal.dto.InterviewerAvailabilityDto;
+import com.nemal.dto.PagedResult;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
@@ -79,7 +80,7 @@ public class HRAvailabilityService {
     }
 
     @Transactional(readOnly = true)
-    public com.nemal.dto.PagedResult<InterviewerAvailabilityDto> getAllAvailableSlotsPaged(AvailabilityFilterDto filter) {
+    public PagedResult<InterviewerAvailabilityDto> getAllAvailableSlotsPaged(AvailabilityFilterDto filter) {
         try {
             final int page = filter.page() != null ? Math.max(0, filter.page()) : 0;
             final int size = filter.size() != null ? Math.max(1, filter.size()) : 100;
@@ -234,7 +235,7 @@ public class HRAvailabilityService {
                 try { result.add(InterviewerAvailabilityDto.from(s)); } catch (Exception e) { logger.error("Error mapping slot {}: {}", s.getId(), e.getMessage()); }
             }
 
-            return new com.nemal.dto.PagedResult<>(result, total != null ? total : 0L, page, size);
+            return new PagedResult<>(result, total != null ? total : 0L, page, size);
         } catch (Exception e) {
             logger.error("Error in getAllAvailableSlotsPaged: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to fetch paged availability slots", e);
