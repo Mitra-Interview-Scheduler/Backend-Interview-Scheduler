@@ -29,6 +29,7 @@ public class Designation {
     private Tier tier;
 
     @Column(name = "is_active")
+    @Builder.Default
     private boolean isActive = true;
 
     private String description;

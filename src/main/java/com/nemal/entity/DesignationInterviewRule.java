@@ -20,5 +20,6 @@ public class DesignationInterviewRule {
     @ManyToOne
     private Designation candidateDesignation;
 
+    @Builder.Default
     private boolean allowed = true;
 }

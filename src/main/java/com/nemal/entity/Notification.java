@@ -40,6 +40,7 @@ public class Notification {
     private String relatedEntityType; // INTERVIEW_REQUEST, AVAILABILITY_SLOT, etc.
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean read = false;
 
     @CreatedDate

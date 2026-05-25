@@ -86,6 +86,7 @@ public class InterviewRequest {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private RequestStatus status = RequestStatus.PENDING;
 
     private LocalDateTime respondedAt;
@@ -94,6 +95,7 @@ public class InterviewRequest {
     private String responseNotes;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean isUrgent = false;
 
     @Column(length = 2000)

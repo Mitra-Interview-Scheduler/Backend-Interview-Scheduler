@@ -33,6 +33,7 @@ public class AvailabilitySlot {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private SlotStatus status = SlotStatus.AVAILABLE;
 
     private String description;
@@ -48,6 +49,7 @@ public class AvailabilitySlot {
     private InterviewSchedule interviewSchedule;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean isActive = true;
 
     @CreatedDate

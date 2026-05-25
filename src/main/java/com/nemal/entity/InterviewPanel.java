@@ -52,6 +52,7 @@ public class InterviewPanel {
     private User requestedBy;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean isUrgent = false;
 
     @OneToMany(mappedBy = "panel", fetch = FetchType.LAZY)
