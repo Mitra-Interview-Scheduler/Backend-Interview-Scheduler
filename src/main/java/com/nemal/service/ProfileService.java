@@ -17,22 +17,19 @@ public class ProfileService {
     private final InterviewerTechnologyRepository interviewerTechnologyRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
-    private final TierRepository tierRepository;
 
     public ProfileService(
             UserRepository userRepository,
             TechnologyRepository technologyRepository,
             InterviewerTechnologyRepository interviewerTechnologyRepository,
             DepartmentRepository departmentRepository,
-            DesignationRepository designationRepository,
-            TierRepository tierRepository
+            DesignationRepository designationRepository
     ) {
         this.userRepository = userRepository;
         this.technologyRepository = technologyRepository;
         this.interviewerTechnologyRepository = interviewerTechnologyRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
-        this.tierRepository = tierRepository;
     }
 
     @Transactional(readOnly = true)
