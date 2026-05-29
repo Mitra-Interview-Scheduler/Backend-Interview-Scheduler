@@ -28,7 +28,6 @@ public class InterviewRequestService {
     private final InterviewRequestRepository interviewRequestRepository;
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
-    private final UserRepository userRepository;
     private final CandidateRepository candidateRepository;
     private final DesignationRepository designationRepository;
     private final TechnologyRepository technologyRepository;
@@ -177,8 +176,7 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {
-        System.out.println(interviewRequestRepository.findInterviewRequestsById(interviewScheduleId));
-        return interviewRequestRepository.findInterviewRequestsById(interviewScheduleId);
+        return interviewRequestRepository.findByInterviewScheduleId(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)

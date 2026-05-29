@@ -32,6 +32,7 @@ public class InterviewSchedule {
     private String location;
 
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private InterviewStatus status = InterviewStatus.SCHEDULED;
 
     private LocalDateTime completedAt;

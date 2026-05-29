@@ -19,5 +19,6 @@ public class Technology {
 
     private String category;
 
+    @Builder.Default
     private boolean isActive = true;
 }

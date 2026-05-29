@@ -86,6 +86,7 @@ public class User implements UserDetails {
     @Builder.Default
     private Set<InterviewerTechnology> interviewerTechnologies = new HashSet<>();
 
+    @Builder.Default
     private boolean isActive = true;
 
     @CreatedDate

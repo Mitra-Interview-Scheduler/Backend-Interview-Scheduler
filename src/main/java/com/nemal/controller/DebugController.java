@@ -1,10 +1,8 @@
 package com.nemal.controller;
 
 import com.nemal.entity.User;
-import com.nemal.entity.InterviewerTechnology;
 import com.nemal.repository.UserRepository;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.HashMap;
 import java.util.Map;

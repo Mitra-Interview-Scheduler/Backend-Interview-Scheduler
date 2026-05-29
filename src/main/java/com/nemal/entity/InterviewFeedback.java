@@ -27,5 +27,6 @@ public class InterviewFeedback {
 
     private boolean recommended;
 
+    @Builder.Default
     private LocalDateTime submittedAt = LocalDateTime.now();
 }

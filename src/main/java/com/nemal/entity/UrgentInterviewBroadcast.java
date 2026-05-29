@@ -32,12 +32,15 @@ public class UrgentInterviewBroadcast {
     @JoinTable(name = "urgent_interview_broadcasts_technologies",
             joinColumns = @JoinColumn(name = "urgent_interview_broadcast_id"),
             inverseJoinColumns = @JoinColumn(name = "technology_id"))
+    @Builder.Default
     private Set<Technology> requiredTechnologies = new HashSet<>();
 
     private LocalDateTime deadline;
 
     @OneToMany(mappedBy = "broadcast", cascade = CascadeType.ALL)
+    @Builder.Default
     private Set<UrgentInterviewResponse> responses = new HashSet<>();
 
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 }

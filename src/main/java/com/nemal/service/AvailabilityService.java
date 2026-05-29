@@ -9,6 +9,7 @@ import com.nemal.entity.User;
 import java.util.Locale;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,6 +61,21 @@ public class AvailabilityService {
         return availabilitySlotRepository
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
                         interviewer.getId(), start, end)
+                .stream()
+                .map(AvailabilitySlotDto::from)
+                .collect(Collectors.toList());
+    }
+
+    public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
+            User interviewer, LocalDateTime start, LocalDateTime end, Integer page, Integer size) {
+        int safePage = page != null ? Math.max(0, page) : 0;
+        int safeSize = size != null ? Math.max(1, size) : 200;
+        return availabilitySlotRepository
+                .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTruePaged(
+                        interviewer.getId(),
+                        start,
+                        end,
+                        PageRequest.of(safePage, safeSize))
                 .stream()
                 .map(AvailabilitySlotDto::from)
                 .collect(Collectors.toList());
@@ -146,7 +162,6 @@ public class AvailabilityService {
         boolean isRecurringEdit = updateScope != DeleteScope.SINGLE && slot.getRecurrenceGroupId() != null && !slot.getRecurrenceGroupId().isBlank();
         // capture the recurrence group id in a final local variable so it can be referenced from lambdas
         final String slotRecurrenceGroupId = slot.getRecurrenceGroupId();
-        final LocalDateTime slotStartDateTime = slot.getStartDateTime();
 
         // Conflict check — exclude the slot being edited and all slots in its recurrence group (for recurring edits)
         List<AvailabilitySlot> conflicts = availabilitySlotRepository

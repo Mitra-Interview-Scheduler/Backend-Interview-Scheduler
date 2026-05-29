@@ -53,6 +53,13 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/hr/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/interviewer/**").hasRole("INTERVIEWER")
+                        // feedback: allow interviewers to submit/read responses and view questions;
+                        // forms/questions management restricted to HR and ADMIN
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers("/api/feedback/forms/**", "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/interview-requests/upcoming").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/interview-requests/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .anyRequest().authenticated()

@@ -41,6 +41,7 @@ public class Candidate {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private CandidateStatus status = CandidateStatus.APPLIED;
 
     @Column(length = 2000)
@@ -75,10 +76,14 @@ public class Candidate {
     private LocalDateTime updatedAt;
 
     @Column(name = "is_active")
+    @Builder.Default
     private boolean isActive = true;
 
     @Column(name = "resource_request_number")
     private String resourceRequestNumber;
+
+    @Column(name = "resource_link", length = 2000)
+    private String resourceLink;
 
     @PrePersist
     protected void onCreate() {
