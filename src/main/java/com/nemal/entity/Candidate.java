@@ -82,6 +82,9 @@ public class Candidate {
     @Column(name = "resource_request_number")
     private String resourceRequestNumber;
 
+    @Column(name = "resource_link", length = 2000)
+    private String resourceLink;
+
     @PrePersist
     protected void onCreate() {
         if (appliedAt == null) {

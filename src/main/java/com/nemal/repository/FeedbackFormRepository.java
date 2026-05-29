@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface FeedbackFormRepository extends JpaRepository<FeedbackForm, Long> {
     Optional<FeedbackForm> findFirstByIsActiveTrueOrderByIdDesc();
+    java.util.List<FeedbackForm> findAllByIsActiveTrue();
+    java.util.List<FeedbackForm> findBySeriesKey(String seriesKey);
 }

@@ -103,6 +103,19 @@ public class FeedbackController {
     }
 
     @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @PatchMapping("/forms/{id}/status")
+    public ResponseEntity<?> updateFormStatus(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            boolean active = body != null && Boolean.TRUE.equals(body.get("active"));
+            FeedbackFormDto updated = feedbackService.setFormActive(id, active);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            logger.error("Failed to update feedback form status {}: {}", id, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
     @PostMapping("/forms/{formId}/questions")
     public ResponseEntity<?> createQuestion(@PathVariable Long formId, @Valid @RequestBody CreateFeedbackQuestionDto dto) {
         try {

@@ -210,6 +210,7 @@ public class CandidateService {
                 .status(CandidateStatus.APPLIED)
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
+                .resourceLink(dto.resourceLink())
                 .jobReferenceCode(dto.jobReferenceCode())
             .resourceRequestNumber(dto.resourceRequestNumber())
                 .location(dto.location())
@@ -245,6 +246,7 @@ public class CandidateService {
 
         if (dto.phone() != null)              candidate.setPhone(dto.phone());
         if (dto.jdUrl() != null)              candidate.setJdUrl(dto.jdUrl());
+        if (dto.resourceLink() != null)       candidate.setResourceLink(dto.resourceLink());
         if (dto.jobReferenceCode() != null)   candidate.setJobReferenceCode(dto.jobReferenceCode());
         if (dto.resourceRequestNumber() != null) candidate.setResourceRequestNumber(dto.resourceRequestNumber());
         if (dto.location() != null)           candidate.setLocation(dto.location());

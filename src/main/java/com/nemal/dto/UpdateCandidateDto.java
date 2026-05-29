@@ -11,6 +11,7 @@ public record UpdateCandidateDto(
         CandidateStatus status,
         String resumeUrl,
         String jdUrl,
+        String resourceLink,
         String jobReferenceCode,
         String resourceRequestNumber,
         String location,

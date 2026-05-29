@@ -14,9 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,8 @@ public class FeedbackService {
             form.getId(),
             form.getName(),
             form.getDescription(),
+            form.isActive(),
+            form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
                 parseLongList(form.getDesignationIdsJson())
@@ -60,6 +64,8 @@ public class FeedbackService {
             .description(dto.description())
             .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
             .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .seriesKey(UUID.randomUUID().toString())
+            .versionNumber(1)
             .isActive(true)
             .build();
 
@@ -91,24 +97,93 @@ public class FeedbackService {
 
     @Transactional
     public FeedbackFormDto updateForm(Long formId, CreateFeedbackFormDto dto) {
-        FeedbackForm form = feedbackFormRepository.findById(formId)
+        FeedbackForm currentForm = feedbackFormRepository.findById(formId)
                 .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
+        // If the update contains no questions, treat it as a scope/name/description update
+        // and modify the existing form in-place without creating a new version.
+        if (dto.questions() == null || dto.questions().isEmpty()) {
+            currentForm.setName(dto.name());
+            currentForm.setDescription(dto.description());
+            currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
+            currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            FeedbackForm updated = feedbackFormRepository.save(currentForm);
+            return getFormById(updated.getId());
+        }
 
-        form.setName(dto.name());
-        form.setDescription(dto.description());
-        form.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
-        form.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+        // If questions are provided, compare them with the current active questions.
+        // Only create a new version when questions were added, removed, or edited.
+        List<FeedbackQuestionDto> existingQuestions = feedbackQuestionRepository
+                .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(currentForm.getId())
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
 
-        feedbackFormRepository.save(form);
+        // Normalize existing questions to a list of maps (exclude database ids)
+        List<Map<String, Object>> existingNormalized = new java.util.ArrayList<>();
+        for (FeedbackQuestionDto q : existingQuestions) {
+            Map<String, Object> m = new java.util.HashMap<>();
+            m.put("order", q.order());
+            m.put("label", q.label());
+            m.put("category", q.category());
+            m.put("type", q.type());
+            m.put("required", q.required());
+            m.put("commentsEnabled", q.commentsEnabled());
+            m.put("placeholder", q.placeholder());
+            m.put("helpText", q.helpText());
+            // Normalize options to a list of {value,label} objects for reliable comparison
+            List<Object> optList = new java.util.ArrayList<>();
+            if (q.options() != null) {
+                for (Object opt : q.options()) {
+                    if (opt == null) continue;
+                    if (opt instanceof Map) {
+                        optList.add(opt);
+                        continue;
+                    }
+                    // opt may be a FeedbackOptionDto-like map or a simple string
+                    Map<String, Object> optMap = new java.util.HashMap<>();
+                    optMap.put("value", opt);
+                    optMap.put("label", opt.toString());
+                    optList.add(optMap);
+                }
+            }
+            m.put("options", optList);
+            existingNormalized.add(m);
+        }
 
-        // Delete old questions and create new ones
-        feedbackQuestionRepository.deleteByFormId(form.getId());
+        var incomingNode = objectMapper.valueToTree(dto.questions());
+        var existingNode = objectMapper.valueToTree(existingNormalized);
+
+        if (incomingNode.equals(existingNode)) {
+            // Questions unchanged — update metadata in-place and return current form
+            currentForm.setName(dto.name());
+            currentForm.setDescription(dto.description());
+            currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
+            currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            FeedbackForm updated = feedbackFormRepository.save(currentForm);
+            return getFormById(updated.getId());
+        }
+
+        // Otherwise questions are present and different — create a new version (immutable history for questions)
+        FeedbackForm form = FeedbackForm.builder()
+            .name(dto.name())
+            .description(dto.description())
+            .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
+            .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .seriesKey(currentForm.getSeriesKey())
+            .versionNumber((currentForm.getVersionNumber() == null ? 1 : currentForm.getVersionNumber()) + 1)
+            .isActive(true)
+            .build();
+
+        FeedbackForm savedForm = feedbackFormRepository.save(form);
+
+        currentForm.setActive(false);
+        feedbackFormRepository.save(currentForm);
 
         if (dto.questions() != null) {
             int order = 1;
             for (CreateFeedbackQuestionDto qdto : dto.questions()) {
                 FeedbackQuestion q = FeedbackQuestion.builder()
-                        .form(form)
+                .form(savedForm)
                         .displayOrder(qdto.order() == null ? order : qdto.order())
                         .label(qdto.label())
                         .category(qdto.category())
@@ -125,15 +200,20 @@ public class FeedbackService {
             }
         }
 
-        return getActiveFeedbackForm();
+        return getFormById(savedForm.getId());
     }
 
     @Transactional
     public void deleteForm(Long formId) {
         FeedbackForm form = feedbackFormRepository.findById(formId)
                 .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
-        form.setActive(false);
-        feedbackFormRepository.save(form);
+
+        if (feedbackResponseRepository.existsByFormId(formId)) {
+            throw new RuntimeException("Can't delete this feedback form because it is already used in feedback responses.");
+        }
+
+        feedbackQuestionRepository.deleteByFormId(formId);
+        feedbackFormRepository.delete(form);
     }
 
     @Transactional
@@ -202,8 +282,17 @@ public class FeedbackService {
         InterviewSchedule schedule = interviewScheduleRepository.findById(dto.interviewScheduleId())
                 .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + dto.interviewScheduleId()));
 
-        FeedbackForm form = feedbackFormRepository.findFirstByIsActiveTrueOrderByIdDesc()
+        FeedbackForm form;
+        if (dto.feedbackFormId() != null) {
+            form = feedbackFormRepository.findById(dto.feedbackFormId())
+                .orElseThrow(() -> new RuntimeException("Feedback form not found: " + dto.feedbackFormId()));
+            if (!form.isActive()) {
+            throw new RuntimeException("Selected feedback form is inactive: " + dto.feedbackFormId());
+            }
+        } else {
+            form = feedbackFormRepository.findFirstByIsActiveTrueOrderByIdDesc()
                 .orElseThrow(() -> new RuntimeException("No active feedback form found"));
+        }
 
         LocalDateTime submittedAt = parseSubmittedAt(dto.submittedAt());
         var responsesJson = writeJsonNode(dto.responses() != null ? dto.responses() : Collections.emptyMap());
@@ -268,6 +357,8 @@ public class FeedbackService {
             form.getId(),
             form.getName(),
             form.getDescription(),
+            form.isActive(),
+            form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
                 parseLongList(form.getDesignationIdsJson())
@@ -278,8 +369,9 @@ public class FeedbackService {
 
         @Transactional(readOnly = true)
         public List<FeedbackFormDto> listAllForms() {
-        return feedbackFormRepository.findAll()
+            return feedbackFormRepository.findAll()
             .stream()
+                .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
             .map(f -> {
                 List<FeedbackQuestionDto> questions = feedbackQuestionRepository
                     .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
@@ -290,6 +382,8 @@ public class FeedbackService {
                     f.getId(),
                     f.getName(),
                     f.getDescription(),
+                    f.isActive(),
+                    f.getVersionNumber(),
                     new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
                     questions
                 );
@@ -297,10 +391,30 @@ public class FeedbackService {
             .toList();
         }
 
+    @Transactional
+    public FeedbackFormDto setFormActive(Long formId, boolean active) {
+        FeedbackForm form = feedbackFormRepository.findById(formId)
+                .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
+
+        if (active) {
+            feedbackFormRepository.findBySeriesKey(form.getSeriesKey()).forEach(item -> {
+                if (!item.getId().equals(formId) && item.isActive()) {
+                    item.setActive(false);
+                    feedbackFormRepository.save(item);
+                }
+            });
+        }
+
+        form.setActive(active);
+        FeedbackForm saved = feedbackFormRepository.save(form);
+        return getFormById(saved.getId());
+    }
+
     private FeedbackResponseDto toResponseDto(FeedbackResponse response) {
         return new FeedbackResponseDto(
                 response.getId(),
                 response.getInterviewSchedule().getId(),
+                response.getForm() != null ? response.getForm().getId() : null,
                 response.getInterviewer().getId(),
                 parseResponseMap(response.getResponsesJson()),
                 response.getSubmittedAt()

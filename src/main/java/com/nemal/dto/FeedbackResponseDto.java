@@ -6,6 +6,7 @@ import java.util.Map;
 public record FeedbackResponseDto(
         Long id,
         Long interviewScheduleId,
+        Long feedbackFormId,
         Long interviewerId,
         Map<String, Object> responses,
         LocalDateTime submittedAt
