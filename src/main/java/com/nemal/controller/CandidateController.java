@@ -16,7 +16,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/candidates")
@@ -27,6 +29,14 @@ public class CandidateController {
 
     public CandidateController(CandidateService candidateService) {
         this.candidateService = candidateService;
+    }
+
+    @GetMapping("/statuses")
+    public ResponseEntity<List<String>> getCandidateStatuses() {
+        List<String> statuses = Arrays.stream(CandidateStatus.values())
+                .map(Enum::name)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(statuses);
     }
 
     @GetMapping

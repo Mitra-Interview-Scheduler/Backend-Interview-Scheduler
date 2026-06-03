@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Locale;
 import java.util.List;
 import java.util.Set;
@@ -40,12 +41,12 @@ public class CandidateService {
     );
 
     public CandidateService(
-            CandidateRepository  candidateRepository,
+            CandidateRepository candidateRepository,
             CandidateDocumentRepository candidateDocumentRepository,
             DepartmentRepository departmentRepository,
             DesignationRepository designationRepository
     ) {
-        this.candidateRepository  = candidateRepository;
+        this.candidateRepository = candidateRepository;
         this.candidateDocumentRepository = candidateDocumentRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
@@ -207,7 +208,7 @@ public class CandidateService {
                 .phone(dto.phone())
                 .department(department)
                 .targetDesignation(designation)
-                .status(CandidateStatus.APPLIED)
+                .status(CandidateStatus.NEW)
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
                 .resourceLink(dto.resourceLink())
@@ -265,7 +266,7 @@ public class CandidateService {
         if (dto.targetDesignationId() != null) {
             Designation designation = designationRepository.findById(dto.targetDesignationId())
                     .orElseThrow(() -> new RuntimeException("Designation not found"));
-
+            
             if (candidate.getDepartment() != null && designation.getDepartment() != null
                     && !designation.getDepartment().getId().equals(candidate.getDepartment().getId())) {
                 throw new IllegalArgumentException(
