@@ -42,7 +42,7 @@ public class Candidate {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private CandidateStatus status = CandidateStatus.APPLIED;
+    private CandidateStatus status = CandidateStatus.NEW;
 
     @Column(length = 2000)
     private String resumeUrl;

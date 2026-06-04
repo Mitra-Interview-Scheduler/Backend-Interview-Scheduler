@@ -2,7 +2,7 @@
 package com.nemal.enums;
 
 public enum CandidateStatus {
-    APPLIED,
+    NEW,
     SCREENING,
     SCHEDULED,
     INTERVIEWED,
