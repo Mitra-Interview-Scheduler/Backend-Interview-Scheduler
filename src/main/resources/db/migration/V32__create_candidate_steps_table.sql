@@ -29,7 +29,6 @@ INSERT INTO candidate_steps (
     ('NEW', 'New', 1, 10, '#3b82f6', 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200', 'bg-blue-100', TRUE, FALSE),
     ('SCREENING', 'Screening', 2, 20, '#eab308', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', 'bg-yellow-100', TRUE, FALSE),
     ('SCHEDULED', 'Scheduled', 3, 30, '#a855f7', 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', 'bg-purple-100', TRUE, FALSE),
-    ('INTERVIEWED', 'Interviewed', 4, 40, '#6366f1', 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200', 'bg-indigo-100', TRUE, FALSE),
     ('TECHNICAL_ROUND', 'Technical', 5, 50, '#06b6d4', 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200', 'bg-cyan-100', TRUE, FALSE),
     ('HR_ROUND', 'HR Round', 6, 60, '#ec4899', 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200', 'bg-pink-100', TRUE, FALSE),
     ('SELECTED', 'Selected', 7, 70, '#22c55e', 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200', 'bg-green-100', TRUE, TRUE),
