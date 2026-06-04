@@ -35,8 +35,10 @@ public class CandidateService {
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "image/heic",      // .heic (Apple High Efficiency Image Format)
+            "image/heif",      // .heif
+            "image/jpeg",      // .jpg, .jpeg
+            "image/png"
     );
 
     public CandidateService(
@@ -352,7 +354,7 @@ public class CandidateService {
         String fileName = safeFileName(file.getOriginalFilename()).toLowerCase(Locale.ROOT);
         boolean allowedExtension = fileName.endsWith(".pdf") || fileName.endsWith(".doc") || fileName.endsWith(".docx");
         if (!ALLOWED_CONTENT_TYPES.contains(contentType) && !allowedExtension) {
-            throw new IllegalArgumentException("Only PDF, DOC, and DOCX documents are supported");
+            throw new IllegalArgumentException("Only PDF, JPG, JPEG , heic and heif are supported");
         }
     }
 

@@ -391,6 +391,31 @@ public class FeedbackService {
             .toList();
         }
 
+
+    @Transactional(readOnly = true)
+    public List<FeedbackFormDto> listFilteredFormsByDepartmentAndDesignation(CandidateFormFilterDto dto) {
+        return feedbackFormRepository.findActiveFormsByDepartmentAndDesignation(dto.departmentId(), dto.targetDesignationId())
+                .stream()
+                .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(f -> {
+                    List<FeedbackQuestionDto> questions = feedbackQuestionRepository
+                            .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
+                            .stream()
+                            .map(this::toQuestionDto)
+                            .toList();
+                    return new FeedbackFormDto(
+                            f.getId(),
+                            f.getName(),
+                            f.getDescription(),
+                            f.isActive(),
+                            f.getVersionNumber(),
+                            new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
+                            questions
+                    );
+                })
+                .toList();
+    }
+
     @Transactional
     public FeedbackFormDto setFormActive(Long formId, boolean active) {
         FeedbackForm form = feedbackFormRepository.findById(formId)
