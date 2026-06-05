@@ -43,6 +43,12 @@ public class FeedbackService {
                 .map(this::toQuestionDto)
                 .toList();
 
+        List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
+                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
+
         return new FeedbackFormDto(
             form.getId(),
             form.getName(),
@@ -53,7 +59,8 @@ public class FeedbackService {
                 parseLongList(form.getDepartmentIdsJson()),
                 parseLongList(form.getDesignationIdsJson())
             ),
-            questions
+            questions,
+            obligatoryQuestions
         );
     }
 
@@ -352,6 +359,11 @@ public class FeedbackService {
             .stream()
             .map(this::toQuestionDto)
             .toList();
+        List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
+                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
 
         return new FeedbackFormDto(
             form.getId(),
@@ -363,7 +375,8 @@ public class FeedbackService {
                 parseLongList(form.getDepartmentIdsJson()),
                 parseLongList(form.getDesignationIdsJson())
             ),
-            questions
+            questions,
+            obligatoryQuestions
         );
         }
 
@@ -378,6 +391,12 @@ public class FeedbackService {
                     .stream()
                     .map(this::toQuestionDto)
                     .toList();
+
+                       List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
+                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
                 return new FeedbackFormDto(
                     f.getId(),
                     f.getName(),
@@ -385,7 +404,8 @@ public class FeedbackService {
                     f.isActive(),
                     f.getVersionNumber(),
                     new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
-                    questions
+                    questions,
+                    obligatoryQuestions
                 );
             })
             .toList();
@@ -403,6 +423,12 @@ public class FeedbackService {
                             .stream()
                             .map(this::toQuestionDto)
                             .toList();
+
+                    List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
+                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
                     return new FeedbackFormDto(
                             f.getId(),
                             f.getName(),
@@ -410,7 +436,8 @@ public class FeedbackService {
                             f.isActive(),
                             f.getVersionNumber(),
                             new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
-                            questions
+                            questions,
+                            obligatoryQuestions
                     );
                 })
                 .toList();

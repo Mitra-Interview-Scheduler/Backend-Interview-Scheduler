@@ -9,6 +9,7 @@ public record FeedbackFormDto(
         boolean isActive,
         Integer versionNumber,
         FeedbackScopesDto scopes,
-        List<FeedbackQuestionDto> questions
+        List<FeedbackQuestionDto> questions,
+        List<FeedbackQuestionDto> obligatoryQuestions
 ) {
 }
