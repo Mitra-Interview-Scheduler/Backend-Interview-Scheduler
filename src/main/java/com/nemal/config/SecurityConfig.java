@@ -49,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/profile/**").authenticated()
                         .requestMatchers("/api/technologies/**").authenticated()
                         .requestMatchers("/api/candidate-steps/**").authenticated()
+                        .requestMatchers("/api/candidateScreening/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/designations/**").authenticated()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
