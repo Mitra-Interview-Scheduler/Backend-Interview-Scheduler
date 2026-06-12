@@ -1,7 +1,7 @@
 
 package com.nemal.enums;
 
-public enum CandidateStatus {
+public enum MasterStatus {
     NEW,
     SCREENING,
     SCHEDULED,

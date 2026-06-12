@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CandidateStep {
+public class MasterStep {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

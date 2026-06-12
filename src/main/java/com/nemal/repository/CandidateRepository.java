@@ -1,7 +1,7 @@
 package com.nemal.repository;
 
 import com.nemal.entity.Candidate;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,10 +19,10 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     List<Candidate> findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(Long departmentId);
 
-    List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(CandidateStatus status);
+    List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(MasterStatus status);
 
     List<Candidate> findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(
-            Long departmentId, CandidateStatus status);
+            Long departmentId, MasterStatus status);
 
     // ── Email uniqueness — GLOBAL (active + soft-deleted) ───────────────────
 

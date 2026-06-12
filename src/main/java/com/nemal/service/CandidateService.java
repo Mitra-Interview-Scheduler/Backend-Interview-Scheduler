@@ -9,7 +9,7 @@ import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
@@ -89,7 +89,7 @@ public class CandidateService {
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
-    public List<CandidateDto> getCandidatesByStatus(CandidateStatus status) {
+    public List<CandidateDto> getCandidatesByStatus(MasterStatus status) {
         return candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status)
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
@@ -99,7 +99,7 @@ public class CandidateService {
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
-    public List<CandidateDto> findWithFilters(Long departmentId, CandidateStatus status, String searchTerm) {
+    public List<CandidateDto> findWithFilters(Long departmentId, MasterStatus status, String searchTerm) {
         List<Candidate> candidates;
 
         if (departmentId == null && status == null && (searchTerm == null || searchTerm.trim().isEmpty())) {
@@ -123,7 +123,7 @@ public class CandidateService {
                         .collect(Collectors.toList());
             }
             if (status != null) {
-                final CandidateStatus st = status;
+                final MasterStatus st = status;
                 candidates = candidates.stream()
                         .filter(c -> c.getStatus() == st)
                         .collect(Collectors.toList());
@@ -135,7 +135,7 @@ public class CandidateService {
 
     public PaginatedResponseDto<CandidateDto> findWithFiltersPaged(
             Long departmentId,
-            CandidateStatus status,
+            MasterStatus status,
             String searchTerm,
             int page,
             int size
@@ -209,7 +209,7 @@ public class CandidateService {
                 .phone(dto.phone())
                 .department(department)
                 .targetDesignation(designation)
-                .status(CandidateStatus.NEW)
+                .status(MasterStatus.NEW)
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
                 .resourceLink(dto.resourceLink())

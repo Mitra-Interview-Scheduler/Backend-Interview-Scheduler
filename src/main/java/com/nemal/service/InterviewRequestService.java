@@ -3,7 +3,7 @@ package com.nemal.service;
 import com.nemal.dto.CreateInterviewRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.entity.*;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.SlotStatus;
@@ -106,7 +106,7 @@ public class InterviewRequestService {
         availabilitySlotRepository.save(bookedSlot);
 
         if (candidate != null) {
-            candidate.setStatus(CandidateStatus.SCHEDULED);
+            candidate.setStatus(MasterStatus.SCHEDULED);
             candidateRepository.save(candidate);
         }
 
@@ -360,7 +360,7 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(CandidateStatus.SCREENING);
+                candidate.setStatus(MasterStatus.SCREENING);
                 candidateRepository.save(candidate);
                 logger.info("Candidate {} reset to SCREENING", candidate.getId());
             }

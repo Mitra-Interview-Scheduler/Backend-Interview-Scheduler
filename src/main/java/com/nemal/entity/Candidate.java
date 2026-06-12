@@ -1,6 +1,6 @@
 package com.nemal.entity;
 
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -42,7 +42,7 @@ public class Candidate {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private CandidateStatus status = CandidateStatus.NEW;
+    private MasterStatus status = MasterStatus.NEW;
 
     @Column(length = 2000)
     private String resumeUrl;
