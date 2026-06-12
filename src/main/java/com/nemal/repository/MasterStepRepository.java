@@ -9,4 +9,8 @@ import java.util.List;
 @Repository
 public interface MasterStepRepository extends JpaRepository<MasterStep, Long> {
     List<MasterStep> findByIsActiveTrueOrderByStepOrderAscDisplayOrderAsc();
+
+    MasterStep findByStatusKey(String statusKey);
+
+    List<MasterStep> findByIsDefaultStepTrueOrderByStepOrderAsc();
 }

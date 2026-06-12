@@ -12,7 +12,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "candidate_steps")
+@Table(name = "master_steps")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -50,4 +50,9 @@ public class MasterStep {
     @Column(name = "is_closing_step", nullable = false)
     @Builder.Default
     private boolean isClosingStep = false;
+
+
+    @Column(name="is_default_step",nullable = false)
+    @Builder.Default
+    private boolean isDefaultStep = false;
 }

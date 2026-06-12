@@ -7,6 +7,7 @@ public enum MasterStatus {
     SCHEDULED,
     INTERVIEWED,
     TECHNICAL_ROUND,
+    DISPOSITION,
     HR_ROUND,
     SELECTED,
     REJECTED,
