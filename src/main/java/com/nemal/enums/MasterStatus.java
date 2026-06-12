@@ -5,7 +5,6 @@ public enum MasterStatus {
     NEW,
     SCREENING,
     SCHEDULED,
-    INTERVIEWED,
     TECHNICAL_ROUND,
     DISPOSITION,
     HR_ROUND,
