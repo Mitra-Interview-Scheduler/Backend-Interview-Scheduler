@@ -32,6 +32,7 @@ public class CandidateService {
     private final CandidateDocumentRepository candidateDocumentRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
+    private final CandidateStepPipelineService candidateStepPipelineService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -45,12 +46,15 @@ public class CandidateService {
             CandidateRepository candidateRepository,
             CandidateDocumentRepository candidateDocumentRepository,
             DepartmentRepository departmentRepository,
-            DesignationRepository designationRepository
+            DesignationRepository designationRepository,
+            CandidateStepPipelineService candidateStepPipelineService
+
     ) {
         this.candidateRepository = candidateRepository;
         this.candidateDocumentRepository = candidateDocumentRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
+        this.candidateStepPipelineService = candidateStepPipelineService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -222,6 +226,7 @@ public class CandidateService {
                 .build();
 
         candidate = candidateRepository.save(candidate);
+        candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
         return CandidateDto.from(candidate);
     }
 

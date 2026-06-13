@@ -28,12 +28,13 @@ public class CandidateStepPipelineService {
     }
 
 
+    @Transactional
     public List<CandidateStepPipeline> getPipelineForCandidate(Long candidateId) {
         return pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
     }
 
     /**
-     * Initializes the default boilerplate route for brand new candidate profiles
+     * Initializes the default boilerplate route for brand-new candidate profiles
      */
     @Transactional
     public void initializeDefaultPipeline(Long candidateId) {
@@ -45,7 +46,6 @@ public class CandidateStepPipelineService {
             return;
         }
 
-        // Standard operational pipeline layout path
 
         List<MasterStep> masterSteps = masterStepRepository.findByIsDefaultStepTrueOrderByStepOrderAsc();
         if (masterSteps.isEmpty()) {
@@ -62,6 +62,7 @@ public class CandidateStepPipelineService {
                     .build();
 
             pipelineRepository.save(stepInstance);
+            System.out.println("pipeline saved for :"+ candidateId);
         }
    }
 

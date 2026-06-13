@@ -17,7 +17,6 @@ public interface CandidateStepPipelineRepository extends JpaRepository <Candidat
     List<CandidateStepPipeline> findByCandidateIdOrderBySequenceOrderAsc(Long candidateId);
 
 
-
     @Modifying
     @Query("UPDATE CandidateStepPipeline cps SET cps.stepStatus = :status " +
             "WHERE cps.candidate.id = :candidateId AND cps.sequenceOrder = :sequenceOrder")

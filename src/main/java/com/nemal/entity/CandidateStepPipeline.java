@@ -1,11 +1,9 @@
 package com.nemal.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.nemal.enums.PipelineStepStatus;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -30,7 +28,11 @@ public class CandidateStepPipeline {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "candidate_id", nullable = false)
+    @ToString.Exclude       //  1. Prevents Lombok toString() from crashing on LAZY loading
+    @EqualsAndHashCode.Exclude // Prevents infinite loops in equals/hashCode
+    @JsonIgnore // 2. Prevents infinite JSON recursion loops
     private Candidate candidate;
+
 
     // References the master CandidateStep statusKey configuration string
     @ManyToOne(fetch = FetchType.EAGER)

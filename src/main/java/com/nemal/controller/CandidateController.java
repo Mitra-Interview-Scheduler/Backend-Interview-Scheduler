@@ -8,6 +8,7 @@ import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.CandidateDocument;
 import com.nemal.enums.MasterStatus;
 import com.nemal.service.CandidateService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "http://localhost:5173")
 public class CandidateController {
 
+    @Autowired
     private final CandidateService candidateService;
 
     public CandidateController(CandidateService candidateService) {
