@@ -260,8 +260,20 @@ public class CandidateService {
         if (dto.notes() != null)              candidate.setNotes(dto.notes());
         if (dto.yearsOfExperience() != null)  candidate.setYearsOfExperience(dto.yearsOfExperience());
         if (dto.resumeUrl() != null)          candidate.setResumeUrl(dto.resumeUrl());
-        if (dto.status() != null)             candidate.setStatus(dto.status());
+//        if (dto.status() != null)             candidate.setStatus(dto.status());
         if (dto.isActive() != null)           candidate.setActive(dto.isActive());
+
+
+        if (dto.status() != null) {
+            MasterStatus oldStatus = candidate.getStatus();
+            // Only execute updates if the status value actually shifted
+            if (oldStatus != dto.status()) {
+                candidate.setStatus(dto.status());
+
+                // Synchronizes the candidate step entries to mirror this change
+                candidateStepPipelineService.updatePipelineOnStatusChange(id, dto.status());
+            }
+        }
 
         if (dto.departmentId() != null) {
             Department department = departmentRepository.findById(dto.departmentId())
