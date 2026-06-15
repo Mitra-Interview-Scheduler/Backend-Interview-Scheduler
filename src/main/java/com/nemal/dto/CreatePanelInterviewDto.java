@@ -19,5 +19,6 @@ public record CreatePanelInterviewDto(
         List<Long> availabilitySlotIds,
         List<Long> requiredTechnologyIds,
         boolean isUrgent,
-        String notes
+        String notes,
+        String interviewType
 ) {}
