@@ -1,4 +1,8 @@
 -- V10__create_availability_slots_table.sql
+-- V1 created availability_slots with a legacy day_of_week/time schema.
+-- Drop and recreate so the entity-matching datetime schema is applied on fresh installs.
+
+DROP TABLE IF EXISTS availability_slots CASCADE;
 
 CREATE TABLE availability_slots (
     id BIGSERIAL PRIMARY KEY,

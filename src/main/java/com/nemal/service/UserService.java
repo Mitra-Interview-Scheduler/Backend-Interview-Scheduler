@@ -15,17 +15,15 @@ import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
 
 @Service
-public class UserService implements UserDetailsService {
+public class UserService {
 
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
@@ -49,6 +47,12 @@ public class UserService implements UserDetailsService {
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
+        if (userRepository.findByEmail(dto.email()).isPresent()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
+        if (dto.roles() == null || dto.roles().isEmpty()) {
+            throw new IllegalArgumentException("At least one role is required");
+        }
         User user = User.builder()
                 .email(dto.email())
                 .passwordHash(passwordEncoder.encode(dto.password()))
@@ -63,6 +67,12 @@ public class UserService implements UserDetailsService {
     }
 
     public LoginResponse authenticate(LoginDto dto, String browserTimezone) {
+        userRepository.findByEmail(dto.email()).ifPresent(user -> {
+            if (user.getAuthProvider() != AuthProvider.LOCAL) {
+                throw new BadCredentialsException("This account uses Google sign-in. Please use Google to log in.");
+            }
+        });
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(dto.email(), dto.password())
         );
@@ -79,6 +89,8 @@ public class UserService implements UserDetailsService {
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
                 .roles(Set.of(role))
+                .authProvider(AuthProvider.LOCAL)
+                .passwordHash(passwordEncoder.encode("ChangeMe123!"))
                 .build();
         userRepository.save(user);
         return UserDto.from(user);
@@ -102,11 +114,5 @@ public class UserService implements UserDetailsService {
             user.setCurrentDesignation(des);
         }
         return userRepository.save(user);
-    }
-
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return userRepository.findByEmail(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
 }

@@ -39,7 +39,7 @@ public class Notification {
     @Column(name = "related_entity_type")
     private String relatedEntityType; // INTERVIEW_REQUEST, AVAILABILITY_SLOT, etc.
 
-    @Column(nullable = false)
+    @Column(name = "read", nullable = false)
     @Builder.Default
     private boolean read = false;
 

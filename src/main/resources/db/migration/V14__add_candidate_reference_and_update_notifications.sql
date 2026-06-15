@@ -17,7 +17,7 @@ ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;
 
 -- Create index for faster notification queries
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_read
-    ON notifications(recipient_id, read);
+    ON notifications(recipient_id, "read");
 
 CREATE INDEX IF NOT EXISTS idx_notifications_related_entity
     ON notifications(related_entity_type, related_entity_id);

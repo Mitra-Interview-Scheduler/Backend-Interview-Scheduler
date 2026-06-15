@@ -55,4 +55,9 @@ public class MasterStep {
     @Column(name="is_default_step",nullable = false)
     @Builder.Default
     private boolean isDefaultStep = false;
+
+    @Column(name = "is_visible",nullable = false)
+    @Builder.Default
+    private boolean isVisible = true;
+
 }

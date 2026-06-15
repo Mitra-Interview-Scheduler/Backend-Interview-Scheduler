@@ -1,5 +1,12 @@
 -- V11__create_interview_requests_table.sql
-CREATE TABLE IF NOT EXISTS interview_requests (
+-- V1 created interview_requests with a legacy preferred_date/time schema.
+-- Drop and recreate so the entity-matching datetime schema is applied on fresh installs.
+
+DROP TABLE IF EXISTS interview_request_technologies CASCADE;
+DROP TABLE IF EXISTS interview_requests_technologies CASCADE;
+DROP TABLE IF EXISTS interview_requests CASCADE;
+
+CREATE TABLE interview_requests (
     id BIGSERIAL PRIMARY KEY,
     candidate_name VARCHAR(255) NOT NULL,
     candidate_designation_id BIGINT,
@@ -53,7 +60,7 @@ BEGIN
     END IF;
 END$$;
 
-CREATE TABLE IF NOT EXISTS interview_requests_technologies (
+CREATE TABLE interview_requests_technologies (
     interview_request_id BIGINT NOT NULL,
     technology_id BIGINT NOT NULL,
     PRIMARY KEY (interview_request_id, technology_id)
