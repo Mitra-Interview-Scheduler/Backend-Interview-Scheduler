@@ -3,9 +3,11 @@ package com.nemal.service;
 import com.nemal.dto.CreateInterviewRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.entity.*;
-import com.nemal.enums.MasterStatus;
 import com.nemal.enums.InterviewStatus;
+import com.nemal.enums.InterviewType;
+import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
+import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,8 @@ public class InterviewRequestService {
     private final TechnologyRepository technologyRepository;
     private final TierRepository tierRepository;
     private final NotificationService notificationService;
+    private final CandidateStepPipelineService candidateStepPipelineService;
+    private final FeedbackResponseRepository feedbackResponseRepository;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -93,21 +97,24 @@ public class InterviewRequestService {
         request.getRequiredTechnologies().addAll(technologies);
         InterviewRequest saved = interviewRequestRepository.save(request);
 
+        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
+
         InterviewSchedule schedule = InterviewSchedule.builder()
                 .request(saved)
                 .interviewer(slot.getInterviewer())
                 .startDateTime(bookingStart)
                 .endDateTime(bookingEnd)
                 .status(InterviewStatus.SCHEDULED)
+                .interviewType(interviewType)
                 .build();
         schedule = interviewScheduleRepository.save(schedule);
 
         bookedSlot.setInterviewSchedule(schedule);
         availabilitySlotRepository.save(bookedSlot);
+        saved.setInterviewSchedule(schedule);
 
         if (candidate != null) {
-            candidate.setStatus(MasterStatus.SCHEDULED);
-            candidateRepository.save(candidate);
+            applyCandidateStatusForScheduledInterview(candidate, interviewType);
         }
 
         try {
@@ -241,7 +248,10 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByCandidate(Long candidateId) {
-        return interviewRequestRepository.findByCandidateId(candidateId)
+        String candidateName = candidateRepository.findById(candidateId)
+                .map(Candidate::getName)
+                .orElse(null);
+        return interviewRequestRepository.findByCandidateIdOrNameWithSchedule(candidateId, candidateName)
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
     }
 
@@ -367,7 +377,54 @@ public class InterviewRequestService {
         }
     }
 
+    @Transactional
+    public InterviewRequestDto completeInterview(User user, Long scheduleId) {
+        InterviewSchedule schedule = interviewScheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + scheduleId));
+
+        if (schedule.getStatus() == InterviewStatus.COMPLETED) {
+            throw new RuntimeException("Interview is already completed");
+        }
+        if (schedule.getStatus() == InterviewStatus.CANCELLED) {
+            throw new RuntimeException("Cannot complete a cancelled interview");
+        }
+        if (!feedbackResponseRepository.existsByInterviewScheduleId(scheduleId)) {
+            throw new RuntimeException("Feedback must be submitted before completing the interview");
+        }
+
+        boolean isAssignedInterviewer = schedule.getInterviewer() != null
+                && schedule.getInterviewer().getId().equals(user.getId());
+        boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
+        if (!isAssignedInterviewer && !isHrOrAdmin) {
+            throw new RuntimeException("You are not authorized to complete this interview");
+        }
+
+        schedule.setStatus(InterviewStatus.COMPLETED);
+        schedule.setCompletedAt(LocalDateTime.now());
+        interviewScheduleRepository.save(schedule);
+
+        InterviewRequest request = schedule.getRequest();
+        if (request == null) {
+            request = interviewRequestRepository.findByInterviewScheduleId(scheduleId)
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Interview request not found for schedule: " + scheduleId));
+        }
+
+        logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
+        return InterviewRequestDto.from(request);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private void applyCandidateStatusForScheduledInterview(Candidate candidate, InterviewType interviewType) {
+        MasterStatus targetStatus = interviewType.toCandidateStatus();
+        MasterStatus oldStatus = candidate.getStatus();
+        candidate.setStatus(targetStatus);
+        candidateRepository.save(candidate);
+        candidateStepPipelineService.updatePipelineOnStatusChange(
+                candidate.getId(), targetStatus, oldStatus, true);
+    }
 
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {
         Long interviewerId = restoredSlot.getInterviewer().getId();

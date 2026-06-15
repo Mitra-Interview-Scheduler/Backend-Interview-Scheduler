@@ -97,4 +97,20 @@ public class InterviewRequestController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
+
+    @PatchMapping("/schedules/{scheduleId}/complete")
+    public ResponseEntity<?> completeInterview(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewRequestDto result = interviewRequestService.completeInterview(user, scheduleId);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
+        } catch (Exception e) {
+            logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
 }
