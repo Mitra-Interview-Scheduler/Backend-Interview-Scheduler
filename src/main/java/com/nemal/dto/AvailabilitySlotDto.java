@@ -15,16 +15,22 @@ public record AvailabilitySlotDto(
     boolean isRecurring,
         Long interviewScheduleId,
         Double durationHours,   // new field for duration in hours
-        String candidateName   // populated for BOOKED slots via description or schedule chain
+        String candidateName,   // populated for BOOKED slots via description or schedule chain
+        String interviewStatus  // SCHEDULED | COMPLETED | CANCELLED
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
         String candidateName = null;
+        String interviewStatus = null;
 
         // 1. Try via interviewSchedule → request chain (set for full bookings)
         if (slot.getStatus() == SlotStatus.BOOKED
-                && slot.getInterviewSchedule() != null
-                && slot.getInterviewSchedule().getRequest() != null) {
-            candidateName = slot.getInterviewSchedule().getRequest().getCandidateName();
+                && slot.getInterviewSchedule() != null) {
+            if (slot.getInterviewSchedule().getStatus() != null) {
+                interviewStatus = slot.getInterviewSchedule().getStatus().name();
+            }
+            if (slot.getInterviewSchedule().getRequest() != null) {
+                candidateName = slot.getInterviewSchedule().getRequest().getCandidateName();
+            }
         }
 
         // 2. Fall back to description pattern "Interview: John" or "Panel Interview: John"
@@ -47,7 +53,8 @@ public record AvailabilitySlotDto(
                 slot.getRecurrenceGroupId() != null,
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
                 slot.getDurationHours(),
-                candidateName
+                candidateName,
+                interviewStatus
         );
     }
 }

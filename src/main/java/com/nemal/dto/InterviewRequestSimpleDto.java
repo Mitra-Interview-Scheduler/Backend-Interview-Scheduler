@@ -1,6 +1,8 @@
 package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
+import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,6 +37,11 @@ public class InterviewRequestSimpleDto {
     private boolean isUrgent;
     private String notes;
     private Long interviewScheduleId;
+    private InterviewStatus interviewStatus;
+    private String interviewType;
+    private LocalDateTime scheduledStartDateTime;
+    private LocalDateTime scheduledEndDateTime;
+    private LocalDateTime interviewCompletedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -42,6 +49,7 @@ public class InterviewRequestSimpleDto {
      * Convert InterviewRequest entity to DTO without triggering lazy loads
      */
     public static InterviewRequestSimpleDto from(InterviewRequest request) {
+        InterviewSchedule schedule = request.getInterviewSchedule();
         return InterviewRequestSimpleDto.builder()
                 .id(request.getId())
                 .candidateName(request.getCandidateName())
@@ -59,7 +67,12 @@ public class InterviewRequestSimpleDto {
                 .responseNotes(request.getResponseNotes())
                 .isUrgent(request.isUrgent())
                 .notes(request.getNotes())
-                .interviewScheduleId(request.getInterviewSchedule() != null ? request.getInterviewSchedule().getId() : null)
+                .interviewScheduleId(schedule != null ? schedule.getId() : null)
+                .interviewStatus(schedule != null ? schedule.getStatus() : null)
+                .interviewType(schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null)
+                .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
+                .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
+                .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)
                 .createdAt(request.getCreatedAt())
                 .updatedAt(request.getUpdatedAt())
                 .build();
