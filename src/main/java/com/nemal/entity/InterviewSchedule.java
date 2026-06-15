@@ -1,6 +1,7 @@
 package com.nemal.entity;
 
 import com.nemal.enums.InterviewStatus;
+import com.nemal.enums.InterviewType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -34,6 +35,10 @@ public class InterviewSchedule {
     @Enumerated(EnumType.STRING)
     @Builder.Default
     private InterviewStatus status = InterviewStatus.SCHEDULED;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interview_type")
+    private InterviewType interviewType;
 
     private LocalDateTime completedAt;
 }
