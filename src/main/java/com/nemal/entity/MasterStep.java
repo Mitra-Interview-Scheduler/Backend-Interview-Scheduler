@@ -12,12 +12,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "candidate_steps")
+@Table(name = "master_steps")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CandidateStep {
+public class MasterStep {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,4 +50,14 @@ public class CandidateStep {
     @Column(name = "is_closing_step", nullable = false)
     @Builder.Default
     private boolean isClosingStep = false;
+
+
+    @Column(name="is_default_step",nullable = false)
+    @Builder.Default
+    private boolean isDefaultStep = false;
+
+    @Column(name = "is_visible",nullable = false)
+    @Builder.Default
+    private boolean isVisible = true;
+
 }

@@ -1,6 +1,6 @@
 package com.nemal.dto;
 
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 
 public record UpdateCandidateDto(
         String name,
@@ -8,7 +8,7 @@ public record UpdateCandidateDto(
         String phone,
         Long departmentId,
         Long targetDesignationId,
-        CandidateStatus status,
+        MasterStatus status,
         String resumeUrl,
         String jdUrl,
         String resourceLink,

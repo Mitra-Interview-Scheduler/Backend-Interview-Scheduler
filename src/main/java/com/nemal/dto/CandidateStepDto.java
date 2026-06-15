@@ -1,6 +1,6 @@
 package com.nemal.dto;
 
-import com.nemal.entity.CandidateStep;
+import com.nemal.entity.MasterStep;
 
 public record CandidateStepDto(
         Long id,
@@ -13,7 +13,7 @@ public record CandidateStepDto(
         String lightClass,
         boolean isClosingStep
 ) {
-    public static CandidateStepDto from(CandidateStep step) {
+    public static CandidateStepDto from(MasterStep step) {
         return new CandidateStepDto(
                 step.getId(),
                 step.getStatusKey(),

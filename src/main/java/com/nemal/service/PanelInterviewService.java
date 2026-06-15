@@ -3,7 +3,7 @@ package com.nemal.service;
 import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.*;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.SlotStatus;
@@ -160,7 +160,7 @@ public class PanelInterviewService {
         }
 
         if (candidate != null) {
-            candidate.setStatus(CandidateStatus.SCHEDULED);
+            candidate.setStatus(MasterStatus.SCHEDULED);
             candidateRepository.save(candidate);
         }
 
@@ -218,7 +218,7 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(CandidateStatus.SCREENING);
+                candidate.setStatus(MasterStatus.SCREENING);
                 candidateRepository.save(candidate);
             }
         }

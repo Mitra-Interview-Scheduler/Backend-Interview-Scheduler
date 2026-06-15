@@ -22,7 +22,7 @@ public class FeedbackQuestion {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "form_id", nullable = false)
+    @JoinColumn(name = "form_id")
     private FeedbackForm form;
 
     @Column(name = "display_order", nullable = false)

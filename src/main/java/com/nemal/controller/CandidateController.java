@@ -6,8 +6,9 @@ import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.CandidateDocument;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import com.nemal.service.CandidateService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "http://localhost:5173")
 public class CandidateController {
 
+    @Autowired
     private final CandidateService candidateService;
 
     public CandidateController(CandidateService candidateService) {
@@ -33,7 +35,7 @@ public class CandidateController {
 
     @GetMapping("/statuses")
     public ResponseEntity<List<String>> getCandidateStatuses() {
-        List<String> statuses = Arrays.stream(CandidateStatus.values())
+        List<String> statuses = Arrays.stream(MasterStatus.values())
                 .map(Enum::name)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(statuses);
@@ -42,7 +44,7 @@ public class CandidateController {
     @GetMapping
     public ResponseEntity<?> getAllCandidates(
             @RequestParam(required = false) Long departmentId,
-            @RequestParam(required = false) CandidateStatus status,
+            @RequestParam(required = false) MasterStatus status,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
@@ -117,7 +119,7 @@ public class CandidateController {
 
     @GetMapping("/status/{status}")
     public ResponseEntity<List<CandidateDto>> getCandidatesByStatus(
-            @PathVariable CandidateStatus status) {
+            @PathVariable MasterStatus status) {
         return ResponseEntity.ok(candidateService.getCandidatesByStatus(status));
     }
 

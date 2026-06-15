@@ -22,6 +22,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.Arrays;
 import java.util.List;
 
@@ -44,13 +45,18 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
+                        .requestMatchers("/api/auth/verify").authenticated()
                         .requestMatchers("/ws/**", "/ws").permitAll()
                         .requestMatchers("/api/profile/**").authenticated()
                         .requestMatchers("/api/technologies/**").authenticated()
                         .requestMatchers("/api/candidate-steps/**").authenticated()
+                        .requestMatchers("/api/candidateScreening/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/designations/**").authenticated()
+                        .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers("/api/candidatePipeline/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers("/api/candidates/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/hr/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/interviewer/**").hasRole("INTERVIEWER")
@@ -65,10 +71,22 @@ public class SecurityConfig {
                         .requestMatchers("/api/interview-requests/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .anyRequest().authenticated()
                 )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"message\":\"Authentication required\"}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"message\":\"Access denied\"}");
+                        })
+                )
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter(userDetailsService()), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -89,20 +107,20 @@ public class SecurityConfig {
     }
 
     @Bean
-    public JwtAuthenticationFilter jwtAuthenticationFilter() {
-        return new JwtAuthenticationFilter(jwtService, userDetailsService());
-    }
-
-    @Bean
     public UserDetailsService userDetailsService() {
         return username -> userRepository.findByEmail(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
     }
 
     @Bean
-    public AuthenticationManager authenticationManager() {
+    public JwtAuthenticationFilter jwtAuthenticationFilter(UserDetailsService userDetailsService) {
+        return new JwtAuthenticationFilter(jwtService, userDetailsService);
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(UserDetailsService userDetailsService) {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return new ProviderManager(authProvider);
     }

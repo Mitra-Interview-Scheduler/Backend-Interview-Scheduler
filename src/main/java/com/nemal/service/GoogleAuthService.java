@@ -92,12 +92,12 @@ public class GoogleAuthService {
 
         User user = User.builder()
                 .email(email)
+                .authProvider(AuthProvider.GOOGLE)
                 .firstName(firstName != null ? firstName : "GoogleUser")
                 .lastName(lastName != null ? lastName : "")
                 .profilePictureUrl(pictureUrl)
-                .roles(Set.of(Role.INTERVIEWER))
+                .roles(Set.of(Role.ADMIN))
                 .isActive(true)
-                .authProvider(AuthProvider.GOOGLE)
                 .passwordHash(null)
                 .build();
 

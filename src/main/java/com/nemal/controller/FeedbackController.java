@@ -1,11 +1,6 @@
 package com.nemal.controller;
 
-import com.nemal.dto.CreateFeedbackResponseDto;
-import com.nemal.dto.CreateFeedbackFormDto;
-import com.nemal.dto.CreateFeedbackQuestionDto;
-import com.nemal.dto.FeedbackFormDto;
-import com.nemal.dto.FeedbackQuestionDto;
-import com.nemal.dto.FeedbackResponseDto;
+import com.nemal.dto.*;
 import com.nemal.entity.User;
 import com.nemal.service.FeedbackService;
 import org.slf4j.Logger;
@@ -61,6 +56,21 @@ public class FeedbackController {
     public ResponseEntity<?> listForms() {
         try {
             return ResponseEntity.ok(feedbackService.listAllForms());
+        } catch (Exception e) {
+            logger.error("Failed to list feedback forms: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN','INTERVIEWER')")
+    @GetMapping("/candidateforms")
+    public ResponseEntity<?> candidateInterviewForms(
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long designationId) {
+        try {
+            // Build the DTO manually using the parameters
+            CandidateFormFilterDto dto = new CandidateFormFilterDto( designationId,departmentId);
+            return ResponseEntity.ok(feedbackService.listFilteredFormsByDepartmentAndDesignation(dto));
         } catch (Exception e) {
             logger.error("Failed to list feedback forms: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));

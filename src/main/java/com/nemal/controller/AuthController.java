@@ -6,9 +6,9 @@ import com.nemal.dto.UserRegistrationDto;
 import com.nemal.service.GoogleAuthService;
 import com.nemal.service.UserService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -47,12 +47,15 @@ public class AuthController {
         return ResponseEntity.ok(googleAuthService.authenticateGoogleUser(googleToken, timezone));
     }
     @GetMapping("/verify")
-    public ResponseEntity<?> verifyToken() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    public ResponseEntity<?> verifyToken(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Not authenticated"));
+        }
         return ResponseEntity.ok(Map.of(
                 "authenticated", true,
-                "username", auth.getName(),
-                "authorities", auth.getAuthorities()
+                "username", authentication.getName(),
+                "authorities", authentication.getAuthorities()
         ));
     }
 }

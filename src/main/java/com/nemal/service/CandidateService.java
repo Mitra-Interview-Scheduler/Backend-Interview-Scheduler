@@ -9,7 +9,7 @@ import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
@@ -32,23 +32,29 @@ public class CandidateService {
     private final CandidateDocumentRepository candidateDocumentRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
+    private final CandidateStepPipelineService candidateStepPipelineService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "image/heic",      // .heic (Apple High Efficiency Image Format)
+            "image/heif",      // .heif
+            "image/jpeg",      // .jpg, .jpeg
+            "image/png"
     );
 
     public CandidateService(
             CandidateRepository candidateRepository,
             CandidateDocumentRepository candidateDocumentRepository,
             DepartmentRepository departmentRepository,
-            DesignationRepository designationRepository
+            DesignationRepository designationRepository,
+            CandidateStepPipelineService candidateStepPipelineService
+
     ) {
         this.candidateRepository = candidateRepository;
         this.candidateDocumentRepository = candidateDocumentRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
+        this.candidateStepPipelineService = candidateStepPipelineService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -87,7 +93,7 @@ public class CandidateService {
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
-    public List<CandidateDto> getCandidatesByStatus(CandidateStatus status) {
+    public List<CandidateDto> getCandidatesByStatus(MasterStatus status) {
         return candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status)
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
@@ -97,7 +103,7 @@ public class CandidateService {
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
-    public List<CandidateDto> findWithFilters(Long departmentId, CandidateStatus status, String searchTerm) {
+    public List<CandidateDto> findWithFilters(Long departmentId, MasterStatus status, String searchTerm) {
         List<Candidate> candidates;
 
         if (departmentId == null && status == null && (searchTerm == null || searchTerm.trim().isEmpty())) {
@@ -121,7 +127,7 @@ public class CandidateService {
                         .collect(Collectors.toList());
             }
             if (status != null) {
-                final CandidateStatus st = status;
+                final MasterStatus st = status;
                 candidates = candidates.stream()
                         .filter(c -> c.getStatus() == st)
                         .collect(Collectors.toList());
@@ -133,7 +139,7 @@ public class CandidateService {
 
     public PaginatedResponseDto<CandidateDto> findWithFiltersPaged(
             Long departmentId,
-            CandidateStatus status,
+            MasterStatus status,
             String searchTerm,
             int page,
             int size
@@ -207,7 +213,7 @@ public class CandidateService {
                 .phone(dto.phone())
                 .department(department)
                 .targetDesignation(designation)
-                .status(CandidateStatus.NEW)
+                .status(MasterStatus.NEW)
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
                 .resourceLink(dto.resourceLink())
@@ -220,6 +226,7 @@ public class CandidateService {
                 .build();
 
         candidate = candidateRepository.save(candidate);
+        candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
         return CandidateDto.from(candidate);
     }
 
@@ -253,8 +260,20 @@ public class CandidateService {
         if (dto.notes() != null)              candidate.setNotes(dto.notes());
         if (dto.yearsOfExperience() != null)  candidate.setYearsOfExperience(dto.yearsOfExperience());
         if (dto.resumeUrl() != null)          candidate.setResumeUrl(dto.resumeUrl());
-        if (dto.status() != null)             candidate.setStatus(dto.status());
+//        if (dto.status() != null)             candidate.setStatus(dto.status());
         if (dto.isActive() != null)           candidate.setActive(dto.isActive());
+
+
+        if (dto.status() != null) {
+            MasterStatus oldStatus = candidate.getStatus();
+            // Only execute updates if the status value actually shifted
+            if (oldStatus != dto.status()) {
+                candidate.setStatus(dto.status());
+
+                // Synchronizes the candidate step entries to mirror this change
+                candidateStepPipelineService.updatePipelineOnStatusChange(id, dto.status());
+            }
+        }
 
         if (dto.departmentId() != null) {
             Department department = departmentRepository.findById(dto.departmentId())
@@ -352,7 +371,7 @@ public class CandidateService {
         String fileName = safeFileName(file.getOriginalFilename()).toLowerCase(Locale.ROOT);
         boolean allowedExtension = fileName.endsWith(".pdf") || fileName.endsWith(".doc") || fileName.endsWith(".docx");
         if (!ALLOWED_CONTENT_TYPES.contains(contentType) && !allowedExtension) {
-            throw new IllegalArgumentException("Only PDF, DOC, and DOCX documents are supported");
+            throw new IllegalArgumentException("Only PDF, JPG, JPEG , heic and heif are supported");
         }
     }
 
