@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -328,10 +329,15 @@ public class FeedbackService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<FeedbackResponseDto> findFeedbackForInterview(Long interviewScheduleId) {
+        return feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
+                .map(this::toResponseDto);
+    }
+
+    @Transactional(readOnly = true)
     public FeedbackResponseDto getFeedbackForInterview(Long interviewScheduleId) {
-        FeedbackResponse response = feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
+        return findFeedbackForInterview(interviewScheduleId)
                 .orElseThrow(() -> new RuntimeException("Feedback not found for interview schedule: " + interviewScheduleId));
-        return toResponseDto(response);
     }
 
     private FeedbackQuestionDto toQuestionDto(FeedbackQuestion question) {

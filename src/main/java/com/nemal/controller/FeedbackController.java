@@ -177,13 +177,9 @@ public class FeedbackController {
 
     @GetMapping("/responses/{interviewScheduleId}")
     public ResponseEntity<?> getFeedbackByInterview(@PathVariable Long interviewScheduleId) {
-        try {
-            FeedbackResponseDto response = feedbackService.getFeedbackForInterview(interviewScheduleId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("Failed to load feedback for interview {}: {}", interviewScheduleId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        return feedbackService.findFeedbackForInterview(interviewScheduleId)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "No feedback found for this interview")));
     }
 }
