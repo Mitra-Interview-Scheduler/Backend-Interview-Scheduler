@@ -17,5 +17,6 @@ public record UpdateCandidateDto(
         String location,
         String notes,
         Integer yearsOfExperience,
-        Boolean isActive
+        Boolean isActive,
+        Boolean addPipelineRound
 ) {}

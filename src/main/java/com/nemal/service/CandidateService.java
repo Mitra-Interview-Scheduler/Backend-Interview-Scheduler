@@ -266,12 +266,17 @@ public class CandidateService {
 
         if (dto.status() != null) {
             MasterStatus oldStatus = candidate.getStatus();
-            // Only execute updates if the status value actually shifted
-            if (oldStatus != dto.status()) {
-                candidate.setStatus(dto.status());
+            boolean addPipelineRound = Boolean.TRUE.equals(dto.addPipelineRound());
+            boolean statusChanged = oldStatus != dto.status();
+            boolean shouldSyncPipeline = statusChanged || addPipelineRound;
 
-                // Synchronizes the candidate step entries to mirror this change
-                candidateStepPipelineService.updatePipelineOnStatusChange(id, dto.status());
+            if (statusChanged) {
+                candidate.setStatus(dto.status());
+            }
+
+            if (shouldSyncPipeline) {
+                candidateStepPipelineService.updatePipelineOnStatusChange(
+                        id, dto.status(), oldStatus, addPipelineRound);
             }
         }
 

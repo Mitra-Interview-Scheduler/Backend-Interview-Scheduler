@@ -14,6 +14,8 @@ public interface MasterStepRepository extends JpaRepository<MasterStep, Long> {
 
     MasterStep findByStatusKey(String statusKey);
 
+    List<MasterStep> findByIsDefaultStepTrueOrderByStepOrderAscDisplayOrderAsc();
+
     List<MasterStep> findByIsDefaultStepTrueOrderByStepOrderAsc();
 
     List<MasterStep> findAllByIsActiveTrueAndIsClosingStepTrueOrderByDisplayOrderAsc();
