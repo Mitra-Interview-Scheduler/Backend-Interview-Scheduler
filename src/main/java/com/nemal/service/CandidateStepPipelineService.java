@@ -65,7 +65,6 @@ public class CandidateStepPipelineService {
                     .candidate(candidate)
                     .step(masterStep)
                     .sequenceOrder(masterStep.getStepOrder())
-                    .customLabel("defaultLabels")
                     .stepStatus(masterStep.getStepOrder() == 1
                             ? PipelineStepStatus.CURRENT
                             : PipelineStepStatus.PENDING)
@@ -97,7 +96,7 @@ public class CandidateStepPipelineService {
      * Steps at or after the new position are pushed back by one; the new step becomes CURRENT.
      */
     @Transactional
-    public void insertStepAfter(Long candidateId, String statusKey, int insertAfterSequenceOrder, String customLabel) {
+    public void insertStepAfter(Long candidateId, String statusKey, int insertAfterSequenceOrder) {
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new RuntimeException("Candidate record profile not found"));
 
@@ -118,7 +117,6 @@ public class CandidateStepPipelineService {
                 .candidate(candidate)
                 .step(masterStep)
                 .sequenceOrder(targetSequenceOrder)
-                .customLabel(customLabel != null && !customLabel.trim().isEmpty() ? customLabel : masterStep.getLabel())
                 .stepStatus(PipelineStepStatus.CURRENT)
                 .build();
 
@@ -181,7 +179,7 @@ public class CandidateStepPipelineService {
         }
 
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
-        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder, masterStep.getLabel());
+        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
     }
 
     private void handleRepeatableStatusChange(Long candidateId,
@@ -193,31 +191,7 @@ public class CandidateStepPipelineService {
         }
 
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
-        String roundLabel = buildRoundLabel(masterStep, pipeline, newStatus.name());
-        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder, roundLabel);
-    }
-
-    private String buildRoundLabel(MasterStep masterStep, List<CandidateStepPipeline> pipeline, String statusKey) {
-        long existingRounds = pipeline.stream()
-                .filter(p -> p.getStep() != null
-                        && p.getStep().getStatusKey().equalsIgnoreCase(statusKey))
-                .count();
-        int roundNumber = (int) existingRounds + 1;
-        String baseLabel = baseLabelForStatusKey(statusKey, masterStep.getLabel());
-        if (roundNumber <= 1) {
-            return baseLabel;
-        }
-        return baseLabel + " " + roundNumber;
-    }
-
-    private String baseLabelForStatusKey(String statusKey, String fallbackLabel) {
-        if ("TECHNICAL_ROUND".equalsIgnoreCase(statusKey)) {
-            return "Technical";
-        }
-        if ("HR_ROUND".equalsIgnoreCase(statusKey)) {
-            return "HR";
-        }
-        return fallbackLabel;
+        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
     }
 
     private int resolveInsertAfterSequenceOrder(List<CandidateStepPipeline> pipeline) {

@@ -34,9 +34,9 @@ public class CandidateStepPipeline {
     private Candidate candidate;
 
 
-    // References the master CandidateStep statusKey configuration string
+    // References master_steps by primary key
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "status_key", referencedColumnName = "status_key", nullable = false)
+    @JoinColumn(name = "master_step_id", nullable = false)
     private MasterStep step;
 
     @Column(name = "sequence_order", nullable = false)
@@ -46,9 +46,6 @@ public class CandidateStepPipeline {
     @Column(name = "step_status", nullable = false, length = 20)
     @Builder.Default
     private PipelineStepStatus stepStatus = PipelineStepStatus.PENDING;
-
-    @Column(name = "custom_label", length = 100)
-    private String customLabel;
 
     @CreatedDate
     @Column(name = "created_at", updatable = false)
