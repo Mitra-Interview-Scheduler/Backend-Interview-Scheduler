@@ -28,13 +28,16 @@ public class CandidateStepPipelineService {
     private final CandidateStepPipelineRepository pipelineRepository;
     private final CandidateRepository candidateRepository;
     private final MasterStepRepository masterStepRepository;
+    private final MasterStepService masterStepService;
 
     public CandidateStepPipelineService(CandidateStepPipelineRepository pipelineRepository,
                                         CandidateRepository candidateRepository,
-                                        MasterStepRepository masterStepRepository) {
+                                        MasterStepRepository masterStepRepository,
+                                        MasterStepService masterStepService) {
         this.pipelineRepository = pipelineRepository;
         this.candidateRepository = candidateRepository;
         this.masterStepRepository = masterStepRepository;
+        this.masterStepService = masterStepService;
     }
 
     @Transactional
@@ -81,7 +84,7 @@ public class CandidateStepPipelineService {
 
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new RuntimeException("Candidate record profile not found"));
-        candidate.setStatus(MasterStatus.REJECTED);
+        masterStepService.assignStatus(candidate, MasterStatus.REJECTED);
         candidateRepository.save(candidate);
     }
 

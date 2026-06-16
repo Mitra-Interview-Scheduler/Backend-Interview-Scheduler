@@ -37,6 +37,7 @@ public class InterviewRequestService {
     private final NotificationService notificationService;
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final FeedbackResponseRepository feedbackResponseRepository;
+    private final MasterStepService masterStepService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -370,7 +371,7 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(MasterStatus.SCREENING);
+                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
                 candidateRepository.save(candidate);
                 logger.info("Candidate {} reset to SCREENING", candidate.getId());
             }
@@ -420,7 +421,7 @@ public class InterviewRequestService {
     private void applyCandidateStatusForScheduledInterview(Candidate candidate, InterviewType interviewType) {
         MasterStatus targetStatus = interviewType.toCandidateStatus();
         MasterStatus oldStatus = candidate.getStatus();
-        candidate.setStatus(targetStatus);
+        masterStepService.assignStatus(candidate, targetStatus);
         candidateRepository.save(candidate);
         candidateStepPipelineService.updatePipelineOnStatusChange(
                 candidate.getId(), targetStatus, oldStatus, true);

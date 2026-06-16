@@ -35,6 +35,7 @@ public class PanelInterviewService {
     private final TierRepository tierRepository;
     private final NotificationService notificationService;
     private final CandidateStepPipelineService candidateStepPipelineService;
+    private final MasterStepService masterStepService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -46,7 +47,8 @@ public class PanelInterviewService {
             TechnologyRepository technologyRepository,
             TierRepository tierRepository,
             NotificationService notificationService,
-            CandidateStepPipelineService candidateStepPipelineService) {
+            CandidateStepPipelineService candidateStepPipelineService,
+            MasterStepService masterStepService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -57,6 +59,7 @@ public class PanelInterviewService {
         this.tierRepository = tierRepository;
         this.notificationService = notificationService;
         this.candidateStepPipelineService = candidateStepPipelineService;
+        this.masterStepService = masterStepService;
     }
 
     @Transactional
@@ -168,7 +171,7 @@ public class PanelInterviewService {
         if (candidate != null) {
             MasterStatus targetStatus = interviewType.toCandidateStatus();
             MasterStatus oldStatus = candidate.getStatus();
-            candidate.setStatus(targetStatus);
+            masterStepService.assignStatus(candidate, targetStatus);
             candidateRepository.save(candidate);
             candidateStepPipelineService.updatePipelineOnStatusChange(
                     candidate.getId(), targetStatus, oldStatus, true);
@@ -228,7 +231,7 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(MasterStatus.SCREENING);
+                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
                 candidateRepository.save(candidate);
             }
         }

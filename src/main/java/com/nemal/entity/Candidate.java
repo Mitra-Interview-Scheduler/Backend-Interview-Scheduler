@@ -39,10 +39,20 @@ public class Candidate {
     @JoinColumn(name = "target_designation_id")
     private Designation targetDesignation;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Builder.Default
-    private MasterStatus status = MasterStatus.NEW;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "master_step_id", nullable = false)
+    private MasterStep masterStep;
+
+    public MasterStatus getStatus() {
+        if (masterStep == null) {
+            return MasterStatus.NEW;
+        }
+        try {
+            return MasterStatus.valueOf(masterStep.getStatusKey());
+        } catch (IllegalArgumentException ex) {
+            return MasterStatus.NEW;
+        }
+    }
 
     @Column(length = 2000)
     private String resumeUrl;

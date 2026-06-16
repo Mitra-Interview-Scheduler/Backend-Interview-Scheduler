@@ -19,10 +19,23 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     List<Candidate> findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(Long departmentId);
 
-    List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(MasterStatus status);
+    List<Candidate> findByMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(String statusKey);
 
-    List<Candidate> findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(
-            Long departmentId, MasterStatus status);
+    default List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(MasterStatus status) {
+        return findByMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(status.name());
+    }
+
+    List<Candidate> findByDepartmentIdAndMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(
+            Long departmentId, String statusKey);
+
+    default List<Candidate> findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(
+            Long departmentId, MasterStatus status) {
+        return findByDepartmentIdAndMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(
+                departmentId, status.name());
+    }
+
+    // Legacy method signatures kept for repository callers — implemented via master step key.
+    // findByStatusAndIsActiveTrueOrderByAppliedAtDesc uses default above.
 
     // ── Email uniqueness — GLOBAL (active + soft-deleted) ───────────────────
 

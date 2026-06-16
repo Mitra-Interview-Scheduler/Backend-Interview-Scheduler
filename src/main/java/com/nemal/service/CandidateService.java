@@ -33,6 +33,7 @@ public class CandidateService {
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
     private final CandidateStepPipelineService candidateStepPipelineService;
+    private final MasterStepService masterStepService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -47,7 +48,8 @@ public class CandidateService {
             CandidateDocumentRepository candidateDocumentRepository,
             DepartmentRepository departmentRepository,
             DesignationRepository designationRepository,
-            CandidateStepPipelineService candidateStepPipelineService
+            CandidateStepPipelineService candidateStepPipelineService,
+            MasterStepService masterStepService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -55,6 +57,7 @@ public class CandidateService {
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
         this.candidateStepPipelineService = candidateStepPipelineService;
+        this.masterStepService = masterStepService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -213,7 +216,6 @@ public class CandidateService {
                 .phone(dto.phone())
                 .department(department)
                 .targetDesignation(designation)
-                .status(MasterStatus.NEW)
                 .resumeUrl(dto.resumeUrl())
                 .jdUrl(dto.jdUrl())
                 .resourceLink(dto.resourceLink())
@@ -225,6 +227,7 @@ public class CandidateService {
                 .isActive(true)
                 .build();
 
+        masterStepService.assignStatus(candidate, MasterStatus.NEW);
         candidate = candidateRepository.save(candidate);
         candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
         return CandidateDto.from(candidate);
@@ -271,7 +274,7 @@ public class CandidateService {
             boolean shouldSyncPipeline = statusChanged || addPipelineRound;
 
             if (statusChanged) {
-                candidate.setStatus(dto.status());
+                masterStepService.assignStatus(candidate, dto.status());
             }
 
             if (shouldSyncPipeline) {
