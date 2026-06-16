@@ -4,7 +4,7 @@ package com.nemal.enums;
 public enum MasterStatus {
     NEW,
     SCREENING,
-    SCHEDULED,
+    INTERVIEW_SCHEDULES,
     TECHNICAL_ROUND,
     DISPOSITION,
     HR_ROUND,

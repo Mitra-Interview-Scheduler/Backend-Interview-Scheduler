@@ -57,8 +57,8 @@ public class Candidate {
     @Column(length = 2000)
     private String resumeUrl;
 
-    /** Job Description URL (link to the role's JD page) */
-    @Column(name = "jd_url", length = 2000)
+    /** Job description text (multiline). */
+    @Column(name = "jd_url", columnDefinition = "TEXT")
     private String jdUrl;
 
     /** Internal requisition / job reference code, e.g. REQ-2024-001 */
