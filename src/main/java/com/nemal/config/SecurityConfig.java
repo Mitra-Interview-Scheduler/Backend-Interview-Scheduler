@@ -5,6 +5,7 @@ import com.nemal.security.JwtAuthenticationFilter;
 import com.nemal.security.JwtService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -28,7 +29,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity   // enables @PreAuthorize on AdminController
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtService jwtService;
@@ -48,28 +49,60 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
                         .requestMatchers("/api/auth/verify").authenticated()
                         .requestMatchers("/ws/**", "/ws").permitAll()
-                        .requestMatchers("/api/profile/**").authenticated()
-                        .requestMatchers("/api/technologies/**").authenticated()
-                        .requestMatchers("/api/candidate-steps/**").authenticated()
-                        .requestMatchers("/api/candidateScreening/**").authenticated()
-                        .requestMatchers("/api/departments/**").authenticated()
-                        .requestMatchers("/api/designations/**").authenticated()
-                        .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers("/api/closing-reasons/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers("/api/candidatePipeline/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers("/api/candidates/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+
+                        .requestMatchers("/api/debug/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Candidates: HR/ADMIN for lists, documents, mutations, close; single GET for interviewers
+                        .requestMatchers(HttpMethod.GET, "/api/candidates").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/search").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/department/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/status/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers("/api/candidates/*/documents/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidates/*/close").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidates").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/candidates/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/candidates/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+
+                        .requestMatchers("/api/candidateScreening/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/hr/**").hasAnyRole("HR", "ADMIN")
-                        .requestMatchers("/api/interviewer/**").hasRole("INTERVIEWER")
-                        // feedback: allow interviewers to submit/read responses and view questions;
-                        // forms/questions management restricted to HR and ADMIN
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers("/api/feedback/forms/**", "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
+
+                        .requestMatchers("/api/interviewer/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/interview-requests/upcoming").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/interview-requests/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+
+                        .requestMatchers("/api/availability/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+
+                        // Master data writes: ADMIN only; reads for authenticated users
+                        .requestMatchers(HttpMethod.POST, "/api/designations", "/api/designations/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/designations/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/designations/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/designations/**").authenticated()
+
+                        .requestMatchers(HttpMethod.POST, "/api/tiers", "/api/tiers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/tiers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/tiers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/tiers/**").authenticated()
+
+                        .requestMatchers(HttpMethod.POST, "/api/technologies", "/api/technologies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/technologies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/technologies/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/technologies/**").authenticated()
+
+                        .requestMatchers("/api/profile/**").authenticated()
+                        .requestMatchers("/api/departments/**").authenticated()
+                        .requestMatchers("/api/department/**").authenticated()
+                        .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers("/api/closing-reasons/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers("/api/candidatePipeline/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR")
+                        .requestMatchers("/api/feedback/forms/**", "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex
@@ -96,7 +129,6 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:3000"));
-        // Added PATCH for toggle-status endpoint
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

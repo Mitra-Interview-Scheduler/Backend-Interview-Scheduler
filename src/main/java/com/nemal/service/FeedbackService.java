@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.nemal.dto.*;
 import com.nemal.entity.*;
+import com.nemal.enums.Role;
 import com.nemal.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -338,6 +339,22 @@ public class FeedbackService {
     public FeedbackResponseDto getFeedbackForInterview(Long interviewScheduleId) {
         return findFeedbackForInterview(interviewScheduleId)
                 .orElseThrow(() -> new RuntimeException("Feedback not found for interview schedule: " + interviewScheduleId));
+    }
+
+    @Transactional(readOnly = true)
+    public FeedbackResponseDto getFeedbackForInterview(Long interviewScheduleId, User user) {
+        InterviewSchedule schedule = interviewScheduleRepository.findById(interviewScheduleId)
+                .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + interviewScheduleId));
+
+        boolean isHr = user.getRoles().contains(Role.HR);
+        boolean isAssignedInterviewer = schedule.getInterviewer() != null
+                && schedule.getInterviewer().getId().equals(user.getId());
+
+        if (!isHr && !isAssignedInterviewer) {
+            throw new RuntimeException("You are not allowed to view feedback for this interview");
+        }
+
+        return getFeedbackForInterview(interviewScheduleId);
     }
 
     private FeedbackQuestionDto toQuestionDto(FeedbackQuestion question) {

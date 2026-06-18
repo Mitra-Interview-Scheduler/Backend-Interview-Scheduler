@@ -313,6 +313,11 @@ public class InterviewRequestService {
 
     @Transactional
     public void cancelRequest(User user, Long requestId) {
+        boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
+        if (!isHrOrAdmin) {
+            throw new RuntimeException("Only HR or Admin users can cancel interview requests");
+        }
+
         logger.info("HR user {} cancelling request {}", user.getId(), requestId);
 
         InterviewRequest request = interviewRequestRepository.findById(requestId)

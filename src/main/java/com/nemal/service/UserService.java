@@ -50,15 +50,12 @@ public class UserService {
         if (userRepository.findByEmail(dto.email()).isPresent()) {
             throw new IllegalArgumentException("Email already registered");
         }
-        if (dto.roles() == null || dto.roles().isEmpty()) {
-            throw new IllegalArgumentException("At least one role is required");
-        }
         User user = User.builder()
                 .email(dto.email())
                 .passwordHash(passwordEncoder.encode(dto.password()))
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
-                .roles(dto.roles())
+                .roles(Set.of(Role.INTERVIEWER))
                 .authProvider(AuthProvider.LOCAL)
                 .build();
         userRepository.save(user);

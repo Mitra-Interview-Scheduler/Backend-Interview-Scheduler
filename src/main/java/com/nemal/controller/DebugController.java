@@ -2,6 +2,7 @@ package com.nemal.controller;
 
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -10,6 +11,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/debug")
+@PreAuthorize("hasRole('ADMIN')")
 public class DebugController {
 
     private final UserRepository userRepository;
