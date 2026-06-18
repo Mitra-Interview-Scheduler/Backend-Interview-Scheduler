@@ -176,14 +176,19 @@ public class FeedbackController {
     }
 
     @GetMapping("/responses/{interviewScheduleId}")
-    public ResponseEntity<?> getFeedbackByInterview(@PathVariable Long interviewScheduleId) {
+    public ResponseEntity<?> getFeedbackByInterview(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long interviewScheduleId) {
         try {
-            FeedbackResponseDto response = feedbackService.getFeedbackForInterview(interviewScheduleId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("Failed to load feedback for interview {}: {}", interviewScheduleId, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", e.getMessage()));
+            return ResponseEntity.ok(feedbackService.getFeedbackForInterview(interviewScheduleId, user));
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("not allowed")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+            }
+            if (e.getMessage() != null && e.getMessage().contains("not found")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
     }
 }

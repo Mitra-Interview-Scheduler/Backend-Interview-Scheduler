@@ -19,5 +19,6 @@ public record CreateInterviewRequestDto(
         LocalDateTime preferredEndDateTime,
 
         boolean isUrgent,
-        String notes
+        String notes,
+        String interviewType
 ) {}

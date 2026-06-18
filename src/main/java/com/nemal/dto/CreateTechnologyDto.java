@@ -2,5 +2,6 @@ package com.nemal.dto;
 
 public record CreateTechnologyDto(
         String name,
-        String category
+        String code,
+        Long categoryId
 ) {}

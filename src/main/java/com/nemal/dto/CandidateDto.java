@@ -31,9 +31,14 @@ public record CandidateDto(
         LocalDateTime appliedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        boolean isActive
+        boolean isActive,
+        CandidateClosureDto closure
 ) {
     public static CandidateDto from(Candidate candidate) {
+        return from(candidate, null);
+    }
+
+    public static CandidateDto from(Candidate candidate, CandidateClosureDto closure) {
         var desig = candidate.getTargetDesignation();
         var tier  = (desig != null) ? desig.getTier() : null;
 
@@ -62,7 +67,8 @@ public record CandidateDto(
                 candidate.getAppliedAt(),
                 candidate.getCreatedAt(),
                 candidate.getUpdatedAt(),
-                candidate.isActive()
+                candidate.isActive(),
+                closure
         );
     }
 }

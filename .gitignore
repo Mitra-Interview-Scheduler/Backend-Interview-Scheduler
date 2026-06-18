@@ -31,4 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
-*.md
+
+# Secrets — never commit
+.env
+.env.local

@@ -31,8 +31,13 @@ public class FeedbackQuestion {
     @Column(nullable = false, length = 200)
     private String label;
 
-    @Column(length = 100)
-    private String category;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "category_id", nullable = false)
+    private QuestionCategory category;
+
+    @Column(name = "is_obligatory", nullable = false)
+    @Builder.Default
+    private boolean isObligatory = false;
 
     @Column(nullable = false, length = 30)
     private String type;

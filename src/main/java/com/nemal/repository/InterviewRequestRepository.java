@@ -18,6 +18,17 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
 
     List<InterviewRequest> findByCandidateId(Long candidateId);
 
+    @Query("SELECT DISTINCT r FROM InterviewRequest r " +
+            "LEFT JOIN FETCH r.interviewSchedule " +
+            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.candidate " +
+            "WHERE r.candidate.id = :candidateId " +
+            "OR (:candidateName IS NOT NULL AND LOWER(TRIM(r.candidateName)) = LOWER(TRIM(:candidateName))) " +
+            "ORDER BY r.createdAt DESC")
+    List<InterviewRequest> findByCandidateIdOrNameWithSchedule(
+            @Param("candidateId") Long candidateId,
+            @Param("candidateName") String candidateName);
+
     List<InterviewRequest> findByAssignedInterviewerId(Long interviewerId);
 
     /**

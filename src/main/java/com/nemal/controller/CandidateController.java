@@ -2,11 +2,14 @@ package com.nemal.controller;
 
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
+import com.nemal.dto.CloseCandidateDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.CandidateDocument;
+import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
+import com.nemal.service.CandidateClosureService;
 import com.nemal.service.CandidateService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
@@ -14,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,9 +32,12 @@ public class CandidateController {
 
     @Autowired
     private final CandidateService candidateService;
+    private final CandidateClosureService candidateClosureService;
 
-    public CandidateController(CandidateService candidateService) {
+    public CandidateController(CandidateService candidateService,
+                               CandidateClosureService candidateClosureService) {
         this.candidateService = candidateService;
+        this.candidateClosureService = candidateClosureService;
     }
 
     @GetMapping("/statuses")
@@ -141,6 +148,14 @@ public class CandidateController {
             @PathVariable Long id,
             @RequestBody UpdateCandidateDto dto) {
         return ResponseEntity.ok(candidateService.updateCandidate(id, dto));
+    }
+
+    @PostMapping("/{id}/close")
+    public ResponseEntity<CandidateDto> closeCandidate(
+            @PathVariable Long id,
+            @RequestBody CloseCandidateDto dto,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(candidateClosureService.closeCandidate(id, dto, user));
     }
 
     @DeleteMapping("/{id}")

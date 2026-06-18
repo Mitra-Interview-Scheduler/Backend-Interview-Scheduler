@@ -1,6 +1,8 @@
 package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
+import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 
 import java.time.LocalDateTime;
@@ -27,9 +29,16 @@ public record InterviewRequestDto(
         String responseNotes,
         boolean isUrgent,
         String notes,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Long interviewScheduleId,
+        InterviewStatus interviewStatus,
+        String interviewType,
+        LocalDateTime scheduledStartDateTime,
+        LocalDateTime scheduledEndDateTime,
+        LocalDateTime interviewCompletedAt
 ) {
     public static InterviewRequestDto from(InterviewRequest request) {
+        InterviewSchedule schedule = request.getInterviewSchedule();
         return new InterviewRequestDto(
                 request.getId(),
                 request.getCandidateName(),
@@ -38,7 +47,13 @@ public record InterviewRequestDto(
                 request.getCandidateDesignation() != null ? request.getCandidateDesignation().getName() : null,
                 request.getRequiredTechnologies() != null
                         ? request.getRequiredTechnologies().stream()
-                        .map(t -> new TechnologySimpleDto(t.getId(), t.getName(), t.getCategory()))
+                        .map(t -> new TechnologySimpleDto(
+                                t.getId(),
+                                t.getCode(),
+                                t.getName(),
+                                t.getCategory().getCode(),
+                                t.getCategory().getLabel()
+                        ))
                         .collect(Collectors.toList())
                         : List.of(),
                 request.getPreferredStartDateTime(),
@@ -54,7 +69,13 @@ public record InterviewRequestDto(
                 request.getResponseNotes(),
                 request.isUrgent(),
                 request.getNotes(),
-                request.getCreatedAt()
+                request.getCreatedAt(),
+                schedule != null ? schedule.getId() : null,
+                schedule != null ? schedule.getStatus() : null,
+                schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null,
+                schedule != null ? schedule.getStartDateTime() : null,
+                schedule != null ? schedule.getEndDateTime() : null,
+                schedule != null ? schedule.getCompletedAt() : null
         );
     }
 }

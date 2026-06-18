@@ -44,7 +44,8 @@ public final class TimeZoneMapper {
                 dto.isRecurring(),
                 dto.interviewScheduleId(),
                 dto.durationHours(),
-                dto.candidateName()
+                dto.candidateName(),
+                dto.interviewStatus()
         );
     }
 
@@ -67,7 +68,10 @@ public final class TimeZoneMapper {
                 dto.candidateName(),
                 dto.requestId(),
                 dto.interviewerTierOrder(),
-                dto.interviewerLevelOrder()
+                dto.interviewerLevelOrder(),
+                dto.interviewType(),
+                dto.interviewScheduleId(),
+                dto.interviewStatus()
         );
     }
 
@@ -96,7 +100,13 @@ public final class TimeZoneMapper {
                 dto.responseNotes(),
                 dto.isUrgent(),
                 dto.notes(),
-                fromUtc(dto.createdAt(), targetZone)
+                fromUtc(dto.createdAt(), targetZone),
+                dto.interviewScheduleId(),
+                dto.interviewStatus(),
+                dto.interviewType(),
+                fromUtc(dto.scheduledStartDateTime(), targetZone),
+                fromUtc(dto.scheduledEndDateTime(), targetZone),
+                fromUtc(dto.interviewCompletedAt(), targetZone)
         );
     }
 
@@ -114,7 +124,8 @@ public final class TimeZoneMapper {
                 toUtc(dto.preferredStartDateTime(), sourceZone),
                 toUtc(dto.preferredEndDateTime(), sourceZone),
                 dto.isUrgent(),
-                dto.notes()
+                dto.notes(),
+                dto.interviewType()
         );
     }
 
@@ -128,7 +139,8 @@ public final class TimeZoneMapper {
                 dto.availabilitySlotIds(),
                 dto.requiredTechnologyIds(),
                 dto.isUrgent(),
-                dto.notes()
+                dto.notes(),
+                dto.interviewType()
         );
     }
 }

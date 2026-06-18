@@ -3,8 +3,9 @@ package com.nemal.service;
 import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.*;
-import com.nemal.enums.MasterStatus;
 import com.nemal.enums.InterviewStatus;
+import com.nemal.enums.InterviewType;
+import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
@@ -33,6 +34,8 @@ public class PanelInterviewService {
     private final TechnologyRepository technologyRepository;
     private final TierRepository tierRepository;
     private final NotificationService notificationService;
+    private final CandidateStepPipelineService candidateStepPipelineService;
+    private final MasterStepService masterStepService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -43,7 +46,9 @@ public class PanelInterviewService {
             DesignationRepository designationRepository,
             TechnologyRepository technologyRepository,
             TierRepository tierRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            CandidateStepPipelineService candidateStepPipelineService,
+            MasterStepService masterStepService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -53,6 +58,8 @@ public class PanelInterviewService {
         this.technologyRepository = technologyRepository;
         this.tierRepository = tierRepository;
         this.notificationService = notificationService;
+        this.candidateStepPipelineService = candidateStepPipelineService;
+        this.masterStepService = masterStepService;
     }
 
     @Transactional
@@ -116,6 +123,7 @@ public class PanelInterviewService {
         Designation finalDesignation = designation;
         String finalCandidateName = candidateName;
         Set<Technology> finalTechnologies = technologies;
+        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
 
         for (AvailabilitySlot slot : slots) {
             AvailabilitySlot bookedSlot = splitSlot(slot, dto.startDateTime(), dto.endDateTime(), finalCandidateName);
@@ -146,6 +154,7 @@ public class PanelInterviewService {
                     .startDateTime(dto.startDateTime())
                     .endDateTime(dto.endDateTime())
                     .status(InterviewStatus.SCHEDULED)
+                    .interviewType(interviewType)
                     .build();
             schedule = scheduleRepository.save(schedule);
 
@@ -160,8 +169,12 @@ public class PanelInterviewService {
         }
 
         if (candidate != null) {
-            candidate.setStatus(MasterStatus.SCHEDULED);
+            MasterStatus targetStatus = interviewType.toCandidateStatus();
+            MasterStatus oldStatus = candidate.getStatus();
+            masterStepService.assignStatus(candidate, targetStatus);
             candidateRepository.save(candidate);
+            candidateStepPipelineService.updatePipelineOnStatusChange(
+                    candidate.getId(), targetStatus, oldStatus, true);
         }
 
         InterviewPanel savedPanel = panelRepository.findByIdWithDetails(panel.getId())
@@ -218,7 +231,7 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(MasterStatus.SCREENING);
+                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
                 candidateRepository.save(candidate);
             }
         }
@@ -230,7 +243,10 @@ public class PanelInterviewService {
 
     @Transactional(readOnly = true)
     public List<InterviewPanelDto> getPanelsByCandidateId(Long candidateId) {
-        return panelRepository.findByCandidateId(candidateId)
+        String candidateName = candidateRepository.findById(candidateId)
+                .map(Candidate::getName)
+                .orElse(null);
+        return panelRepository.findByCandidateIdOrName(candidateId, candidateName)
                 .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
     }
 

@@ -2,6 +2,7 @@ package com.nemal.dto;
 
 public record UpdateTechnologyDto(
         String name,
-        String category,
+        String code,
+        Long categoryId,
         Boolean isActive
 ) {}
