@@ -38,7 +38,7 @@ public class CandidateClosure {
     private Candidate candidate;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "closing_reason_id", nullable = false)
+    @JoinColumn(name = "closing_reason_id")
     private ClosingReason closingReason;
 
     @Column(name = "closed_status_key", nullable = false, length = 50)

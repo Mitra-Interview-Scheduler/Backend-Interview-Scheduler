@@ -52,13 +52,16 @@ public class CandidateClosureService {
 
     @Transactional
     public CandidateDto closeCandidate(Long candidateId, CloseCandidateDto dto, User closedBy) {
-        if (dto.closingReasonId() == null) {
-            throw new IllegalArgumentException("Closing reason is required.");
-        }
-
+        boolean isSelected = dto.status() == MasterStatus.SELECTED;
         String comment = dto.comment() != null ? dto.comment().trim() : "";
-        if (comment.isEmpty()) {
-            throw new IllegalArgumentException("A reason or comment is required when closing an application.");
+
+        if (!isSelected) {
+            if (dto.closingReasonId() == null) {
+                throw new IllegalArgumentException("Closing reason is required.");
+            }
+            if (comment.isEmpty()) {
+                throw new IllegalArgumentException("A reason or comment is required when closing an application.");
+            }
         }
 
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(candidateId)
@@ -69,9 +72,12 @@ public class CandidateClosureService {
             throw new IllegalArgumentException("Status must be a visible closing stage.");
         }
 
-        ClosingReason closingReason = closingReasonRepository.findById(dto.closingReasonId())
-                .filter(ClosingReason::isActive)
-                .orElseThrow(() -> new IllegalArgumentException("Closing reason not found."));
+        ClosingReason closingReason = null;
+        if (dto.closingReasonId() != null) {
+            closingReason = closingReasonRepository.findById(dto.closingReasonId())
+                    .filter(ClosingReason::isActive)
+                    .orElseThrow(() -> new IllegalArgumentException("Closing reason not found."));
+        }
 
         MasterStatus previousStatus = candidate.getStatus();
         masterStepService.assignStatus(candidate, dto.status());
@@ -88,7 +94,7 @@ public class CandidateClosureService {
                 .candidate(candidate)
                 .closingReason(closingReason)
                 .closedStatusKey(dto.status().name())
-                .comment(comment)
+                .comment(comment.isEmpty() ? null : comment)
                 .closedBy(closedBy)
                 .closedAt(LocalDateTime.now())
                 .build();

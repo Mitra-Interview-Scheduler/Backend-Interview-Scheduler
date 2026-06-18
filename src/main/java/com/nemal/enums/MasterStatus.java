@@ -8,6 +8,7 @@ public enum MasterStatus {
     TECHNICAL_ROUND,
     DISPOSITION,
     HR_ROUND,
+    OFFER_PENDING,
     SELECTED,
     REJECTED,
     WITHDRAWN,
