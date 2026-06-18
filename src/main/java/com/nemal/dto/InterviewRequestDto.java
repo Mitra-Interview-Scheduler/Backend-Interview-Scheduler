@@ -47,7 +47,13 @@ public record InterviewRequestDto(
                 request.getCandidateDesignation() != null ? request.getCandidateDesignation().getName() : null,
                 request.getRequiredTechnologies() != null
                         ? request.getRequiredTechnologies().stream()
-                        .map(t -> new TechnologySimpleDto(t.getId(), t.getName(), t.getCategory()))
+                        .map(t -> new TechnologySimpleDto(
+                                t.getId(),
+                                t.getCode(),
+                                t.getName(),
+                                t.getCategory().getCode(),
+                                t.getCategory().getLabel()
+                        ))
                         .collect(Collectors.toList())
                         : List.of(),
                 request.getPreferredStartDateTime(),

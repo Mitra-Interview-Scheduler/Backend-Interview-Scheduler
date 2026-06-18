@@ -2,8 +2,20 @@ package com.nemal.dto;
 
 import com.nemal.entity.Technology;
 
-public record TechnologyDto(Long id, String name, String category, boolean isActive) {
+public record TechnologyDto(
+        Long id,
+        String code,
+        String name,
+        TechnologyCategoryDto category,
+        boolean isActive
+) {
     public static TechnologyDto from(Technology tech) {
-        return new TechnologyDto(tech.getId(), tech.getName(), tech.getCategory(), tech.isActive());
+        return new TechnologyDto(
+                tech.getId(),
+                tech.getCode(),
+                tech.getName(),
+                TechnologyCategoryDto.from(tech.getCategory()),
+                tech.isActive()
+        );
     }
 }

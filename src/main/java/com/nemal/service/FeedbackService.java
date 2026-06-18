@@ -32,6 +32,7 @@ public class FeedbackService {
     private final FeedbackQuestionRepository feedbackQuestionRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final QuestionCategoryService questionCategoryService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -46,7 +47,7 @@ public class FeedbackService {
                 .toList();
 
         List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
-                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -83,19 +84,7 @@ public class FeedbackService {
         if (dto.questions() != null) {
             int order = 1;
             for (CreateFeedbackQuestionDto qdto : dto.questions()) {
-                FeedbackQuestion q = FeedbackQuestion.builder()
-                        .form(saved)
-                        .displayOrder(qdto.order() == null ? order : qdto.order())
-                        .label(qdto.label())
-                        .category(qdto.category())
-                        .type(qdto.type())
-                        .required(qdto.required())
-                        .commentsEnabled(qdto.commentsEnabled())
-                        .placeholder(qdto.placeholder())
-                        .helpText(qdto.helpText())
-                        .optionsJson(writeJsonNode(qdto.options() == null ? List.of() : qdto.options()))
-                        .isActive(true)
-                        .build();
+                FeedbackQuestion q = buildQuestionFromDto(saved, qdto, qdto.order() == null ? order : qdto.order());
                 feedbackQuestionRepository.save(q);
                 order++;
             }
@@ -133,7 +122,7 @@ public class FeedbackService {
             Map<String, Object> m = new java.util.HashMap<>();
             m.put("order", q.order());
             m.put("label", q.label());
-            m.put("category", q.category());
+            m.put("categoryId", q.categoryId());
             m.put("type", q.type());
             m.put("required", q.required());
             m.put("commentsEnabled", q.commentsEnabled());
@@ -191,19 +180,7 @@ public class FeedbackService {
         if (dto.questions() != null) {
             int order = 1;
             for (CreateFeedbackQuestionDto qdto : dto.questions()) {
-                FeedbackQuestion q = FeedbackQuestion.builder()
-                .form(savedForm)
-                        .displayOrder(qdto.order() == null ? order : qdto.order())
-                        .label(qdto.label())
-                        .category(qdto.category())
-                        .type(qdto.type())
-                        .required(qdto.required())
-                        .commentsEnabled(qdto.commentsEnabled())
-                        .placeholder(qdto.placeholder())
-                        .helpText(qdto.helpText())
-                        .optionsJson(writeJsonNode(qdto.options() == null ? List.of() : qdto.options()))
-                        .isActive(true)
-                        .build();
+                FeedbackQuestion q = buildQuestionFromDto(savedForm, qdto, qdto.order() == null ? order : qdto.order());
                 feedbackQuestionRepository.save(q);
                 order++;
             }
@@ -230,19 +207,7 @@ public class FeedbackService {
         FeedbackForm form = feedbackFormRepository.findById(formId)
                 .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
 
-        FeedbackQuestion q = FeedbackQuestion.builder()
-                .form(form)
-                .displayOrder(dto.order() == null ? 1 : dto.order())
-                .label(dto.label())
-                .category(dto.category())
-                .type(dto.type())
-                .required(dto.required())
-                .commentsEnabled(dto.commentsEnabled())
-                .placeholder(dto.placeholder())
-                .helpText(dto.helpText())
-            .optionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()))
-                .isActive(true)
-                .build();
+        FeedbackQuestion q = buildQuestionFromDto(form, dto, dto.order() == null ? 1 : dto.order());
 
         FeedbackQuestion saved = feedbackQuestionRepository.save(q);
         return toQuestionDto(saved);
@@ -255,7 +220,7 @@ public class FeedbackService {
 
         q.setDisplayOrder(dto.order() == null ? q.getDisplayOrder() : dto.order());
         q.setLabel(dto.label());
-        q.setCategory(dto.category());
+        q.setCategory(questionCategoryService.resolveCategory(dto.categoryId(), dto.category()));
         q.setType(dto.type());
         q.setRequired(dto.required());
         q.setCommentsEnabled(dto.commentsEnabled());
@@ -357,12 +322,31 @@ public class FeedbackService {
         return getFeedbackForInterview(interviewScheduleId);
     }
 
+    private FeedbackQuestion buildQuestionFromDto(FeedbackForm form, CreateFeedbackQuestionDto dto, int displayOrder) {
+        return FeedbackQuestion.builder()
+                .form(form)
+                .displayOrder(displayOrder)
+                .label(dto.label())
+                .category(questionCategoryService.resolveCategory(dto.categoryId(), dto.category()))
+                .type(dto.type())
+                .required(dto.required())
+                .commentsEnabled(dto.commentsEnabled())
+                .placeholder(dto.placeholder())
+                .helpText(dto.helpText())
+                .optionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()))
+                .isActive(true)
+                .isObligatory(false)
+                .build();
+    }
+
     private FeedbackQuestionDto toQuestionDto(FeedbackQuestion question) {
         return new FeedbackQuestionDto(
             question.getId(),
             question.getDisplayOrder(),
                 question.getLabel(),
-                question.getCategory(),
+                question.getCategory().getId(),
+                question.getCategory().getCode(),
+                question.getCategory().getLabel(),
                 question.getType(),
                 question.isRequired(),
                 question.isCommentsEnabled(),
@@ -383,7 +367,7 @@ public class FeedbackService {
             .map(this::toQuestionDto)
             .toList();
         List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
-                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -416,7 +400,7 @@ public class FeedbackService {
                     .toList();
 
                        List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
-                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -448,7 +432,7 @@ public class FeedbackService {
                             .toList();
 
                     List<FeedbackQuestionDto> obligatoryQuestions = feedbackQuestionRepository
-                .findByCategoryEqualsIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc("obligatory")
+                .findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();

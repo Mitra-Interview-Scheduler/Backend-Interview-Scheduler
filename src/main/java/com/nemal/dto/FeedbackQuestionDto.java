@@ -6,6 +6,8 @@ public record FeedbackQuestionDto(
         Long id,
         Integer order,
         String label,
+        Long categoryId,
+        String categoryCode,
         String category,
         String type,
         boolean required,

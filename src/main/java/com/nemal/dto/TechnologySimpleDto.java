@@ -1,6 +1,9 @@
-// ==========================================
-// TechnologySimpleDto.java
-// ==========================================
 package com.nemal.dto;
 
-public record TechnologySimpleDto(Long id, String name, String category) {}
+public record TechnologySimpleDto(
+        Long id,
+        String code,
+        String name,
+        String categoryCode,
+        String categoryLabel
+) {}

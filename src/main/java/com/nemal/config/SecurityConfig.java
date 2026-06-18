@@ -90,6 +90,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/technologies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/technologies/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/technology-categories", "/api/technology-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/technology-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/technology-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/technology-categories/**").authenticated()
+
+                        .requestMatchers(HttpMethod.POST, "/api/question-categories", "/api/question-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/question-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/question-categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/question-categories/**").authenticated()
+
                         .requestMatchers("/api/profile/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/department/**").authenticated()
