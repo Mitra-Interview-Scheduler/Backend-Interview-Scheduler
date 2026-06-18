@@ -58,7 +58,7 @@ public class CandidateStepPipelineService {
         }
 
         List<MasterStep> masterSteps = masterStepRepository
-                .findByIsDefaultStepTrueOrderByStepOrderAscDisplayOrderAsc();
+                .findByIsDefaultStepTrueAndIsVisibleTrueOrderByStepOrderAscDisplayOrderAsc();
         if (masterSteps.isEmpty()) {
             throw new RuntimeException("Master step type not configured");
         }
@@ -86,6 +86,7 @@ public class CandidateStepPipelineService {
                 .orElseThrow(() -> new RuntimeException("Candidate record profile not found"));
         masterStepService.assignStatus(candidate, MasterStatus.REJECTED);
         candidateRepository.save(candidate);
+        cleanupInvisibleStepsIfClosing(candidateId, MasterStatus.REJECTED);
     }
 
     @Transactional
@@ -167,6 +168,7 @@ public class CandidateStepPipelineService {
 
         if (existingStep.isPresent()) {
             activateExistingStep(candidateId, existingStep.get().getSequenceOrder());
+            cleanupInvisibleStepsIfClosing(candidateId, newStatus);
             return;
         }
 
@@ -183,6 +185,14 @@ public class CandidateStepPipelineService {
 
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
         insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
+        cleanupInvisibleStepsIfClosing(candidateId, newStatus);
+    }
+
+    private void cleanupInvisibleStepsIfClosing(Long candidateId, MasterStatus newStatus) {
+        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
+        if (masterStep != null && masterStep.isClosingStep()) {
+            pipelineRepository.deleteInvisibleStepsByCandidateId(candidateId);
+        }
     }
 
     private void handleRepeatableStatusChange(Long candidateId,

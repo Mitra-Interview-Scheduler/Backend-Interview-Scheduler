@@ -9,11 +9,13 @@ import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
+import com.nemal.entity.MasterStep;
 import com.nemal.enums.MasterStatus;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
+import com.nemal.repository.MasterStepRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,6 +36,8 @@ public class CandidateService {
     private final DesignationRepository designationRepository;
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final MasterStepService masterStepService;
+    private final MasterStepRepository masterStepRepository;
+    private final CandidateClosureService candidateClosureService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -49,7 +53,9 @@ public class CandidateService {
             DepartmentRepository departmentRepository,
             DesignationRepository designationRepository,
             CandidateStepPipelineService candidateStepPipelineService,
-            MasterStepService masterStepService
+            MasterStepService masterStepService,
+            MasterStepRepository masterStepRepository,
+            CandidateClosureService candidateClosureService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -58,6 +64,8 @@ public class CandidateService {
         this.designationRepository = designationRepository;
         this.candidateStepPipelineService = candidateStepPipelineService;
         this.masterStepService = masterStepService;
+        this.masterStepRepository = masterStepRepository;
+        this.candidateClosureService = candidateClosureService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -70,7 +78,7 @@ public class CandidateService {
     public CandidateDto getCandidateById(Long id) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
-        return CandidateDto.from(candidate);
+        return CandidateDto.from(candidate, candidateClosureService.getLatestClosure(id));
     }
 
     @Transactional(readOnly = true)
@@ -274,6 +282,11 @@ public class CandidateService {
             boolean shouldSyncPipeline = statusChanged || addPipelineRound;
 
             if (statusChanged) {
+                MasterStep targetStep = masterStepRepository.findByStatusKey(dto.status().name());
+                if (targetStep != null && targetStep.isClosingStep() && targetStep.isVisible()) {
+                    throw new IllegalArgumentException(
+                            "Use Close Application to move the candidate to a closing stage.");
+                }
                 masterStepService.assignStatus(candidate, dto.status());
             }
 

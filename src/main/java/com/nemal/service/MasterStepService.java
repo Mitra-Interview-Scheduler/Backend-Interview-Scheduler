@@ -26,7 +26,7 @@ public class MasterStepService {
     }
 
     public List<CandidateStepDto> getClosingCandidateSteps() {
-        return masterStepRepository.findAllByIsActiveTrueAndIsClosingStepTrueOrderByDisplayOrderAsc()
+        return masterStepRepository.findAllByIsActiveTrueAndIsClosingStepTrueAndIsVisibleTrueOrderByDisplayOrderAsc()
                 .stream()
                 .map(CandidateStepDto::from)
                 .collect(Collectors.toList());

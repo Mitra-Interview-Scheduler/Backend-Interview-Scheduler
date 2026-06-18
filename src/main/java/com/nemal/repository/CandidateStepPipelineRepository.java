@@ -72,4 +72,8 @@ public interface CandidateStepPipelineRepository extends JpaRepository<Candidate
         bumpSequenceOrdersForShift(candidateId, targetSequenceOrder, tempOffset);
         normalizeSequenceOrdersAfterShift(candidateId, targetSequenceOrder, tempOffset, normalizeBy);
     }
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM CandidateStepPipeline cps WHERE cps.candidate.id = :candidateId AND cps.step.isVisible = false")
+    int deleteInvisibleStepsByCandidateId(@Param("candidateId") Long candidateId);
 }
