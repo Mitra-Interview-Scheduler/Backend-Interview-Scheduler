@@ -75,13 +75,14 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/availability/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
 
-                        // Master data writes: ADMIN only; reads for authenticated users
-                        .requestMatchers(HttpMethod.POST, "/api/designations", "/api/designations/**").hasRole("ADMIN")
+                        // Master data writes: ADMIN for updates/deletes; create allowed for interviewers
+                        .requestMatchers(HttpMethod.POST, "/api/departments").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/designations", "/api/designations/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/designations/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/designations/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/designations/**").authenticated()
 
-                        .requestMatchers(HttpMethod.POST, "/api/tiers", "/api/tiers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/tiers", "/api/tiers/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/tiers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/tiers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/tiers/**").authenticated()
@@ -110,9 +111,20 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/candidateforms").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/obligatory-questions", "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/feedback/obligatory-questions").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR")
-                        .requestMatchers("/api/feedback/forms/**", "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/feedback/questions/**").hasAnyRole("HR", "ADMIN")
 
                         .anyRequest().authenticated()
                 )

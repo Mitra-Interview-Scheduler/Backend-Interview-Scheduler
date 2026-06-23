@@ -66,10 +66,10 @@ public class FeedbackController {
     @GetMapping("/candidateforms")
     public ResponseEntity<?> candidateInterviewForms(
             @RequestParam(required = false) Long departmentId,
-            @RequestParam(required = false) Long designationId) {
+            @RequestParam(required = false) Long designationId,
+            @RequestParam(required = false) String interviewType) {
         try {
-            // Build the DTO manually using the parameters
-            CandidateFormFilterDto dto = new CandidateFormFilterDto( designationId,departmentId);
+            CandidateFormFilterDto dto = new CandidateFormFilterDto(designationId, departmentId, interviewType);
             return ResponseEntity.ok(feedbackService.listFilteredFormsByDepartmentAndDesignation(dto));
         } catch (Exception e) {
             logger.error("Failed to list feedback forms: {}", e.getMessage(), e);
@@ -157,6 +157,54 @@ public class FeedbackController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             logger.error("Failed to delete feedback question {}: {}", id, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @GetMapping("/obligatory-questions")
+    public ResponseEntity<?> listObligatoryQuestions() {
+        try {
+            return ResponseEntity.ok(feedbackService.listObligatoryQuestions());
+        } catch (Exception e) {
+            logger.error("Failed to list obligatory questions: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @PostMapping("/obligatory-questions")
+    public ResponseEntity<?> createObligatoryQuestion(@Valid @RequestBody CreateFeedbackQuestionDto dto) {
+        try {
+            FeedbackQuestionDto created = feedbackService.createObligatoryQuestion(dto);
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        } catch (Exception e) {
+            logger.error("Failed to create obligatory question: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @PutMapping("/obligatory-questions/{id}")
+    public ResponseEntity<?> updateObligatoryQuestion(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateFeedbackQuestionDto dto) {
+        try {
+            return ResponseEntity.ok(feedbackService.updateObligatoryQuestion(id, dto));
+        } catch (Exception e) {
+            logger.error("Failed to update obligatory question {}: {}", id, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @DeleteMapping("/obligatory-questions/{id}")
+    public ResponseEntity<?> deleteObligatoryQuestion(@PathVariable Long id) {
+        try {
+            feedbackService.deleteObligatoryQuestion(id);
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            logger.error("Failed to delete obligatory question {}: {}", id, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
     }

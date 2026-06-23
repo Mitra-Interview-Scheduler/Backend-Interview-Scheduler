@@ -63,7 +63,8 @@ public class FeedbackService {
             form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
-                parseLongList(form.getDesignationIdsJson())
+                parseLongList(form.getDesignationIdsJson()),
+                parseStringList(form.getInterviewTypesJson())
             ),
             questions,
             obligatoryQuestions
@@ -77,6 +78,7 @@ public class FeedbackService {
             .description(dto.description())
             .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
             .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .interviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())))
             .seriesKey(UUID.randomUUID().toString())
             .versionNumber(1)
             .isActive(true)
@@ -107,6 +109,7 @@ public class FeedbackService {
             currentForm.setDescription(dto.description());
             currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
             currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            currentForm.setInterviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())));
             FeedbackForm updated = feedbackFormRepository.save(currentForm);
             return getFormById(updated.getId());
         }
@@ -160,6 +163,7 @@ public class FeedbackService {
             currentForm.setDescription(dto.description());
             currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
             currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            currentForm.setInterviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())));
             FeedbackForm updated = feedbackFormRepository.save(currentForm);
             return getFormById(updated.getId());
         }
@@ -170,6 +174,7 @@ public class FeedbackService {
             .description(dto.description())
             .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
             .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .interviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())))
             .seriesKey(currentForm.getSeriesKey())
             .versionNumber((currentForm.getVersionNumber() == null ? 1 : currentForm.getVersionNumber()) + 1)
             .isActive(true)
@@ -241,6 +246,77 @@ public class FeedbackService {
                 .orElseThrow(() -> new RuntimeException("Feedback question not found: " + questionId));
         q.setActive(false);
         feedbackQuestionRepository.save(q);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FeedbackQuestionDto> listObligatoryQuestions() {
+        return feedbackQuestionRepository.findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
+    }
+
+    @Transactional
+    public FeedbackQuestionDto createObligatoryQuestion(CreateFeedbackQuestionDto dto) {
+        int displayOrder = dto.order() != null
+                ? dto.order()
+                : nextObligatoryDisplayOrder();
+
+        FeedbackQuestion question = FeedbackQuestion.builder()
+                .form(null)
+                .displayOrder(displayOrder)
+                .label(dto.label())
+                .category(questionCategoryService.requireObligatoryCategory())
+                .type(dto.type())
+                .required(dto.required())
+                .commentsEnabled(dto.commentsEnabled())
+                .placeholder(dto.placeholder())
+                .helpText(dto.helpText())
+                .optionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()))
+                .isActive(true)
+                .isObligatory(true)
+                .build();
+
+        return toQuestionDto(feedbackQuestionRepository.save(question));
+    }
+
+    @Transactional
+    public FeedbackQuestionDto updateObligatoryQuestion(Long questionId, CreateFeedbackQuestionDto dto) {
+        FeedbackQuestion question = requireActiveObligatoryQuestion(questionId);
+
+        question.setDisplayOrder(dto.order() == null ? question.getDisplayOrder() : dto.order());
+        question.setLabel(dto.label());
+        question.setType(dto.type());
+        question.setRequired(dto.required());
+        question.setCommentsEnabled(dto.commentsEnabled());
+        question.setPlaceholder(dto.placeholder());
+        question.setHelpText(dto.helpText());
+        question.setOptionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()));
+
+        return toQuestionDto(feedbackQuestionRepository.save(question));
+    }
+
+    @Transactional
+    public void deleteObligatoryQuestion(Long questionId) {
+        requireActiveObligatoryQuestion(questionId);
+        deleteQuestion(questionId);
+    }
+
+    private FeedbackQuestion requireActiveObligatoryQuestion(Long questionId) {
+        FeedbackQuestion question = feedbackQuestionRepository.findById(questionId)
+                .orElseThrow(() -> new RuntimeException("Feedback question not found: " + questionId));
+        if (!question.isObligatory() || !question.isActive()) {
+            throw new RuntimeException("Question is not an active obligatory question: " + questionId);
+        }
+        return question;
+    }
+
+    private int nextObligatoryDisplayOrder() {
+        return feedbackQuestionRepository.findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
+                .stream()
+                .mapToInt(FeedbackQuestion::getDisplayOrder)
+                .max()
+                .orElse(0) + 1;
     }
 
     @Transactional
@@ -423,7 +499,8 @@ public class FeedbackService {
             form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
-                parseLongList(form.getDesignationIdsJson())
+                parseLongList(form.getDesignationIdsJson()),
+                parseStringList(form.getInterviewTypesJson())
             ),
             questions,
             obligatoryQuestions
@@ -453,7 +530,11 @@ public class FeedbackService {
                     f.getDescription(),
                     f.isActive(),
                     f.getVersionNumber(),
-                    new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
+                    new FeedbackScopesDto(
+                            parseLongList(f.getDepartmentIdsJson()),
+                            parseLongList(f.getDesignationIdsJson()),
+                            parseStringList(f.getInterviewTypesJson())
+                    ),
                     questions,
                     obligatoryQuestions
                 );
@@ -464,7 +545,11 @@ public class FeedbackService {
 
     @Transactional(readOnly = true)
     public List<FeedbackFormDto> listFilteredFormsByDepartmentAndDesignation(CandidateFormFilterDto dto) {
-        return feedbackFormRepository.findActiveFormsByDepartmentAndDesignation(dto.departmentId(), dto.targetDesignationId())
+        String interviewType = normalizeInterviewTypeFilter(dto.interviewType());
+        return feedbackFormRepository.findActiveFormsByDepartmentDesignationAndInterviewType(
+                        dto.departmentId(),
+                        dto.targetDesignationId(),
+                        interviewType)
                 .stream()
                 .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(f -> {
@@ -485,7 +570,11 @@ public class FeedbackService {
                             f.getDescription(),
                             f.isActive(),
                             f.getVersionNumber(),
-                            new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
+                            new FeedbackScopesDto(
+                                    parseLongList(f.getDepartmentIdsJson()),
+                                    parseLongList(f.getDesignationIdsJson()),
+                                    parseStringList(f.getInterviewTypesJson())
+                            ),
                             questions,
                             obligatoryQuestions
                     );
@@ -597,6 +686,37 @@ public class FeedbackService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize JSON value", e);
         }
+    }
+
+    private List<String> parseStringList(JsonNode node) {
+        if (node == null || node.isNull() || !node.isArray()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.convertValue(node, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private List<String> normalizeInterviewTypes(FeedbackScopesDto scopes) {
+        if (scopes == null || scopes.interviewTypes() == null) {
+            return List.of();
+        }
+        return scopes.interviewTypes().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(String::toUpperCase)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeInterviewTypeFilter(String interviewType) {
+        if (interviewType == null || interviewType.isBlank()) {
+            return null;
+        }
+        return interviewType.trim().toUpperCase();
     }
 
     private String toStringSafe(Object value) {

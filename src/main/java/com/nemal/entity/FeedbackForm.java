@@ -36,6 +36,10 @@ public class FeedbackForm {
     @Column(name = "designation_ids_json", nullable = false, columnDefinition = "jsonb")
     private JsonNode designationIdsJson;
 
+    @Type(JsonBinaryType.class)
+    @Column(name = "interview_types_json", nullable = false, columnDefinition = "jsonb")
+    private JsonNode interviewTypesJson;
+
     @Column(name = "series_key", nullable = false, length = 36)
     private String seriesKey;
 
@@ -61,6 +65,7 @@ public class FeedbackForm {
         if (versionNumber == null) versionNumber = 1;
         if (departmentIdsJson == null) departmentIdsJson = JsonNodeFactory.instance.arrayNode();
         if (designationIdsJson == null) designationIdsJson = JsonNodeFactory.instance.arrayNode();
+        if (interviewTypesJson == null) interviewTypesJson = JsonNodeFactory.instance.arrayNode();
     }
 
     @PreUpdate

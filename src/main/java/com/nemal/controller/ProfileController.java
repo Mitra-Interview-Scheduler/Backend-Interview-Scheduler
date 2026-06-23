@@ -2,7 +2,9 @@ package com.nemal.controller;
 
 import com.nemal.dto.*;
 import com.nemal.entity.User;
+import com.nemal.service.DepartmentService;
 import com.nemal.service.ProfileService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -15,9 +17,11 @@ import java.util.List;
 public class ProfileController {
 
     private final ProfileService profileService;
+    private final DepartmentService departmentService;
 
-    public ProfileController(ProfileService profileService) {
+    public ProfileController(ProfileService profileService, DepartmentService departmentService) {
         this.profileService = profileService;
+        this.departmentService = departmentService;
     }
 
     @GetMapping("/profile")
@@ -63,7 +67,13 @@ public class ProfileController {
 
     @GetMapping("/departments")
     public ResponseEntity<List<DepartmentDto>> getAllDepartments() {
-        return ResponseEntity.ok(profileService.getAllDepartments());
+        return ResponseEntity.ok(departmentService.getAllDepartments());
+    }
+
+    @PostMapping("/departments")
+    public ResponseEntity<DepartmentDto> createDepartment(@RequestBody CreateDepartmentDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(departmentService.createDepartment(dto));
     }
 
     // Note: Designations are now in DesignationController at /api/designations

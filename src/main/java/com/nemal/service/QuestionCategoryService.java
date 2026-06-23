@@ -128,6 +128,12 @@ public class QuestionCategoryService {
         throw new RuntimeException("Question category is required");
     }
 
+    QuestionCategory requireObligatoryCategory() {
+        return categoryRepository.findByCodeIgnoreCase("OBLIGATORY")
+                .filter(QuestionCategory::isActive)
+                .orElseThrow(() -> new RuntimeException("Obligatory question category not found"));
+    }
+
     private String resolveCode(String code, String label) {
         String resolved = (code != null && !code.isBlank()) ? LookupCodeUtils.toCode(code) : LookupCodeUtils.toCode(label);
         if (resolved.isBlank()) {
