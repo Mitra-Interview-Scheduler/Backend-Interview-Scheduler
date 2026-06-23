@@ -20,5 +20,7 @@ public record CreatePanelInterviewDto(
         List<Long> requiredTechnologyIds,
         boolean isUrgent,
         String notes,
-        String interviewType
+        String interviewType,
+        Long interviewCoordinatorId,
+        Long interviewCoordinatorDepartmentId
 ) {}

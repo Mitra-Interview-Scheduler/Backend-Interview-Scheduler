@@ -51,6 +51,10 @@ public class InterviewPanel {
     @JoinColumn(name = "requested_by_id")
     private User requestedBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "interview_coordinator_id")
+    private User interviewCoordinator;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean isUrgent = false;

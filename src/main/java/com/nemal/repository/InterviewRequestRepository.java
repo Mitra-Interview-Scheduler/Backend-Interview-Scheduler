@@ -20,7 +20,8 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
 
     @Query("SELECT DISTINCT r FROM InterviewRequest r " +
             "LEFT JOIN FETCH r.interviewSchedule " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
             "LEFT JOIN FETCH r.candidate " +
             "WHERE r.candidate.id = :candidateId " +
             "OR (:candidateName IS NOT NULL AND LOWER(TRIM(r.candidateName)) = LOWER(TRIM(:candidateName))) " +

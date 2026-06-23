@@ -20,9 +20,11 @@ import java.util.Set;
 @Service
 public class CandidateStepPipelineService {
 
-    private static final Set<MasterStatus> REPEATABLE_STATUSES = EnumSet.of(
+    private static final Set<MasterStatus> APPENDABLE_STATUSES = EnumSet.of(
             MasterStatus.TECHNICAL_ROUND,
-            MasterStatus.HR_ROUND
+            MasterStatus.HR_ROUND,
+            MasterStatus.ON_HOLD,
+            MasterStatus.OFFER_PENDING
     );
 
     private final CandidateStepPipelineRepository pipelineRepository;
@@ -46,7 +48,9 @@ public class CandidateStepPipelineService {
     }
 
     /**
-     * Initializes the default pipeline. Each row's sequence_order matches the master step's step_order.
+     * Initializes the default pipeline from all active master steps flagged as default.
+     * Uses a sequential sequence_order (1..n) so multiple master steps that share the
+     * same step_order value do not violate uk_candidate_sequence_order.
      */
     @Transactional
     public void initializeDefaultPipeline(Long candidateId) {
@@ -58,22 +62,24 @@ public class CandidateStepPipelineService {
         }
 
         List<MasterStep> masterSteps = masterStepRepository
-                .findByIsDefaultStepTrueAndIsVisibleTrueOrderByStepOrderAscDisplayOrderAsc();
+                .findByIsDefaultStepTrueAndIsActiveTrueOrderByStepOrderAscDisplayOrderAsc();
         if (masterSteps.isEmpty()) {
             throw new RuntimeException("Master step type not configured");
         }
 
+        int sequenceOrder = 1;
         for (MasterStep masterStep : masterSteps) {
             CandidateStepPipeline stepInstance = CandidateStepPipeline.builder()
                     .candidate(candidate)
                     .step(masterStep)
-                    .sequenceOrder(masterStep.getStepOrder())
-                    .stepStatus(masterStep.getStepOrder() == 1
+                    .sequenceOrder(sequenceOrder)
+                    .stepStatus(sequenceOrder == 1
                             ? PipelineStepStatus.CURRENT
                             : PipelineStepStatus.PENDING)
                     .build();
 
             pipelineRepository.save(stepInstance);
+            sequenceOrder++;
         }
     }
 
@@ -143,8 +149,8 @@ public class CandidateStepPipelineService {
 
     /**
      * When candidate macro-status changes, sync the pipeline:
-     * - technical / HR rounds always append after the current step (never reactivate an older round)
-     * - other statuses dedupe: activate the existing row or insert once
+     * - first visit to a pre-seeded PENDING default step activates that row
+     * - every re-entry or new round appends after the current step (like interview history)
      */
     @Transactional
     public void updatePipelineOnStatusChange(Long candidateId,
@@ -156,19 +162,8 @@ public class CandidateStepPipelineService {
             return;
         }
 
-        if (REPEATABLE_STATUSES.contains(newStatus)) {
-            handleRepeatableStatusChange(candidateId, newStatus, pipeline);
-            return;
-        }
-
-        Optional<CandidateStepPipeline> existingStep = pipeline.stream()
-                .filter(p -> p.getStep() != null
-                        && p.getStep().getStatusKey().equalsIgnoreCase(newStatus.name()))
-                .findFirst();
-
-        if (existingStep.isPresent()) {
-            activateExistingStep(candidateId, existingStep.get().getSequenceOrder());
-            cleanupInvisibleStepsIfClosing(candidateId, newStatus);
+        boolean statusChanged = previousStatus == null || previousStatus != newStatus;
+        if (!statusChanged && !addPipelineRound) {
             return;
         }
 
@@ -183,6 +178,22 @@ public class CandidateStepPipelineService {
             return;
         }
 
+        Optional<CandidateStepPipeline> pendingTemplateStep = pipeline.stream()
+                .filter(p -> p.getStep() != null
+                        && p.getStep().getStatusKey().equalsIgnoreCase(newStatus.name())
+                        && p.getStepStatus() == PipelineStepStatus.PENDING)
+                .findFirst();
+
+        boolean shouldAppend = addPipelineRound
+                || APPENDABLE_STATUSES.contains(newStatus)
+                || pendingTemplateStep.isEmpty();
+
+        if (!shouldAppend) {
+            activateExistingStep(candidateId, pendingTemplateStep.get().getSequenceOrder());
+            cleanupInvisibleStepsIfClosing(candidateId, newStatus);
+            return;
+        }
+
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
         insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
         cleanupInvisibleStepsIfClosing(candidateId, newStatus);
@@ -193,18 +204,6 @@ public class CandidateStepPipelineService {
         if (masterStep != null && masterStep.isClosingStep()) {
             pipelineRepository.deleteInvisibleStepsByCandidateId(candidateId);
         }
-    }
-
-    private void handleRepeatableStatusChange(Long candidateId,
-                                              MasterStatus newStatus,
-                                              List<CandidateStepPipeline> pipeline) {
-        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
-        if (masterStep == null) {
-            return;
-        }
-
-        int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
-        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
     }
 
     private int resolveInsertAfterSequenceOrder(List<CandidateStepPipeline> pipeline) {

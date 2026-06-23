@@ -32,6 +32,8 @@ public record CandidateDto(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         boolean isActive,
+        Long coordinatedHrId,
+        String coordinatedHrName,
         CandidateClosureDto closure
 ) {
     public static CandidateDto from(Candidate candidate) {
@@ -68,6 +70,8 @@ public record CandidateDto(
                 candidate.getCreatedAt(),
                 candidate.getUpdatedAt(),
                 candidate.isActive(),
+                candidate.getCoordinatedHr() != null ? candidate.getCoordinatedHr().getId() : null,
+                candidate.getCoordinatedHr() != null ? candidate.getCoordinatedHr().getFullName().trim() : null,
                 closure
         );
     }

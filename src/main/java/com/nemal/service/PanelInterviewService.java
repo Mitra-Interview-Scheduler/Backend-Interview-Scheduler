@@ -36,6 +36,7 @@ public class PanelInterviewService {
     private final NotificationService notificationService;
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final MasterStepService masterStepService;
+    private final UserRepository userRepository;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -48,7 +49,8 @@ public class PanelInterviewService {
             TierRepository tierRepository,
             NotificationService notificationService,
             CandidateStepPipelineService candidateStepPipelineService,
-            MasterStepService masterStepService) {
+            MasterStepService masterStepService,
+            UserRepository userRepository) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -60,6 +62,7 @@ public class PanelInterviewService {
         this.notificationService = notificationService;
         this.candidateStepPipelineService = candidateStepPipelineService;
         this.masterStepService = masterStepService;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -109,12 +112,17 @@ public class PanelInterviewService {
                 })
                 .collect(Collectors.toList());
 
+        User interviewCoordinator = resolveInterviewCoordinator(
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId());
+
         InterviewPanel panel = InterviewPanel.builder()
                 .candidate(candidate)
                 .candidateName(candidateName)
                 .startDateTime(dto.startDateTime())
                 .endDateTime(dto.endDateTime())
                 .requestedBy(requestedBy)
+                .interviewCoordinator(interviewCoordinator)
                 .isUrgent(dto.isUrgent())
                 .notes(dto.notes())
                 .build();
@@ -137,6 +145,7 @@ public class PanelInterviewService {
                     .preferredEndDateTime(dto.endDateTime())
                     .requestedBy(requestedBy)
                     .assignedInterviewer(slot.getInterviewer())
+                    .interviewCoordinator(interviewCoordinator)
                     .availabilitySlot(bookedSlot)
                     .panel(panel)
                     .status(RequestStatus.ACCEPTED)
@@ -179,6 +188,15 @@ public class PanelInterviewService {
 
         InterviewPanel savedPanel = panelRepository.findByIdWithDetails(panel.getId())
                 .orElseThrow(() -> new RuntimeException("Panel not found after save"));
+
+        if (interviewCoordinator != null) {
+            try {
+                notificationService.sendInterviewCoordinatorPanelScheduledNotification(savedPanel, candidateName);
+            } catch (Exception e) {
+                logger.warn("Failed to send coordinator panel notification: {}", e.getMessage());
+            }
+        }
+
         return InterviewPanelDto.from(savedPanel);
     }
 
@@ -386,5 +404,28 @@ public class PanelInterviewService {
         }
 
         return booked;
+    }
+
+    private User resolveInterviewCoordinator(Long coordinatorId, Long expectedDepartmentId) {
+        if (coordinatorId == null) {
+            return null;
+        }
+
+        User user = userRepository.findById(coordinatorId)
+                .orElseThrow(() -> new IllegalArgumentException("Interview coordinator not found"));
+
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Interview coordinator is inactive");
+        }
+
+        if (expectedDepartmentId != null) {
+            if (user.getDepartment() == null
+                    || !user.getDepartment().getId().equals(expectedDepartmentId)) {
+                throw new IllegalArgumentException(
+                        "Interview coordinator must belong to the selected department");
+            }
+        }
+
+        return user;
     }
 }

@@ -22,6 +22,9 @@ public record InterviewRequestDto(
         String requestedByName,
         Long assignedInterviewerId,
         String assignedInterviewerName,
+        String assignedInterviewerDesignationName,
+        Long interviewCoordinatorId,
+        String interviewCoordinatorName,
         Long availabilitySlotId,
         Long panelId,
         RequestStatus status,
@@ -62,6 +65,12 @@ public record InterviewRequestDto(
                 request.getRequestedBy() != null ? request.getRequestedBy().getFullName() : null,
                 request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getId() : null,
                 request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getFullName() : null,
+                request.getAssignedInterviewer() != null
+                        && request.getAssignedInterviewer().getCurrentDesignation() != null
+                        ? request.getAssignedInterviewer().getCurrentDesignation().getName()
+                        : null,
+                request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getId() : null,
+                request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getFullName().trim() : null,
                 request.getAvailabilitySlot() != null ? request.getAvailabilitySlot().getId() : null,
                 request.getPanel() != null ? request.getPanel().getId() : null,
                 request.getStatus(),

@@ -3,6 +3,7 @@ package com.nemal.service;
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
@@ -10,18 +11,22 @@ import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.entity.MasterStep;
+import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
+import com.nemal.enums.Role;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.MasterStepRepository;
+import com.nemal.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.List;
 import java.util.Set;
@@ -38,6 +43,7 @@ public class CandidateService {
     private final MasterStepService masterStepService;
     private final MasterStepRepository masterStepRepository;
     private final CandidateClosureService candidateClosureService;
+    private final UserRepository userRepository;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -55,7 +61,8 @@ public class CandidateService {
             CandidateStepPipelineService candidateStepPipelineService,
             MasterStepService masterStepService,
             MasterStepRepository masterStepRepository,
-            CandidateClosureService candidateClosureService
+            CandidateClosureService candidateClosureService,
+            UserRepository userRepository
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -66,9 +73,18 @@ public class CandidateService {
         this.masterStepService = masterStepService;
         this.masterStepRepository = masterStepRepository;
         this.candidateClosureService = candidateClosureService;
+        this.userRepository = userRepository;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
+
+    public List<DepartmentUserDto> getCoordinatedHrOptions() {
+        return userRepository.findByRolesContaining(Role.HR).stream()
+                .filter(User::isActive)
+                .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
+                .map(DepartmentUserDto::from)
+                .collect(Collectors.toList());
+    }
 
     public List<CandidateDto> getAllCandidates() {
         return candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc()
@@ -190,6 +206,11 @@ public class CandidateService {
 
     @Transactional
     public CandidateDto createCandidate(CreateCandidateDto dto) {
+        if (dto.coordinatedHrId() == null) {
+            throw new IllegalArgumentException("Coordinated HR is required");
+        }
+        User coordinatedHr = resolveCoordinatedHr(dto.coordinatedHrId());
+
         // ── Global email uniqueness (includes soft-deleted rows) ──────────────
         String normalizedEmail = dto.email().trim().toLowerCase();
         if (candidateRepository.existsByEmail(normalizedEmail)) {
@@ -232,6 +253,7 @@ public class CandidateService {
                 .location(dto.location())
                 .notes(dto.notes())
                 .yearsOfExperience(dto.yearsOfExperience())
+                .coordinatedHr(coordinatedHr)
                 .isActive(true)
                 .build();
 
@@ -312,6 +334,10 @@ public class CandidateService {
                         "Designation does not belong to the candidate's department");
             }
             candidate.setTargetDesignation(designation);
+        }
+
+        if (dto.coordinatedHrId() != null) {
+            candidate.setCoordinatedHr(resolveCoordinatedHr(dto.coordinatedHrId()));
         }
 
         candidate = candidateRepository.save(candidate);
@@ -416,5 +442,21 @@ public class CandidateService {
         return file.getContentType() == null || file.getContentType().isBlank()
                 ? "application/octet-stream"
                 : file.getContentType();
+    }
+
+    private User resolveCoordinatedHr(Long coordinatedHrId) {
+        User user = userRepository.findById(coordinatedHrId)
+                .orElseThrow(() -> new IllegalArgumentException("Coordinated HR user not found"));
+
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Coordinated HR user is inactive");
+        }
+
+        boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
+        if (!isHrOrAdmin) {
+            throw new IllegalArgumentException("Coordinated HR must be an HR or Admin user");
+        }
+
+        return user;
     }
 }

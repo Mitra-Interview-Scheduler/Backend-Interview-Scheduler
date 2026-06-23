@@ -54,6 +54,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Candidates: HR/ADMIN for lists, documents, mutations, close; single GET for interviewers
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/coordinated-hr-options").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates/search").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates/department/**").hasAnyRole("HR", "ADMIN")

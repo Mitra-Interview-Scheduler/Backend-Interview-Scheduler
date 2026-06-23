@@ -20,5 +20,7 @@ public record CreateInterviewRequestDto(
 
         boolean isUrgent,
         String notes,
-        String interviewType
+        String interviewType,
+        Long interviewCoordinatorId,
+        Long interviewCoordinatorDepartmentId
 ) {}

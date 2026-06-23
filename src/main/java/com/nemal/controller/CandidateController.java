@@ -4,6 +4,7 @@ import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CloseCandidateDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.CandidateDocument;
@@ -46,6 +47,11 @@ public class CandidateController {
                 .map(Enum::name)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(statuses);
+    }
+
+    @GetMapping("/coordinated-hr-options")
+    public ResponseEntity<List<DepartmentUserDto>> getCoordinatedHrOptions() {
+        return ResponseEntity.ok(candidateService.getCoordinatedHrOptions());
     }
 
     @GetMapping

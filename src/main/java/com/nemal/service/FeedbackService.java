@@ -19,7 +19,9 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -32,6 +34,7 @@ public class FeedbackService {
     private final FeedbackQuestionRepository feedbackQuestionRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final InterviewPanelRepository interviewPanelRepository;
     private final QuestionCategoryService questionCategoryService;
     private final ObjectMapper objectMapper;
 
@@ -296,8 +299,12 @@ public class FeedbackService {
 
     @Transactional(readOnly = true)
     public Optional<FeedbackResponseDto> findFeedbackForInterview(Long interviewScheduleId) {
-        return feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
+        Optional<FeedbackResponseDto> direct = feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
                 .map(this::toResponseDto);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        return findPanelFeedbackForSchedule(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)
@@ -314,12 +321,48 @@ public class FeedbackService {
         boolean isHr = user.getRoles().contains(Role.HR);
         boolean isAssignedInterviewer = schedule.getInterviewer() != null
                 && schedule.getInterviewer().getId().equals(user.getId());
+        boolean isPanelPeer = !isAssignedInterviewer && isPanelInterviewerForSchedule(user, schedule);
 
-        if (!isHr && !isAssignedInterviewer) {
+        if (!isHr && !isAssignedInterviewer && !isPanelPeer) {
             throw new RuntimeException("You are not allowed to view feedback for this interview");
         }
 
         return getFeedbackForInterview(interviewScheduleId);
+    }
+
+    private Optional<FeedbackResponseDto> findPanelFeedbackForSchedule(Long interviewScheduleId) {
+        InterviewSchedule schedule = interviewScheduleRepository.findById(interviewScheduleId).orElse(null);
+        if (schedule == null || schedule.getRequest() == null || schedule.getRequest().getPanel() == null) {
+            return Optional.empty();
+        }
+
+        Long panelId = schedule.getRequest().getPanel().getId();
+        return interviewPanelRepository.findByIdWithDetails(panelId)
+                .map(InterviewPanel::getPanelRequests)
+                .orElse(Set.of())
+                .stream()
+                .map(InterviewRequest::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(InterviewSchedule::getId)
+                .map(feedbackResponseRepository::findByInterviewScheduleId)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(this::toResponseDto)
+                .findFirst();
+    }
+
+    private boolean isPanelInterviewerForSchedule(User user, InterviewSchedule schedule) {
+        if (schedule.getRequest() == null || schedule.getRequest().getPanel() == null) {
+            return false;
+        }
+        Long panelId = schedule.getRequest().getPanel().getId();
+        return interviewPanelRepository.findByIdWithDetails(panelId)
+                .map(InterviewPanel::getPanelRequests)
+                .orElse(Set.of())
+                .stream()
+                .map(InterviewRequest::getAssignedInterviewer)
+                .filter(Objects::nonNull)
+                .anyMatch(interviewer -> interviewer.getId().equals(user.getId()));
     }
 
     private FeedbackQuestion buildQuestionFromDto(FeedbackForm form, CreateFeedbackQuestionDto dto, int displayOrder) {
