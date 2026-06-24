@@ -28,7 +28,7 @@ public class FeedbackQuestion {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
-    @Column(nullable = false, length = 200)
+    @Column(nullable = false, length = 1000)
     private String label;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
