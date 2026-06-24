@@ -35,6 +35,7 @@ public class FeedbackService {
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final InterviewPanelRepository interviewPanelRepository;
+    private final InterviewRequestRepository interviewRequestRepository;
     private final QuestionCategoryService questionCategoryService;
     private final ObjectMapper objectMapper;
 
@@ -73,6 +74,7 @@ public class FeedbackService {
 
     @Transactional
     public FeedbackFormDto createForm(CreateFeedbackFormDto dto) {
+        validateFormScopes(dto.scopes());
         FeedbackForm form = FeedbackForm.builder()
             .name(dto.name())
             .description(dto.description())
@@ -100,6 +102,7 @@ public class FeedbackService {
 
     @Transactional
     public FeedbackFormDto updateForm(Long formId, CreateFeedbackFormDto dto) {
+        validateFormScopes(dto.scopes());
         FeedbackForm currentForm = feedbackFormRepository.findById(formId)
                 .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
         // If the update contains no questions, treat it as a scope/name/description update
@@ -406,19 +409,41 @@ public class FeedbackService {
         return getFeedbackForInterview(interviewScheduleId);
     }
 
+    @Transactional(readOnly = true)
+    public FeedbackInterviewViewDto getFeedbackViewForInterview(Long interviewScheduleId, User user) {
+        FeedbackResponseDto response = getFeedbackForInterview(interviewScheduleId, user);
+        FeedbackFormDto form = null;
+        if (response.feedbackFormId() != null) {
+            form = getFormById(response.feedbackFormId());
+        }
+        return new FeedbackInterviewViewDto(response, form);
+    }
+
     private Optional<FeedbackResponseDto> findPanelFeedbackForSchedule(Long interviewScheduleId) {
-        InterviewSchedule schedule = interviewScheduleRepository.findById(interviewScheduleId).orElse(null);
-        if (schedule == null || schedule.getRequest() == null || schedule.getRequest().getPanel() == null) {
+        Optional<FeedbackResponseDto> peerFeedback = feedbackResponseRepository
+                .findPanelFeedbackForPeerSchedule(interviewScheduleId)
+                .stream()
+                .findFirst()
+                .map(this::toResponseDto);
+        if (peerFeedback.isPresent()) {
+            return peerFeedback;
+        }
+
+        Long panelId = resolvePanelIdForSchedule(interviewScheduleId);
+        if (panelId == null) {
             return Optional.empty();
         }
 
-        Long panelId = schedule.getRequest().getPanel().getId();
-        return interviewPanelRepository.findByIdWithDetails(panelId)
-                .map(InterviewPanel::getPanelRequests)
-                .orElse(Set.of())
+        Optional<FeedbackResponseDto> panelFeedback = feedbackResponseRepository
+                .findByPanelIdOrderBySubmittedAtDesc(panelId)
                 .stream()
-                .map(InterviewRequest::getInterviewSchedule)
-                .filter(Objects::nonNull)
+                .findFirst()
+                .map(this::toResponseDto);
+        if (panelFeedback.isPresent()) {
+            return panelFeedback;
+        }
+
+        return interviewScheduleRepository.findByPanelId(panelId).stream()
                 .map(InterviewSchedule::getId)
                 .map(feedbackResponseRepository::findByInterviewScheduleId)
                 .filter(Optional::isPresent)
@@ -427,11 +452,39 @@ public class FeedbackService {
                 .findFirst();
     }
 
+    private Long resolvePanelIdForSchedule(Long interviewScheduleId) {
+        Optional<Long> fromRequest = interviewRequestRepository
+                .findPanelIdByInterviewScheduleId(interviewScheduleId);
+        if (fromRequest.isPresent()) {
+            return fromRequest.get();
+        }
+
+        Optional<Long> fromSchedule = interviewScheduleRepository.findByIdWithRequestAndPanel(interviewScheduleId)
+                .map(InterviewSchedule::getRequest)
+                .filter(Objects::nonNull)
+                .map(InterviewRequest::getPanel)
+                .filter(Objects::nonNull)
+                .map(InterviewPanel::getId);
+
+        if (fromSchedule.isPresent()) {
+            return fromSchedule.get();
+        }
+
+        return interviewRequestRepository.findByInterviewScheduleIdWithDetails(interviewScheduleId)
+                .stream()
+                .findFirst()
+                .map(InterviewRequest::getPanel)
+                .filter(Objects::nonNull)
+                .map(InterviewPanel::getId)
+                .orElse(null);
+    }
+
     private boolean isPanelInterviewerForSchedule(User user, InterviewSchedule schedule) {
-        if (schedule.getRequest() == null || schedule.getRequest().getPanel() == null) {
+        Long panelId = resolvePanelIdForSchedule(schedule.getId());
+        if (panelId == null) {
             return false;
         }
-        Long panelId = schedule.getRequest().getPanel().getId();
+
         return interviewPanelRepository.findByIdWithDetails(panelId)
                 .map(InterviewPanel::getPanelRequests)
                 .orElse(Set.of())
@@ -606,7 +659,7 @@ public class FeedbackService {
                 response.getId(),
                 response.getInterviewSchedule().getId(),
                 response.getForm() != null ? response.getForm().getId() : null,
-                response.getInterviewer().getId(),
+                response.getInterviewer() != null ? response.getInterviewer().getId() : null,
                 parseResponseMap(response.getResponsesJson()),
                 response.getSubmittedAt()
         );
@@ -717,6 +770,17 @@ public class FeedbackService {
             return null;
         }
         return interviewType.trim().toUpperCase();
+    }
+
+    private void validateFormScopes(FeedbackScopesDto scopes) {
+        if (scopes == null
+                || scopes.departmentIds() == null
+                || scopes.departmentIds().isEmpty()) {
+            throw new IllegalArgumentException("Department is required");
+        }
+        if (normalizeInterviewTypes(scopes).isEmpty()) {
+            throw new IllegalArgumentException("Interview type is required");
+        }
     }
 
     private String toStringSafe(Object value) {

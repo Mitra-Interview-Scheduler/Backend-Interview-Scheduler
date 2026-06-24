@@ -26,12 +26,24 @@ public interface FeedbackFormRepository extends JpaRepository<FeedbackForm, Long
     @Query(value = """
         SELECT * FROM feedback_forms f
         WHERE f.is_active = true
-        AND (jsonb_array_length(f.department_ids_json) = 0 OR f.department_ids_json @> to_jsonb(:departmentId))
-        AND (jsonb_array_length(f.designation_ids_json) = 0 OR f.designation_ids_json @> to_jsonb(:designationId))
+        AND (
+            :departmentId IS NULL
+            OR (
+                jsonb_array_length(f.department_ids_json) > 0
+                AND f.department_ids_json @> to_jsonb(:departmentId)
+            )
+        )
+        AND (
+            :designationId IS NULL
+            OR jsonb_array_length(f.designation_ids_json) = 0
+            OR f.designation_ids_json @> to_jsonb(:designationId)
+        )
         AND (
             :interviewType IS NULL
-            OR jsonb_array_length(f.interview_types_json) = 0
-            OR f.interview_types_json @> jsonb_build_array(:interviewType)
+            OR (
+                jsonb_array_length(f.interview_types_json) > 0
+                AND f.interview_types_json @> jsonb_build_array(:interviewType)
+            )
         )
         """, nativeQuery = true)
     List<FeedbackForm> findActiveFormsByDepartmentDesignationAndInterviewType(

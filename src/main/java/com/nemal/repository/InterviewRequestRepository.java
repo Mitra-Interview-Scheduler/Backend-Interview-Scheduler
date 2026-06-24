@@ -9,11 +9,27 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InterviewRequestRepository extends JpaRepository<InterviewRequest, Long> {
 
-        List<InterviewRequest> findByInterviewScheduleId(Long interviewScheduleId);
+    @Query("""
+            SELECT r.panel.id FROM InterviewRequest r
+            WHERE r.interviewSchedule.id = :scheduleId AND r.panel IS NOT NULL
+            """)
+    Optional<Long> findPanelIdByInterviewScheduleId(@Param("scheduleId") Long scheduleId);
+
+    List<InterviewRequest> findByInterviewScheduleId(Long interviewScheduleId);
+
+    @Query("""
+            SELECT r FROM InterviewRequest r
+            LEFT JOIN FETCH r.interviewSchedule s
+            LEFT JOIN FETCH r.panel
+            WHERE s.id = :interviewScheduleId
+            """)
+    List<InterviewRequest> findByInterviewScheduleIdWithDetails(
+            @Param("interviewScheduleId") Long interviewScheduleId);
     List<InterviewRequest> findByRequestedByIdOrderByCreatedAtDesc(Long userId);
 
     List<InterviewRequest> findByCandidateId(Long candidateId);

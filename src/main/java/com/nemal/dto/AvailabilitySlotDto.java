@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.AvailabilitySlot;
+import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.SlotStatus;
 
 import java.time.LocalDateTime;
@@ -19,13 +20,19 @@ public record AvailabilitySlotDto(
         String interviewStatus  // SCHEDULED | COMPLETED | CANCELLED
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
+        return from(slot, null);
+    }
+
+    public static AvailabilitySlotDto from(AvailabilitySlot slot, InterviewStatus effectiveInterviewStatus) {
         String candidateName = null;
         String interviewStatus = null;
 
         // 1. Try via interviewSchedule → request chain (set for full bookings)
         if (slot.getStatus() == SlotStatus.BOOKED
                 && slot.getInterviewSchedule() != null) {
-            if (slot.getInterviewSchedule().getStatus() != null) {
+            if (effectiveInterviewStatus != null) {
+                interviewStatus = effectiveInterviewStatus.name();
+            } else if (slot.getInterviewSchedule().getStatus() != null) {
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
             }
             if (slot.getInterviewSchedule().getRequest() != null) {

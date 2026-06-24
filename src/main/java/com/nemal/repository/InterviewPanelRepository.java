@@ -69,6 +69,7 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
             "LEFT JOIN FETCH p.panelRequests r " +
             "LEFT JOIN FETCH r.assignedInterviewer ai " +
             "LEFT JOIN FETCH ai.currentDesignation " +
+            "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
             "WHERE p.id = :id")
     Optional<InterviewPanel> findByIdWithDetails(@Param("id") Long id);

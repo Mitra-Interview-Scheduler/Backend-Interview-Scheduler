@@ -77,7 +77,7 @@ public class FeedbackController {
         }
     }
 
-    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @PreAuthorize("hasAnyRole('HR','ADMIN','INTERVIEWER')")
     @GetMapping("/forms/{id}")
     public ResponseEntity<?> getForm(@PathVariable Long id) {
         try {
@@ -228,7 +228,7 @@ public class FeedbackController {
             @AuthenticationPrincipal User user,
             @PathVariable Long interviewScheduleId) {
         try {
-            return ResponseEntity.ok(feedbackService.getFeedbackForInterview(interviewScheduleId, user));
+            return ResponseEntity.ok(feedbackService.getFeedbackViewForInterview(interviewScheduleId, user));
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().contains("not allowed")) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));

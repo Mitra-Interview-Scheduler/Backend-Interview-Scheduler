@@ -196,7 +196,7 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {
-        return interviewRequestRepository.findByInterviewScheduleId(interviewScheduleId);
+        return interviewRequestRepository.findByInterviewScheduleIdWithDetails(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)
@@ -438,16 +438,25 @@ public class InterviewRequestService {
 
         LocalDateTime completedAt = LocalDateTime.now();
         if (panel != null) {
-            for (InterviewRequest panelRequest : panelRequests) {
-                InterviewSchedule panelSchedule = panelRequest.getInterviewSchedule();
-                if (panelSchedule == null || panelSchedule.getStatus() == InterviewStatus.CANCELLED) {
+            List<InterviewSchedule> panelSchedules = interviewScheduleRepository.findByPanelId(panel.getId());
+            if (panelSchedules.isEmpty()) {
+                for (InterviewRequest panelRequest : panelRequests) {
+                    InterviewSchedule panelSchedule = resolveScheduleForRequest(panelRequest);
+                    if (panelSchedule != null && panelSchedule.getStatus() != InterviewStatus.CANCELLED) {
+                        panelSchedules.add(panelSchedule);
+                    }
+                }
+            }
+            for (InterviewSchedule panelSchedule : panelSchedules) {
+                if (panelSchedule.getStatus() == InterviewStatus.CANCELLED) {
                     continue;
                 }
                 panelSchedule.setStatus(InterviewStatus.COMPLETED);
                 panelSchedule.setCompletedAt(completedAt);
                 interviewScheduleRepository.save(panelSchedule);
             }
-            logger.info("Panel interview {} marked COMPLETED for all members by user {}", panel.getId(), user.getId());
+            logger.info("Panel interview {} marked COMPLETED for {} schedule(s) by user {}",
+                    panel.getId(), panelSchedules.size(), user.getId());
         } else {
             schedule.setStatus(InterviewStatus.COMPLETED);
             schedule.setCompletedAt(completedAt);
@@ -490,6 +499,34 @@ public class InterviewRequestService {
                 .map(InterviewRequest::getAssignedInterviewer)
                 .filter(Objects::nonNull)
                 .anyMatch(interviewer -> interviewer.getId().equals(user.getId()));
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewStatus resolveEffectiveInterviewStatus(InterviewSchedule schedule) {
+        if (schedule == null || schedule.getStatus() == null) {
+            return null;
+        }
+        if (schedule.getStatus() == InterviewStatus.COMPLETED
+                || schedule.getStatus() == InterviewStatus.CANCELLED) {
+            return schedule.getStatus();
+        }
+
+        InterviewRequest request = schedule.getRequest();
+        if (request == null || request.getPanel() == null) {
+            return schedule.getStatus();
+        }
+
+        boolean anyCompleted = interviewScheduleRepository.findByPanelId(request.getPanel().getId())
+                .stream()
+                .anyMatch(panelSchedule -> panelSchedule.getStatus() == InterviewStatus.COMPLETED);
+        return anyCompleted ? InterviewStatus.COMPLETED : schedule.getStatus();
+    }
+
+    private InterviewSchedule resolveScheduleForRequest(InterviewRequest request) {
+        if (request.getInterviewSchedule() != null) {
+            return request.getInterviewSchedule();
+        }
+        return interviewScheduleRepository.findByRequestId(request.getId()).orElse(null);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
