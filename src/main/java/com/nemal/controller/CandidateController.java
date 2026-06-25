@@ -50,8 +50,10 @@ public class CandidateController {
     }
 
     @GetMapping("/coordinated-hr-options")
-    public ResponseEntity<List<DepartmentUserDto>> getCoordinatedHrOptions() {
-        return ResponseEntity.ok(candidateService.getCoordinatedHrOptions());
+    public ResponseEntity<List<DepartmentUserDto>> getCoordinatedHrOptions(
+            @RequestParam Long departmentId
+    ) {
+        return ResponseEntity.ok(candidateService.getCoordinatedHrOptions(departmentId));
     }
 
     @GetMapping

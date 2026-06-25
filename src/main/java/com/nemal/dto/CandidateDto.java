@@ -34,6 +34,7 @@ public record CandidateDto(
         boolean isActive,
         Long coordinatedHrId,
         String coordinatedHrName,
+        Long coordinatedHrDepartmentId,
         CandidateClosureDto closure
 ) {
     public static CandidateDto from(Candidate candidate) {
@@ -72,6 +73,9 @@ public record CandidateDto(
                 candidate.isActive(),
                 candidate.getCoordinatedHr() != null ? candidate.getCoordinatedHr().getId() : null,
                 candidate.getCoordinatedHr() != null ? candidate.getCoordinatedHr().getFullName().trim() : null,
+                candidate.getCoordinatedHr() != null && candidate.getCoordinatedHr().getDepartment() != null
+                        ? candidate.getCoordinatedHr().getDepartment().getId()
+                        : null,
                 closure
         );
     }

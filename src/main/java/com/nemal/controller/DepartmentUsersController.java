@@ -26,8 +26,8 @@ public class DepartmentUsersController {
 
     /**
      * List active users for HR pickers.
-     * - departmentId only → all active users in that department (e.g. interview coordinator)
-     * - role only → all active users with that role (e.g. coordinated HR)
+     * - departmentId only → all active users in that department (e.g. interview or candidate coordinator)
+     * - role only → all active users with that role
      * - both → active users in department with that role
      */
     @GetMapping

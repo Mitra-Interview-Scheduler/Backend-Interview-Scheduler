@@ -45,7 +45,7 @@ public class FeedbackService {
                 .orElseThrow(() -> new RuntimeException("No active feedback form found"));
 
         List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
+                .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -120,7 +120,7 @@ public class FeedbackService {
         // If questions are provided, compare them with the current active questions.
         // Only create a new version when questions were added, removed, or edited.
         List<FeedbackQuestionDto> existingQuestions = feedbackQuestionRepository
-                .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(currentForm.getId())
+                .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(currentForm.getId())
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -534,7 +534,7 @@ public class FeedbackService {
             .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
 
         List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-            .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
+            .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
             .stream()
             .map(this::toQuestionDto)
             .toList();
@@ -567,7 +567,7 @@ public class FeedbackService {
                 .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
             .map(f -> {
                 List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                    .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
+                    .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
                     .stream()
                     .map(this::toQuestionDto)
                     .toList();
@@ -607,7 +607,7 @@ public class FeedbackService {
                 .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(f -> {
                     List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                            .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
+                            .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
                             .stream()
                             .map(this::toQuestionDto)
                             .toList();

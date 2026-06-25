@@ -13,7 +13,6 @@ import com.nemal.entity.Designation;
 import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
-import com.nemal.enums.Role;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
@@ -80,19 +79,26 @@ public class CandidateService {
 
     // ── Reads ─────────────────────────────────────────────────────────────────
 
-    public List<DepartmentUserDto> getCoordinatedHrOptions() {
-        return userRepository.findByRolesContaining(Role.HR).stream()
+    public List<DepartmentUserDto> getCoordinatedHrOptions(Long departmentId) {
+        if (departmentId == null) {
+            throw new IllegalArgumentException("Department is required");
+        }
+        departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+        return userRepository.findByDepartment_IdAndIsActiveTrueOrderByFirstNameAscLastNameAsc(departmentId).stream()
                 .filter(User::isActive)
                 .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
                 .map(DepartmentUserDto::from)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<CandidateDto> getAllCandidates() {
         return candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc()
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public CandidateDto getCandidateById(Long id) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
@@ -209,7 +215,7 @@ public class CandidateService {
     @Transactional
     public CandidateDto createCandidate(CreateCandidateDto dto) {
         if (dto.coordinatedHrId() == null) {
-            throw new IllegalArgumentException("Coordinated HR is required");
+            throw new IllegalArgumentException("Candidate coordinator is required");
         }
         User coordinatedHr = resolveCoordinatedHr(dto.coordinatedHrId());
 
@@ -448,15 +454,10 @@ public class CandidateService {
 
     private User resolveCoordinatedHr(Long coordinatedHrId) {
         User user = userRepository.findById(coordinatedHrId)
-                .orElseThrow(() -> new IllegalArgumentException("Coordinated HR user not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Candidate coordinator not found"));
 
         if (!user.isActive()) {
-            throw new IllegalArgumentException("Coordinated HR user is inactive");
-        }
-
-        boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
-        if (!isHrOrAdmin) {
-            throw new IllegalArgumentException("Coordinated HR must be an HR or Admin user");
+            throw new IllegalArgumentException("Candidate coordinator is inactive");
         }
 
         return user;
