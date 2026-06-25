@@ -25,6 +25,7 @@ public record InterviewRequestDto(
         String assignedInterviewerDesignationName,
         Long interviewCoordinatorId,
         String interviewCoordinatorName,
+        String coordinatedHrName,
         Long availabilitySlotId,
         Long panelId,
         RequestStatus status,
@@ -71,6 +72,9 @@ public record InterviewRequestDto(
                         : null,
                 request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getId() : null,
                 request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getFullName().trim() : null,
+                request.getCandidate() != null && request.getCandidate().getCoordinatedHr() != null
+                        ? request.getCandidate().getCoordinatedHr().getFullName().trim()
+                        : null,
                 request.getAvailabilitySlot() != null ? request.getAvailabilitySlot().getId() : null,
                 request.getPanel() != null ? request.getPanel().getId() : null,
                 request.getStatus(),

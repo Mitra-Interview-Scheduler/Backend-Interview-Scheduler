@@ -109,7 +109,12 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "LEFT JOIN FETCH i.interviewerTechnologies it " +
             "LEFT JOIN FETCH it.technology " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.interviewCoordinator " +
+            "LEFT JOIN FETCH req.candidate cand " +
+            "LEFT JOIN FETCH cand.coordinatedHr " +
+            "LEFT JOIN FETCH req.panel panel " +
+            "LEFT JOIN FETCH panel.interviewCoordinator " +
             "WHERE s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.status = 'BOOKED') " +
             "AND s.startDateTime >= :from " +
@@ -127,7 +132,12 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "LEFT JOIN FETCH i.interviewerTechnologies it " +
             "LEFT JOIN FETCH it.technology " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.interviewCoordinator " +
+            "LEFT JOIN FETCH req.candidate cand " +
+            "LEFT JOIN FETCH cand.coordinatedHr " +
+            "LEFT JOIN FETCH req.panel panel " +
+            "LEFT JOIN FETCH panel.interviewCoordinator " +
             "WHERE s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.status = 'BOOKED') " +
             "AND s.startDateTime >= :start " +

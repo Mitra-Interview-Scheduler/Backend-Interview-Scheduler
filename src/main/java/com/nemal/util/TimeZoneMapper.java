@@ -71,7 +71,9 @@ public final class TimeZoneMapper {
                 dto.interviewerLevelOrder(),
                 dto.interviewType(),
                 dto.interviewScheduleId(),
-                dto.interviewStatus()
+                dto.interviewStatus(),
+                dto.interviewCoordinatorName(),
+                dto.coordinatedHrName()
         );
     }
 
@@ -96,6 +98,7 @@ public final class TimeZoneMapper {
                 dto.assignedInterviewerDesignationName(),
                 dto.interviewCoordinatorId(),
                 dto.interviewCoordinatorName(),
+                dto.coordinatedHrName(),
                 dto.availabilitySlotId(),
                 dto.panelId(),
                 dto.status(),

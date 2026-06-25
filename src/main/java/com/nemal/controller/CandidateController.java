@@ -92,7 +92,7 @@ public class CandidateController {
     public ResponseEntity<CandidateDocumentDto> uploadCandidateDocument(
             @PathVariable Long id,
             @RequestParam(defaultValue = "CV") String documentType,
-            @RequestPart("file") MultipartFile file
+            @RequestParam("file") MultipartFile file
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(candidateService.uploadCandidateDocument(id, documentType, file));
@@ -103,7 +103,7 @@ public class CandidateController {
             @PathVariable Long id,
             @PathVariable Long documentId,
             @RequestParam(defaultValue = "CV") String documentType,
-            @RequestPart("file") MultipartFile file
+            @RequestParam("file") MultipartFile file
     ) {
         return ResponseEntity.ok(candidateService.replaceCandidateDocument(id, documentId, documentType, file));
     }

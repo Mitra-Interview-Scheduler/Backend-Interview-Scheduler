@@ -92,7 +92,6 @@ public class CandidateStepPipelineService {
                 .orElseThrow(() -> new RuntimeException("Candidate record profile not found"));
         masterStepService.assignStatus(candidate, MasterStatus.REJECTED);
         candidateRepository.save(candidate);
-        cleanupInvisibleStepsIfClosing(candidateId, MasterStatus.REJECTED);
     }
 
     @Transactional
@@ -190,18 +189,21 @@ public class CandidateStepPipelineService {
 
         if (!shouldAppend) {
             activateExistingStep(candidateId, pendingTemplateStep.get().getSequenceOrder());
-            cleanupInvisibleStepsIfClosing(candidateId, newStatus);
+            cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
             return;
         }
 
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
         insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
-        cleanupInvisibleStepsIfClosing(candidateId, newStatus);
+        cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
     }
 
-    private void cleanupInvisibleStepsIfClosing(Long candidateId, MasterStatus newStatus) {
-        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
-        if (masterStep != null && masterStep.isClosingStep()) {
+    /**
+     * Remove pre-seeded default template rows (invisible steps such as
+     * INTERVIEW_SCHEDULES and DISPOSITION) once the candidate reaches Make Offer.
+     */
+    private void cleanupDefaultTemplateStepsIfNeeded(Long candidateId, MasterStatus newStatus) {
+        if (newStatus == MasterStatus.OFFER_PENDING) {
             pipelineRepository.deleteInvisibleStepsByCandidateId(candidateId);
         }
     }

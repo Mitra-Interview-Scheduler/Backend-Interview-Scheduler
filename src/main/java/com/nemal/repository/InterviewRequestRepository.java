@@ -74,7 +74,9 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
     );
 
     @Query("SELECT DISTINCT r FROM InterviewRequest r " +
-            "LEFT JOIN r.candidate c " +
+            "LEFT JOIN FETCH r.candidate c " +
+            "LEFT JOIN FETCH c.coordinatedHr " +
+            "LEFT JOIN FETCH r.interviewCoordinator " +
             "LEFT JOIN c.targetDesignation cd " +
             "LEFT JOIN r.candidateDesignation rd " +
             "LEFT JOIN cd.tier ct " +
