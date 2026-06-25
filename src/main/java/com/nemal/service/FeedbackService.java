@@ -97,7 +97,7 @@ public class FeedbackService {
             }
         }
 
-        return getActiveFeedbackForm();
+        return getFormById(saved.getId());
     }
 
     @Transactional

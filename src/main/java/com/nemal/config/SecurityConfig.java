@@ -120,7 +120,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR")
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/responses/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/feedback/forms", "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/feedback/forms/**").hasAnyRole("HR", "ADMIN")

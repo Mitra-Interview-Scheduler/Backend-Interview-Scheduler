@@ -50,6 +50,14 @@ public record AvailabilitySlotDto(
             }
         }
 
+        Double duration = slot.getDurationHours();
+        if ((duration == null || duration <= 0)
+                && slot.getStartDateTime() != null
+                && slot.getEndDateTime() != null) {
+            long seconds = java.time.Duration.between(slot.getStartDateTime(), slot.getEndDateTime()).getSeconds();
+            duration = seconds > 0 ? seconds / 3600.0 : 0.0;
+        }
+
         return new AvailabilitySlotDto(
                 slot.getId(),
                 slot.getStartDateTime(),
@@ -59,7 +67,7 @@ public record AvailabilitySlotDto(
                 slot.getRecurrenceGroupId(),
                 slot.getRecurrenceGroupId() != null,
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
-                slot.getDurationHours(),
+                duration,
                 candidateName,
                 interviewStatus
         );
