@@ -249,8 +249,17 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
+                InterviewType interviewType = panel.getPanelRequests().stream()
+                        .map(request -> scheduleRepository.findByRequestId(request.getId()).orElse(null))
+                        .filter(schedule -> schedule != null && schedule.getInterviewType() != null)
+                        .map(InterviewSchedule::getInterviewType)
+                        .findFirst()
+                        .orElse(InterviewType.TECHNICAL);
+                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                logger.info("Candidate {} reset to {} after panel {} cancel",
+                        candidate.getId(), resetStatus, panelId);
             }
         }
 

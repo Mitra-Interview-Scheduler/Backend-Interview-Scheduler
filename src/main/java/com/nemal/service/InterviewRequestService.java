@@ -388,9 +388,14 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
+                InterviewType interviewType = interviewScheduleRepository.findByRequestId(requestId)
+                        .map(InterviewSchedule::getInterviewType)
+                        .orElse(InterviewType.TECHNICAL);
+                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
-                logger.info("Candidate {} reset to SCREENING", candidate.getId());
+                logger.info("Candidate {} reset to {} after {} interview cancel",
+                        candidate.getId(), resetStatus, interviewType);
             }
         }
     }
