@@ -13,5 +13,6 @@ public record CreateCandidateDto(
         String resourceRequestNumber,
         String location,
         String notes,
-        Integer yearsOfExperience
+        Integer yearsOfExperience,
+        Long coordinatedHrId
 ) {}

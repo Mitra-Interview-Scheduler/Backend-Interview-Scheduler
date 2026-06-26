@@ -18,5 +18,6 @@ public record UpdateCandidateDto(
         String notes,
         Integer yearsOfExperience,
         Boolean isActive,
-        Boolean addPipelineRound
+        Boolean addPipelineRound,
+        Long coordinatedHrId
 ) {}

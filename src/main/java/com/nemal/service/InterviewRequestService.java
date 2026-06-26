@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,7 +39,9 @@ public class InterviewRequestService {
     private final NotificationService notificationService;
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final FeedbackResponseRepository feedbackResponseRepository;
+    private final InterviewPanelRepository interviewPanelRepository;
     private final MasterStepService masterStepService;
+    private final UserRepository userRepository;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -79,6 +83,10 @@ public class InterviewRequestService {
 
         AvailabilitySlot bookedSlot = splitAndBookSlot(slot, bookingStart, bookingEnd, candidateName);
 
+        User interviewCoordinator = resolveInterviewCoordinator(
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId());
+
         InterviewRequest request = InterviewRequest.builder()
                 .candidateName(candidateName)
                 .candidate(candidate)
@@ -87,6 +95,7 @@ public class InterviewRequestService {
                 .preferredEndDateTime(bookingEnd)
                 .requestedBy(requestedBy)
                 .assignedInterviewer(slot.getInterviewer())
+                .interviewCoordinator(interviewCoordinator)
                 .availabilitySlot(bookedSlot)
                 .status(RequestStatus.ACCEPTED)
                 .respondedAt(LocalDateTime.now())
@@ -120,6 +129,9 @@ public class InterviewRequestService {
 
         try {
             notificationService.sendInterviewScheduledNotification(saved);
+            if (interviewCoordinator != null) {
+                notificationService.sendInterviewCoordinatorScheduledNotification(saved);
+            }
         } catch (Exception e) {
             logger.warn("Failed to send scheduled notification: {}", e.getMessage());
         }
@@ -184,7 +196,7 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {
-        return interviewRequestRepository.findByInterviewScheduleId(interviewScheduleId);
+        return interviewRequestRepository.findByInterviewScheduleIdWithDetails(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)
@@ -376,9 +388,14 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                masterStepService.assignStatus(candidate, MasterStatus.SCREENING);
+                InterviewType interviewType = interviewScheduleRepository.findByRequestId(requestId)
+                        .map(InterviewSchedule::getInterviewType)
+                        .orElse(InterviewType.TECHNICAL);
+                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
-                logger.info("Candidate {} reset to SCREENING", candidate.getId());
+                logger.info("Candidate {} reset to {} after {} interview cancel",
+                        candidate.getId(), resetStatus, interviewType);
             }
         }
     }
@@ -388,27 +405,74 @@ public class InterviewRequestService {
         InterviewSchedule schedule = interviewScheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + scheduleId));
 
-        if (schedule.getStatus() == InterviewStatus.COMPLETED) {
-            throw new RuntimeException("Interview is already completed");
+        InterviewRequest request = resolveInterviewRequest(schedule, scheduleId);
+        InterviewPanel panel = request.getPanel();
+        Set<InterviewRequest> panelRequests = panel != null
+                ? loadPanelRequests(panel.getId())
+                : Set.of(request);
+
+        if (panel != null) {
+            boolean anyCompleted = panelRequests.stream()
+                    .map(InterviewRequest::getInterviewSchedule)
+                    .filter(Objects::nonNull)
+                    .anyMatch(s -> s.getStatus() == InterviewStatus.COMPLETED);
+            if (anyCompleted) {
+                throw new RuntimeException("Interview is already completed");
+            }
+        } else {
+            if (schedule.getStatus() == InterviewStatus.COMPLETED) {
+                throw new RuntimeException("Interview is already completed");
+            }
         }
+
         if (schedule.getStatus() == InterviewStatus.CANCELLED) {
             throw new RuntimeException("Cannot complete a cancelled interview");
         }
-        if (!feedbackResponseRepository.existsByInterviewScheduleId(scheduleId)) {
+
+        if (!hasPanelFeedback(panelRequests, scheduleId)) {
             throw new RuntimeException("Feedback must be submitted before completing the interview");
         }
 
-        boolean isAssignedInterviewer = schedule.getInterviewer() != null
-                && schedule.getInterviewer().getId().equals(user.getId());
         boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
+        boolean isAssignedInterviewer = panel != null
+                ? isPanelInterviewer(user, panelRequests)
+                : schedule.getInterviewer() != null && schedule.getInterviewer().getId().equals(user.getId());
         if (!isAssignedInterviewer && !isHrOrAdmin) {
             throw new RuntimeException("You are not authorized to complete this interview");
         }
 
-        schedule.setStatus(InterviewStatus.COMPLETED);
-        schedule.setCompletedAt(LocalDateTime.now());
-        interviewScheduleRepository.save(schedule);
+        LocalDateTime completedAt = LocalDateTime.now();
+        if (panel != null) {
+            List<InterviewSchedule> panelSchedules = interviewScheduleRepository.findByPanelId(panel.getId());
+            if (panelSchedules.isEmpty()) {
+                for (InterviewRequest panelRequest : panelRequests) {
+                    InterviewSchedule panelSchedule = resolveScheduleForRequest(panelRequest);
+                    if (panelSchedule != null && panelSchedule.getStatus() != InterviewStatus.CANCELLED) {
+                        panelSchedules.add(panelSchedule);
+                    }
+                }
+            }
+            for (InterviewSchedule panelSchedule : panelSchedules) {
+                if (panelSchedule.getStatus() == InterviewStatus.CANCELLED) {
+                    continue;
+                }
+                panelSchedule.setStatus(InterviewStatus.COMPLETED);
+                panelSchedule.setCompletedAt(completedAt);
+                interviewScheduleRepository.save(panelSchedule);
+            }
+            logger.info("Panel interview {} marked COMPLETED for {} schedule(s) by user {}",
+                    panel.getId(), panelSchedules.size(), user.getId());
+        } else {
+            schedule.setStatus(InterviewStatus.COMPLETED);
+            schedule.setCompletedAt(completedAt);
+            interviewScheduleRepository.save(schedule);
+            logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
+        }
 
+        return InterviewRequestDto.from(request);
+    }
+
+    private InterviewRequest resolveInterviewRequest(InterviewSchedule schedule, Long scheduleId) {
         InterviewRequest request = schedule.getRequest();
         if (request == null) {
             request = interviewRequestRepository.findByInterviewScheduleId(scheduleId)
@@ -416,9 +480,58 @@ public class InterviewRequestService {
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Interview request not found for schedule: " + scheduleId));
         }
+        return request;
+    }
 
-        logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
-        return InterviewRequestDto.from(request);
+    private Set<InterviewRequest> loadPanelRequests(Long panelId) {
+        return interviewPanelRepository.findByIdWithDetails(panelId)
+                .map(InterviewPanel::getPanelRequests)
+                .orElse(Set.of());
+    }
+
+    private boolean hasPanelFeedback(Set<InterviewRequest> panelRequests, Long scheduleId) {
+        if (panelRequests.size() <= 1) {
+            return feedbackResponseRepository.existsByInterviewScheduleId(scheduleId);
+        }
+        return panelRequests.stream()
+                .map(InterviewRequest::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .anyMatch(s -> feedbackResponseRepository.existsByInterviewScheduleId(s.getId()));
+    }
+
+    private boolean isPanelInterviewer(User user, Set<InterviewRequest> panelRequests) {
+        return panelRequests.stream()
+                .map(InterviewRequest::getAssignedInterviewer)
+                .filter(Objects::nonNull)
+                .anyMatch(interviewer -> interviewer.getId().equals(user.getId()));
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewStatus resolveEffectiveInterviewStatus(InterviewSchedule schedule) {
+        if (schedule == null || schedule.getStatus() == null) {
+            return null;
+        }
+        if (schedule.getStatus() == InterviewStatus.COMPLETED
+                || schedule.getStatus() == InterviewStatus.CANCELLED) {
+            return schedule.getStatus();
+        }
+
+        InterviewRequest request = schedule.getRequest();
+        if (request == null || request.getPanel() == null) {
+            return schedule.getStatus();
+        }
+
+        boolean anyCompleted = interviewScheduleRepository.findByPanelId(request.getPanel().getId())
+                .stream()
+                .anyMatch(panelSchedule -> panelSchedule.getStatus() == InterviewStatus.COMPLETED);
+        return anyCompleted ? InterviewStatus.COMPLETED : schedule.getStatus();
+    }
+
+    private InterviewSchedule resolveScheduleForRequest(InterviewRequest request) {
+        if (request.getInterviewSchedule() != null) {
+            return request.getInterviewSchedule();
+        }
+        return interviewScheduleRepository.findByRequestId(request.getId()).orElse(null);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -466,5 +579,28 @@ public class InterviewRequestService {
             availabilitySlotRepository.save(restoredSlot);
             logger.info("Slot {} merged to window {} – {}", restoredSlot.getId(), mergedStart, mergedEnd);
         }
+    }
+
+    private User resolveInterviewCoordinator(Long coordinatorId, Long expectedDepartmentId) {
+        if (coordinatorId == null) {
+            return null;
+        }
+
+        User user = userRepository.findById(coordinatorId)
+                .orElseThrow(() -> new IllegalArgumentException("Interview coordinator not found"));
+
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Interview coordinator is inactive");
+        }
+
+        if (expectedDepartmentId != null) {
+            if (user.getDepartment() == null
+                    || !user.getDepartment().getId().equals(expectedDepartmentId)) {
+                throw new IllegalArgumentException(
+                        "Interview coordinator must belong to the selected department");
+            }
+        }
+
+        return user;
     }
 }

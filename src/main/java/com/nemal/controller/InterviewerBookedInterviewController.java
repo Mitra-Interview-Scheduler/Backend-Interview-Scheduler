@@ -39,7 +39,15 @@ public class InterviewerBookedInterviewController {
         try {
             List<InterviewRequest> requests = interviewRequestService.getBookedInterviewSchedule(interviewScheduleId);
             List<InterviewRequestSimpleDto> dtos = requests.stream()
-                    .map(InterviewRequestSimpleDto::from)
+                    .map(request -> {
+                        InterviewRequestSimpleDto dto = InterviewRequestSimpleDto.from(request);
+                        var effectiveStatus = interviewRequestService.resolveEffectiveInterviewStatus(
+                                request.getInterviewSchedule());
+                        if (effectiveStatus != null) {
+                            dto.setInterviewStatus(effectiveStatus);
+                        }
+                        return dto;
+                    })
                     .collect(Collectors.toList());
             return ResponseEntity.status(HttpStatus.OK).body(dtos);
         } catch (Exception e) {

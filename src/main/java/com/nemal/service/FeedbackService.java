@@ -19,7 +19,9 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -32,6 +34,8 @@ public class FeedbackService {
     private final FeedbackQuestionRepository feedbackQuestionRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final InterviewPanelRepository interviewPanelRepository;
+    private final InterviewRequestRepository interviewRequestRepository;
     private final QuestionCategoryService questionCategoryService;
     private final ObjectMapper objectMapper;
 
@@ -41,7 +45,7 @@ public class FeedbackService {
                 .orElseThrow(() -> new RuntimeException("No active feedback form found"));
 
         List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
+                .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -60,7 +64,8 @@ public class FeedbackService {
             form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
-                parseLongList(form.getDesignationIdsJson())
+                parseLongList(form.getDesignationIdsJson()),
+                parseStringList(form.getInterviewTypesJson())
             ),
             questions,
             obligatoryQuestions
@@ -69,11 +74,13 @@ public class FeedbackService {
 
     @Transactional
     public FeedbackFormDto createForm(CreateFeedbackFormDto dto) {
+        validateFormScopes(dto.scopes());
         FeedbackForm form = FeedbackForm.builder()
             .name(dto.name())
             .description(dto.description())
             .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
             .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .interviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())))
             .seriesKey(UUID.randomUUID().toString())
             .versionNumber(1)
             .isActive(true)
@@ -90,11 +97,12 @@ public class FeedbackService {
             }
         }
 
-        return getActiveFeedbackForm();
+        return getFormById(saved.getId());
     }
 
     @Transactional
     public FeedbackFormDto updateForm(Long formId, CreateFeedbackFormDto dto) {
+        validateFormScopes(dto.scopes());
         FeedbackForm currentForm = feedbackFormRepository.findById(formId)
                 .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
         // If the update contains no questions, treat it as a scope/name/description update
@@ -104,6 +112,7 @@ public class FeedbackService {
             currentForm.setDescription(dto.description());
             currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
             currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            currentForm.setInterviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())));
             FeedbackForm updated = feedbackFormRepository.save(currentForm);
             return getFormById(updated.getId());
         }
@@ -111,7 +120,7 @@ public class FeedbackService {
         // If questions are provided, compare them with the current active questions.
         // Only create a new version when questions were added, removed, or edited.
         List<FeedbackQuestionDto> existingQuestions = feedbackQuestionRepository
-                .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(currentForm.getId())
+                .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(currentForm.getId())
                 .stream()
                 .map(this::toQuestionDto)
                 .toList();
@@ -157,6 +166,7 @@ public class FeedbackService {
             currentForm.setDescription(dto.description());
             currentForm.setDepartmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()));
             currentForm.setDesignationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()));
+            currentForm.setInterviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())));
             FeedbackForm updated = feedbackFormRepository.save(currentForm);
             return getFormById(updated.getId());
         }
@@ -167,6 +177,7 @@ public class FeedbackService {
             .description(dto.description())
             .departmentIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().departmentIds()))
             .designationIdsJson(writeJsonNode(dto.scopes() == null ? List.of() : dto.scopes().designationIds()))
+            .interviewTypesJson(writeJsonNode(normalizeInterviewTypes(dto.scopes())))
             .seriesKey(currentForm.getSeriesKey())
             .versionNumber((currentForm.getVersionNumber() == null ? 1 : currentForm.getVersionNumber()) + 1)
             .isActive(true)
@@ -240,6 +251,77 @@ public class FeedbackService {
         feedbackQuestionRepository.save(q);
     }
 
+    @Transactional(readOnly = true)
+    public List<FeedbackQuestionDto> listObligatoryQuestions() {
+        return feedbackQuestionRepository.findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
+                .stream()
+                .map(this::toQuestionDto)
+                .toList();
+    }
+
+    @Transactional
+    public FeedbackQuestionDto createObligatoryQuestion(CreateFeedbackQuestionDto dto) {
+        int displayOrder = dto.order() != null
+                ? dto.order()
+                : nextObligatoryDisplayOrder();
+
+        FeedbackQuestion question = FeedbackQuestion.builder()
+                .form(null)
+                .displayOrder(displayOrder)
+                .label(dto.label())
+                .category(questionCategoryService.requireObligatoryCategory())
+                .type(dto.type())
+                .required(dto.required())
+                .commentsEnabled(dto.commentsEnabled())
+                .placeholder(dto.placeholder())
+                .helpText(dto.helpText())
+                .optionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()))
+                .isActive(true)
+                .isObligatory(true)
+                .build();
+
+        return toQuestionDto(feedbackQuestionRepository.save(question));
+    }
+
+    @Transactional
+    public FeedbackQuestionDto updateObligatoryQuestion(Long questionId, CreateFeedbackQuestionDto dto) {
+        FeedbackQuestion question = requireActiveObligatoryQuestion(questionId);
+
+        question.setDisplayOrder(dto.order() == null ? question.getDisplayOrder() : dto.order());
+        question.setLabel(dto.label());
+        question.setType(dto.type());
+        question.setRequired(dto.required());
+        question.setCommentsEnabled(dto.commentsEnabled());
+        question.setPlaceholder(dto.placeholder());
+        question.setHelpText(dto.helpText());
+        question.setOptionsJson(writeJsonNode(dto.options() == null ? List.of() : dto.options()));
+
+        return toQuestionDto(feedbackQuestionRepository.save(question));
+    }
+
+    @Transactional
+    public void deleteObligatoryQuestion(Long questionId) {
+        requireActiveObligatoryQuestion(questionId);
+        deleteQuestion(questionId);
+    }
+
+    private FeedbackQuestion requireActiveObligatoryQuestion(Long questionId) {
+        FeedbackQuestion question = feedbackQuestionRepository.findById(questionId)
+                .orElseThrow(() -> new RuntimeException("Feedback question not found: " + questionId));
+        if (!question.isObligatory() || !question.isActive()) {
+            throw new RuntimeException("Question is not an active obligatory question: " + questionId);
+        }
+        return question;
+    }
+
+    private int nextObligatoryDisplayOrder() {
+        return feedbackQuestionRepository.findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc()
+                .stream()
+                .mapToInt(FeedbackQuestion::getDisplayOrder)
+                .max()
+                .orElse(0) + 1;
+    }
+
     @Transactional
     public FeedbackResponseDto submitFeedback(CreateFeedbackResponseDto dto, User interviewer) {
         // Log incoming request DTO for debugging (serialize to JSON)
@@ -296,8 +378,12 @@ public class FeedbackService {
 
     @Transactional(readOnly = true)
     public Optional<FeedbackResponseDto> findFeedbackForInterview(Long interviewScheduleId) {
-        return feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
+        Optional<FeedbackResponseDto> direct = feedbackResponseRepository.findByInterviewScheduleId(interviewScheduleId)
                 .map(this::toResponseDto);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        return findPanelFeedbackForSchedule(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)
@@ -314,12 +400,98 @@ public class FeedbackService {
         boolean isHr = user.getRoles().contains(Role.HR);
         boolean isAssignedInterviewer = schedule.getInterviewer() != null
                 && schedule.getInterviewer().getId().equals(user.getId());
+        boolean isPanelPeer = !isAssignedInterviewer && isPanelInterviewerForSchedule(user, schedule);
 
-        if (!isHr && !isAssignedInterviewer) {
+        if (!isHr && !isAssignedInterviewer && !isPanelPeer) {
             throw new RuntimeException("You are not allowed to view feedback for this interview");
         }
 
         return getFeedbackForInterview(interviewScheduleId);
+    }
+
+    @Transactional(readOnly = true)
+    public FeedbackInterviewViewDto getFeedbackViewForInterview(Long interviewScheduleId, User user) {
+        FeedbackResponseDto response = getFeedbackForInterview(interviewScheduleId, user);
+        FeedbackFormDto form = null;
+        if (response.feedbackFormId() != null) {
+            form = getFormById(response.feedbackFormId());
+        }
+        return new FeedbackInterviewViewDto(response, form);
+    }
+
+    private Optional<FeedbackResponseDto> findPanelFeedbackForSchedule(Long interviewScheduleId) {
+        Optional<FeedbackResponseDto> peerFeedback = feedbackResponseRepository
+                .findPanelFeedbackForPeerSchedule(interviewScheduleId)
+                .stream()
+                .findFirst()
+                .map(this::toResponseDto);
+        if (peerFeedback.isPresent()) {
+            return peerFeedback;
+        }
+
+        Long panelId = resolvePanelIdForSchedule(interviewScheduleId);
+        if (panelId == null) {
+            return Optional.empty();
+        }
+
+        Optional<FeedbackResponseDto> panelFeedback = feedbackResponseRepository
+                .findByPanelIdOrderBySubmittedAtDesc(panelId)
+                .stream()
+                .findFirst()
+                .map(this::toResponseDto);
+        if (panelFeedback.isPresent()) {
+            return panelFeedback;
+        }
+
+        return interviewScheduleRepository.findByPanelId(panelId).stream()
+                .map(InterviewSchedule::getId)
+                .map(feedbackResponseRepository::findByInterviewScheduleId)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(this::toResponseDto)
+                .findFirst();
+    }
+
+    private Long resolvePanelIdForSchedule(Long interviewScheduleId) {
+        Optional<Long> fromRequest = interviewRequestRepository
+                .findPanelIdByInterviewScheduleId(interviewScheduleId);
+        if (fromRequest.isPresent()) {
+            return fromRequest.get();
+        }
+
+        Optional<Long> fromSchedule = interviewScheduleRepository.findByIdWithRequestAndPanel(interviewScheduleId)
+                .map(InterviewSchedule::getRequest)
+                .filter(Objects::nonNull)
+                .map(InterviewRequest::getPanel)
+                .filter(Objects::nonNull)
+                .map(InterviewPanel::getId);
+
+        if (fromSchedule.isPresent()) {
+            return fromSchedule.get();
+        }
+
+        return interviewRequestRepository.findByInterviewScheduleIdWithDetails(interviewScheduleId)
+                .stream()
+                .findFirst()
+                .map(InterviewRequest::getPanel)
+                .filter(Objects::nonNull)
+                .map(InterviewPanel::getId)
+                .orElse(null);
+    }
+
+    private boolean isPanelInterviewerForSchedule(User user, InterviewSchedule schedule) {
+        Long panelId = resolvePanelIdForSchedule(schedule.getId());
+        if (panelId == null) {
+            return false;
+        }
+
+        return interviewPanelRepository.findByIdWithDetails(panelId)
+                .map(InterviewPanel::getPanelRequests)
+                .orElse(Set.of())
+                .stream()
+                .map(InterviewRequest::getAssignedInterviewer)
+                .filter(Objects::nonNull)
+                .anyMatch(interviewer -> interviewer.getId().equals(user.getId()));
     }
 
     private FeedbackQuestion buildQuestionFromDto(FeedbackForm form, CreateFeedbackQuestionDto dto, int displayOrder) {
@@ -362,7 +534,7 @@ public class FeedbackService {
             .orElseThrow(() -> new RuntimeException("Feedback form not found: " + formId));
 
         List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-            .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
+            .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(form.getId())
             .stream()
             .map(this::toQuestionDto)
             .toList();
@@ -380,7 +552,8 @@ public class FeedbackService {
             form.getVersionNumber(),
             new FeedbackScopesDto(
                 parseLongList(form.getDepartmentIdsJson()),
-                parseLongList(form.getDesignationIdsJson())
+                parseLongList(form.getDesignationIdsJson()),
+                parseStringList(form.getInterviewTypesJson())
             ),
             questions,
             obligatoryQuestions
@@ -394,7 +567,7 @@ public class FeedbackService {
                 .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
             .map(f -> {
                 List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                    .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
+                    .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
                     .stream()
                     .map(this::toQuestionDto)
                     .toList();
@@ -410,7 +583,11 @@ public class FeedbackService {
                     f.getDescription(),
                     f.isActive(),
                     f.getVersionNumber(),
-                    new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
+                    new FeedbackScopesDto(
+                            parseLongList(f.getDepartmentIdsJson()),
+                            parseLongList(f.getDesignationIdsJson()),
+                            parseStringList(f.getInterviewTypesJson())
+                    ),
                     questions,
                     obligatoryQuestions
                 );
@@ -421,12 +598,16 @@ public class FeedbackService {
 
     @Transactional(readOnly = true)
     public List<FeedbackFormDto> listFilteredFormsByDepartmentAndDesignation(CandidateFormFilterDto dto) {
-        return feedbackFormRepository.findActiveFormsByDepartmentAndDesignation(dto.departmentId(), dto.targetDesignationId())
+        String interviewType = normalizeInterviewTypeFilter(dto.interviewType());
+        return feedbackFormRepository.findActiveFormsByDepartmentDesignationAndInterviewType(
+                        dto.departmentId(),
+                        dto.targetDesignationId(),
+                        interviewType)
                 .stream()
                 .sorted(Comparator.comparing(FeedbackForm::getSeriesKey).thenComparing(FeedbackForm::getVersionNumber, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(f -> {
                     List<FeedbackQuestionDto> questions = feedbackQuestionRepository
-                            .findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
+                            .findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(f.getId())
                             .stream()
                             .map(this::toQuestionDto)
                             .toList();
@@ -442,7 +623,11 @@ public class FeedbackService {
                             f.getDescription(),
                             f.isActive(),
                             f.getVersionNumber(),
-                            new FeedbackScopesDto(parseLongList(f.getDepartmentIdsJson()), parseLongList(f.getDesignationIdsJson())),
+                            new FeedbackScopesDto(
+                                    parseLongList(f.getDepartmentIdsJson()),
+                                    parseLongList(f.getDesignationIdsJson()),
+                                    parseStringList(f.getInterviewTypesJson())
+                            ),
                             questions,
                             obligatoryQuestions
                     );
@@ -474,7 +659,7 @@ public class FeedbackService {
                 response.getId(),
                 response.getInterviewSchedule().getId(),
                 response.getForm() != null ? response.getForm().getId() : null,
-                response.getInterviewer().getId(),
+                response.getInterviewer() != null ? response.getInterviewer().getId() : null,
                 parseResponseMap(response.getResponsesJson()),
                 response.getSubmittedAt()
         );
@@ -553,6 +738,48 @@ public class FeedbackService {
             return objectMapper.valueToTree(value);
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize JSON value", e);
+        }
+    }
+
+    private List<String> parseStringList(JsonNode node) {
+        if (node == null || node.isNull() || !node.isArray()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.convertValue(node, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private List<String> normalizeInterviewTypes(FeedbackScopesDto scopes) {
+        if (scopes == null || scopes.interviewTypes() == null) {
+            return List.of();
+        }
+        return scopes.interviewTypes().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(String::toUpperCase)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeInterviewTypeFilter(String interviewType) {
+        if (interviewType == null || interviewType.isBlank()) {
+            return null;
+        }
+        return interviewType.trim().toUpperCase();
+    }
+
+    private void validateFormScopes(FeedbackScopesDto scopes) {
+        if (scopes == null
+                || scopes.departmentIds() == null
+                || scopes.departmentIds().isEmpty()) {
+            throw new IllegalArgumentException("Department is required");
+        }
+        if (normalizeInterviewTypes(scopes).isEmpty()) {
+            throw new IllegalArgumentException("Interview type is required");
         }
     }
 

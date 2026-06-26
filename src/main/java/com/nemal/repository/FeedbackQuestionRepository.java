@@ -8,6 +8,7 @@ import java.util.List;
 public interface FeedbackQuestionRepository extends JpaRepository<FeedbackQuestion, Long> {
     List<FeedbackQuestion> findByIsObligatoryTrueAndIsActiveTrueOrderByDisplayOrderAsc();
     List<FeedbackQuestion> findByFormIdAndIsActiveTrueOrderByDisplayOrderAsc(Long formId);
+    List<FeedbackQuestion> findByFormIdAndIsObligatoryFalseAndIsActiveTrueOrderByDisplayOrderAsc(Long formId);
 
     void deleteByFormId(Long formId);
 }

@@ -76,6 +76,10 @@ public class InterviewRequest {
     private User assignedInterviewer;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "interview_coordinator_id")
+    private User interviewCoordinator;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "availability_slot_id")
     private AvailabilitySlot availabilitySlot;
 

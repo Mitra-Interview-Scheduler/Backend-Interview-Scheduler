@@ -40,9 +40,13 @@ public class AvailabilityService {
     private static final double SAME_DAY_MIN_LEAD_HOURS = 0.25;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final InterviewRequestService interviewRequestService;
 
-    public AvailabilityService(AvailabilitySlotRepository availabilitySlotRepository) {
+    public AvailabilityService(
+            AvailabilitySlotRepository availabilitySlotRepository,
+            InterviewRequestService interviewRequestService) {
         this.availabilitySlotRepository = availabilitySlotRepository;
+        this.interviewRequestService = interviewRequestService;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -52,7 +56,7 @@ public class AvailabilityService {
         return availabilitySlotRepository
                 .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from)
                 .stream()
-                .map(AvailabilitySlotDto::from)
+                .map(this::toAvailabilitySlotDto)
                 .collect(Collectors.toList());
     }
 
@@ -62,7 +66,7 @@ public class AvailabilityService {
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
                         interviewer.getId(), start, end)
                 .stream()
-                .map(AvailabilitySlotDto::from)
+                .map(this::toAvailabilitySlotDto)
                 .collect(Collectors.toList());
     }
 
@@ -77,8 +81,14 @@ public class AvailabilityService {
                         end,
                         PageRequest.of(safePage, safeSize))
                 .stream()
-                .map(AvailabilitySlotDto::from)
+                .map(this::toAvailabilitySlotDto)
                 .collect(Collectors.toList());
+    }
+
+    private AvailabilitySlotDto toAvailabilitySlotDto(AvailabilitySlot slot) {
+        return AvailabilitySlotDto.from(
+                slot,
+                interviewRequestService.resolveEffectiveInterviewStatus(slot.getInterviewSchedule()));
     }
 
     // ── Validation ────────────────────────────────────────────────────────────

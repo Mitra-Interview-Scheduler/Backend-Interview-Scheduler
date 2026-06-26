@@ -4,6 +4,7 @@ import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CloseCandidateDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.CandidateDocument;
@@ -48,6 +49,13 @@ public class CandidateController {
         return ResponseEntity.ok(statuses);
     }
 
+    @GetMapping("/coordinated-hr-options")
+    public ResponseEntity<List<DepartmentUserDto>> getCoordinatedHrOptions(
+            @RequestParam Long departmentId
+    ) {
+        return ResponseEntity.ok(candidateService.getCoordinatedHrOptions(departmentId));
+    }
+
     @GetMapping
     public ResponseEntity<?> getAllCandidates(
             @RequestParam(required = false) Long departmentId,
@@ -86,7 +94,7 @@ public class CandidateController {
     public ResponseEntity<CandidateDocumentDto> uploadCandidateDocument(
             @PathVariable Long id,
             @RequestParam(defaultValue = "CV") String documentType,
-            @RequestPart("file") MultipartFile file
+            @RequestParam("file") MultipartFile file
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(candidateService.uploadCandidateDocument(id, documentType, file));
@@ -97,7 +105,7 @@ public class CandidateController {
             @PathVariable Long id,
             @PathVariable Long documentId,
             @RequestParam(defaultValue = "CV") String documentType,
-            @RequestPart("file") MultipartFile file
+            @RequestParam("file") MultipartFile file
     ) {
         return ResponseEntity.ok(candidateService.replaceCandidateDocument(id, documentId, documentType, file));
     }

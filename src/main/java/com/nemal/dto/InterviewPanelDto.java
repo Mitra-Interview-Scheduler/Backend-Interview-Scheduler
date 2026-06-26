@@ -17,6 +17,7 @@ public record InterviewPanelDto(
         String notes,
         Long requestedById,
         String requestedByName,
+        String interviewCoordinatorName,
         LocalDateTime createdAt
 ) {
     public static InterviewPanelDto from(InterviewPanel panel) {
@@ -35,6 +36,7 @@ public record InterviewPanelDto(
                 panel.getNotes(),
                 panel.getRequestedBy() != null ? panel.getRequestedBy().getId() : null,
                 panel.getRequestedBy() != null ? panel.getRequestedBy().getFullName() : null,
+                panel.getInterviewCoordinator() != null ? panel.getInterviewCoordinator().getFullName().trim() : null,
                 panel.getCreatedAt()
         );
     }

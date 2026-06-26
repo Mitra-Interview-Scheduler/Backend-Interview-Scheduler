@@ -3,6 +3,7 @@ package com.nemal.service;
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CreateCandidateDto;
+import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
@@ -10,18 +11,21 @@ import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.entity.MasterStep;
+import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.MasterStepRepository;
+import com.nemal.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.List;
 import java.util.Set;
@@ -38,13 +42,16 @@ public class CandidateService {
     private final MasterStepService masterStepService;
     private final MasterStepRepository masterStepRepository;
     private final CandidateClosureService candidateClosureService;
+    private final UserRepository userRepository;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
-            "image/heic",      // .heic (Apple High Efficiency Image Format)
-            "image/heif",      // .heif
-            "image/jpeg",      // .jpg, .jpeg
-            "image/png"
+            "image/heic",
+            "image/heif",
+            "image/jpeg",
+            "image/png",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
 
     public CandidateService(
@@ -55,7 +62,8 @@ public class CandidateService {
             CandidateStepPipelineService candidateStepPipelineService,
             MasterStepService masterStepService,
             MasterStepRepository masterStepRepository,
-            CandidateClosureService candidateClosureService
+            CandidateClosureService candidateClosureService,
+            UserRepository userRepository
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -66,15 +74,31 @@ public class CandidateService {
         this.masterStepService = masterStepService;
         this.masterStepRepository = masterStepRepository;
         this.candidateClosureService = candidateClosureService;
+        this.userRepository = userRepository;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
 
+    public List<DepartmentUserDto> getCoordinatedHrOptions(Long departmentId) {
+        if (departmentId == null) {
+            throw new IllegalArgumentException("Department is required");
+        }
+        departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+        return userRepository.findByDepartment_IdAndIsActiveTrueOrderByFirstNameAscLastNameAsc(departmentId).stream()
+                .filter(User::isActive)
+                .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
+                .map(DepartmentUserDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<CandidateDto> getAllCandidates() {
         return candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc()
                 .stream().map(CandidateDto::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public CandidateDto getCandidateById(Long id) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
@@ -190,6 +214,11 @@ public class CandidateService {
 
     @Transactional
     public CandidateDto createCandidate(CreateCandidateDto dto) {
+        if (dto.coordinatedHrId() == null) {
+            throw new IllegalArgumentException("Candidate coordinator is required");
+        }
+        User coordinatedHr = resolveCoordinatedHr(dto.coordinatedHrId());
+
         // ── Global email uniqueness (includes soft-deleted rows) ──────────────
         String normalizedEmail = dto.email().trim().toLowerCase();
         if (candidateRepository.existsByEmail(normalizedEmail)) {
@@ -232,6 +261,7 @@ public class CandidateService {
                 .location(dto.location())
                 .notes(dto.notes())
                 .yearsOfExperience(dto.yearsOfExperience())
+                .coordinatedHr(coordinatedHr)
                 .isActive(true)
                 .build();
 
@@ -314,6 +344,10 @@ public class CandidateService {
             candidate.setTargetDesignation(designation);
         }
 
+        if (dto.coordinatedHrId() != null) {
+            candidate.setCoordinatedHr(resolveCoordinatedHr(dto.coordinatedHrId()));
+        }
+
         candidate = candidateRepository.save(candidate);
         return CandidateDto.from(candidate);
     }
@@ -392,7 +426,7 @@ public class CandidateService {
         String fileName = safeFileName(file.getOriginalFilename()).toLowerCase(Locale.ROOT);
         boolean allowedExtension = fileName.endsWith(".pdf") || fileName.endsWith(".doc") || fileName.endsWith(".docx");
         if (!ALLOWED_CONTENT_TYPES.contains(contentType) && !allowedExtension) {
-            throw new IllegalArgumentException("Only PDF, JPG, JPEG , heic and heif are supported");
+            throw new IllegalArgumentException("Only PDF, Word (.doc/.docx), JPG, JPEG, PNG, HEIC, and HEIF are supported");
         }
     }
 
@@ -416,5 +450,16 @@ public class CandidateService {
         return file.getContentType() == null || file.getContentType().isBlank()
                 ? "application/octet-stream"
                 : file.getContentType();
+    }
+
+    private User resolveCoordinatedHr(Long coordinatedHrId) {
+        User user = userRepository.findById(coordinatedHrId)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate coordinator not found"));
+
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Candidate coordinator is inactive");
+        }
+
+        return user;
     }
 }

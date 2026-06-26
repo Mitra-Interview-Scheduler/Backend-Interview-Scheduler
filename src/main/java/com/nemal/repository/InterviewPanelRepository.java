@@ -14,7 +14,8 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
             "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
             "LEFT JOIN FETCH p.candidate " +
@@ -27,7 +28,8 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
             "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
             "WHERE p.candidate.id = :candidateId " +
@@ -36,17 +38,29 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
+            "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
+            "LEFT JOIN FETCH r.interviewCoordinator " +
+            "LEFT JOIN FETCH r.candidate rc " +
+            "LEFT JOIN FETCH rc.coordinatedHr " +
+            "LEFT JOIN FETCH p.interviewCoordinator " +
             "WHERE p.requestedBy.id = :userId " +
             "ORDER BY p.startDateTime DESC")
     List<InterviewPanel> findByRequestedById(@Param("userId") Long userId);
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
+            "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
-            "LEFT JOIN p.candidate c " +
+            "LEFT JOIN FETCH r.interviewCoordinator " +
+            "LEFT JOIN FETCH r.candidate rc " +
+            "LEFT JOIN FETCH rc.coordinatedHr " +
+            "LEFT JOIN FETCH p.interviewCoordinator " +
+            "LEFT JOIN FETCH p.candidate c " +
             "LEFT JOIN c.targetDesignation cd " +
             "LEFT JOIN cd.tier ct " +
             "WHERE p.requestedBy.id = :userId " +
@@ -63,7 +77,9 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
+            "LEFT JOIN FETCH r.interviewSchedule " +
             "LEFT JOIN FETCH r.requiredTechnologies " +
             "WHERE p.id = :id")
     Optional<InterviewPanel> findByIdWithDetails(@Param("id") Long id);

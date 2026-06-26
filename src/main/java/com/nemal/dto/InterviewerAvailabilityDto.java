@@ -37,7 +37,9 @@ public record InterviewerAvailabilityDto(
         Integer interviewerLevelOrder,  // NEW — Designation.levelOrder for the interviewer
         String interviewType,         // TECHNICAL | HR — from the booked InterviewSchedule
         Long interviewScheduleId,
-        String interviewStatus        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
+        String interviewStatus,        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
+        String interviewCoordinatorName,
+        String coordinatedHrName
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
@@ -47,6 +49,8 @@ public record InterviewerAvailabilityDto(
         String interviewType = null;
         Long interviewScheduleId = null;
         String interviewStatus = null;
+        String interviewCoordinatorName = null;
+        String coordinatedHrName = null;
 
         if (slot.getInterviewSchedule() != null) {
             interviewScheduleId = slot.getInterviewSchedule().getId();
@@ -60,6 +64,14 @@ public record InterviewerAvailabilityDto(
             if (req != null) {
                 candidateName = req.getCandidateName();
                 requestId = req.getId();
+                if (req.getInterviewCoordinator() != null) {
+                    interviewCoordinatorName = req.getInterviewCoordinator().getFullName().trim();
+                } else if (req.getPanel() != null && req.getPanel().getInterviewCoordinator() != null) {
+                    interviewCoordinatorName = req.getPanel().getInterviewCoordinator().getFullName().trim();
+                }
+                if (req.getCandidate() != null && req.getCandidate().getCoordinatedHr() != null) {
+                    coordinatedHrName = req.getCandidate().getCoordinatedHr().getFullName().trim();
+                }
             }
         }
 
@@ -117,7 +129,9 @@ public record InterviewerAvailabilityDto(
                 levelOrder,   // interviewerLevelOrder
                 interviewType,
                 interviewScheduleId,
-                interviewStatus
+                interviewStatus,
+                interviewCoordinatorName,
+                coordinatedHrName
         );
     }
 }

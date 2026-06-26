@@ -30,6 +30,7 @@ public class InterviewRequestSimpleDto {
     private String requestedByName;
     private Long assignedInterviewerId;
     private String assignedInterviewerName;
+    private String assignedInterviewerDesignationName;
     private Long availabilitySlotId;
     private RequestStatus status;
     private LocalDateTime respondedAt;
@@ -61,6 +62,11 @@ public class InterviewRequestSimpleDto {
                 .requestedByName(request.getRequestedBy() != null ? request.getRequestedBy().getFullName() : null)
                 .assignedInterviewerId(request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getId() : null)
                 .assignedInterviewerName(request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getFullName() : null)
+                .assignedInterviewerDesignationName(
+                        request.getAssignedInterviewer() != null
+                                && request.getAssignedInterviewer().getCurrentDesignation() != null
+                                ? request.getAssignedInterviewer().getCurrentDesignation().getName()
+                                : null)
                 .availabilitySlotId(request.getAvailabilitySlot() != null ? request.getAvailabilitySlot().getId() : null)
                 .status(request.getStatus())
                 .respondedAt(request.getRespondedAt())

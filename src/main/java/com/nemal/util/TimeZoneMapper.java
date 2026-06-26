@@ -71,7 +71,9 @@ public final class TimeZoneMapper {
                 dto.interviewerLevelOrder(),
                 dto.interviewType(),
                 dto.interviewScheduleId(),
-                dto.interviewStatus()
+                dto.interviewStatus(),
+                dto.interviewCoordinatorName(),
+                dto.coordinatedHrName()
         );
     }
 
@@ -93,6 +95,10 @@ public final class TimeZoneMapper {
                 dto.requestedByName(),
                 dto.assignedInterviewerId(),
                 dto.assignedInterviewerName(),
+                dto.assignedInterviewerDesignationName(),
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorName(),
+                dto.coordinatedHrName(),
                 dto.availabilitySlotId(),
                 dto.panelId(),
                 dto.status(),
@@ -125,7 +131,9 @@ public final class TimeZoneMapper {
                 toUtc(dto.preferredEndDateTime(), sourceZone),
                 dto.isUrgent(),
                 dto.notes(),
-                dto.interviewType()
+                dto.interviewType(),
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId()
         );
     }
 
@@ -140,7 +148,9 @@ public final class TimeZoneMapper {
                 dto.requiredTechnologyIds(),
                 dto.isUrgent(),
                 dto.notes(),
-                dto.interviewType()
+                dto.interviewType(),
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId()
         );
     }
 }

@@ -9,18 +9,35 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InterviewRequestRepository extends JpaRepository<InterviewRequest, Long> {
 
-        List<InterviewRequest> findByInterviewScheduleId(Long interviewScheduleId);
+    @Query("""
+            SELECT r.panel.id FROM InterviewRequest r
+            WHERE r.interviewSchedule.id = :scheduleId AND r.panel IS NOT NULL
+            """)
+    Optional<Long> findPanelIdByInterviewScheduleId(@Param("scheduleId") Long scheduleId);
+
+    List<InterviewRequest> findByInterviewScheduleId(Long interviewScheduleId);
+
+    @Query("""
+            SELECT r FROM InterviewRequest r
+            LEFT JOIN FETCH r.interviewSchedule s
+            LEFT JOIN FETCH r.panel
+            WHERE s.id = :interviewScheduleId
+            """)
+    List<InterviewRequest> findByInterviewScheduleIdWithDetails(
+            @Param("interviewScheduleId") Long interviewScheduleId);
     List<InterviewRequest> findByRequestedByIdOrderByCreatedAtDesc(Long userId);
 
     List<InterviewRequest> findByCandidateId(Long candidateId);
 
     @Query("SELECT DISTINCT r FROM InterviewRequest r " +
             "LEFT JOIN FETCH r.interviewSchedule " +
-            "LEFT JOIN FETCH r.assignedInterviewer " +
+            "LEFT JOIN FETCH r.assignedInterviewer ai " +
+            "LEFT JOIN FETCH ai.currentDesignation " +
             "LEFT JOIN FETCH r.candidate " +
             "WHERE r.candidate.id = :candidateId " +
             "OR (:candidateName IS NOT NULL AND LOWER(TRIM(r.candidateName)) = LOWER(TRIM(:candidateName))) " +
@@ -57,7 +74,9 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
     );
 
     @Query("SELECT DISTINCT r FROM InterviewRequest r " +
-            "LEFT JOIN r.candidate c " +
+            "LEFT JOIN FETCH r.candidate c " +
+            "LEFT JOIN FETCH c.coordinatedHr " +
+            "LEFT JOIN FETCH r.interviewCoordinator " +
             "LEFT JOIN c.targetDesignation cd " +
             "LEFT JOIN r.candidateDesignation rd " +
             "LEFT JOIN cd.tier ct " +

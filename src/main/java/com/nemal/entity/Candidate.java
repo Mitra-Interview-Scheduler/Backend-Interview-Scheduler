@@ -95,6 +95,10 @@ public class Candidate {
     @Column(name = "resource_link", length = 2000)
     private String resourceLink;
 
+    @ManyToOne
+    @JoinColumn(name = "coordinated_hr_id")
+    private User coordinatedHr;
+
     @PrePersist
     protected void onCreate() {
         if (appliedAt == null) {
