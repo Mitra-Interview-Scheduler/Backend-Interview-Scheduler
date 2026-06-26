@@ -43,14 +43,6 @@ CREATE INDEX IF NOT EXISTS idx_candidate_pipeline_lookup
     ON candidate_pipeline_steps (candidate_id, sequence_order);
 
 -- Align master_steps status key with MasterStatus.SCHEDULED enum value
-UPDATE master_steps
-SET status_key = 'SCHEDULED',
-    label = 'Scheduled'
-WHERE status_key = 'INTERVIEW_SESSION';
-
-UPDATE candidate_pipeline_steps
-SET status_key = 'SCHEDULED'
-WHERE status_key = 'INTERVIEW_SESSION';
 
 -- Rename legacy notifications.is_read column if V1 schema was never replaced
 DO $$
@@ -117,7 +109,7 @@ INSERT INTO master_steps (
 ) VALUES
     ('NEW', 'New', 1, 10, '#3b82f6', 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200', 'bg-blue-100', TRUE, FALSE, TRUE, TRUE),
     ('SCREENING', 'Screening', 2, 20, '#eab308', 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', 'bg-yellow-100', TRUE, FALSE, TRUE, TRUE),
-    ('SCHEDULED', 'Scheduled', 3, 30, '#a855f7', 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', 'bg-purple-100', TRUE, FALSE, TRUE, FALSE),
+    ('INTERVIEW_SCHEDULES', 'Interview Schedules', 3, 30, '#a855f7', 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', 'bg-purple-100', TRUE, FALSE, TRUE, FALSE),
     ('TECHNICAL_ROUND', 'Technical', 3, 40, '#06b6d4', 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200', 'bg-cyan-100', TRUE, FALSE, FALSE, TRUE),
     ('HR_ROUND', 'HR Round', 3, 50, '#ec4899', 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200', 'bg-pink-100', TRUE, FALSE, FALSE, TRUE),
     ('DISPOSITION', 'Disposition', 4, 60, '#6b7280', 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200', 'bg-gray-100', TRUE, TRUE, TRUE, FALSE),
