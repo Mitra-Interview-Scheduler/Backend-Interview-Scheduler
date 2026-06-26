@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS candidate_pipeline_steps (
 CREATE INDEX IF NOT EXISTS idx_candidate_pipeline_lookup
     ON candidate_pipeline_steps (candidate_id, sequence_order);
 
--- Align master_steps status key with MasterStatus.SCHEDULED enum value
+-- Align master_steps seed with MasterStatus.INTERVIEW_SCHEDULES enum value
 
 -- Rename legacy notifications.is_read column if V1 schema was never replaced
 DO $$
