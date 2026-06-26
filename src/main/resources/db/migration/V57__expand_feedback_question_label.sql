@@ -1,2 +1,2 @@
 ALTER TABLE feedback_questions
-    ALTER COLUMN label TYPE VARCHAR(1000);
+    ALTER COLUMN label TYPE VARCHAR(2000);
