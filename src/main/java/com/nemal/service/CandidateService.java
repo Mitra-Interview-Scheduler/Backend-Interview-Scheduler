@@ -13,6 +13,7 @@ import com.nemal.entity.Designation;
 import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
@@ -42,6 +43,7 @@ public class CandidateService {
     private final MasterStepService masterStepService;
     private final MasterStepRepository masterStepRepository;
     private final CandidateClosureService candidateClosureService;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final UserRepository userRepository;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
@@ -63,6 +65,7 @@ public class CandidateService {
             MasterStepService masterStepService,
             MasterStepRepository masterStepRepository,
             CandidateClosureService candidateClosureService,
+            CandidatePipelineAuditService candidatePipelineAuditService,
             UserRepository userRepository
 
     ) {
@@ -74,6 +77,7 @@ public class CandidateService {
         this.masterStepService = masterStepService;
         this.masterStepRepository = masterStepRepository;
         this.candidateClosureService = candidateClosureService;
+        this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.userRepository = userRepository;
     }
 
@@ -272,7 +276,7 @@ public class CandidateService {
     }
 
     @Transactional
-    public CandidateDto updateCandidate(Long id, UpdateCandidateDto dto) {
+    public CandidateDto updateCandidate(Long id, UpdateCandidateDto dto, User changedBy) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
 
@@ -323,6 +327,16 @@ public class CandidateService {
             if (shouldSyncPipeline) {
                 candidateStepPipelineService.updatePipelineOnStatusChange(
                         id, dto.status(), oldStatus, addPipelineRound);
+            }
+
+            if (statusChanged) {
+                candidatePipelineAuditService.recordStatusChange(
+                        id,
+                        dto.status(),
+                        oldStatus,
+                        PipelineAuditActionType.STATUS_CHANGED,
+                        changedBy,
+                        null);
             }
         }
 

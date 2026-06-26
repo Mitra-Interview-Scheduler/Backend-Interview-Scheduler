@@ -154,8 +154,9 @@ public class CandidateController {
     @PutMapping("/{id}")
     public ResponseEntity<CandidateDto> updateCandidate(
             @PathVariable Long id,
-            @RequestBody UpdateCandidateDto dto) {
-        return ResponseEntity.ok(candidateService.updateCandidate(id, dto));
+            @RequestBody UpdateCandidateDto dto,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(candidateService.updateCandidate(id, dto, user));
     }
 
     @PostMapping("/{id}/close")

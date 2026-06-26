@@ -2,11 +2,13 @@ package com.nemal.controller;
 
 import com.nemal.dto.ScreeningSaveRequestDTO;
 import com.nemal.dto.ScreeningResponseDTO;
+import com.nemal.entity.User;
 import com.nemal.service.CandidateScreeningService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -41,7 +43,8 @@ public class CandidateScreeningController {
     @PostMapping("/{candidateId}/screening")
     public ResponseEntity<ScreeningResponseDTO> saveCandidateScreeningFile(
             @PathVariable Long candidateId,
-            @RequestBody ScreeningSaveRequestDTO payload) {
-        return ResponseEntity.ok(screeningService.saveOrUpdateScreening(candidateId, payload));
+            @RequestBody ScreeningSaveRequestDTO payload,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(screeningService.saveOrUpdateScreening(candidateId, payload, user));
     }
 }
