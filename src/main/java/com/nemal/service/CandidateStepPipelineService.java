@@ -9,6 +9,8 @@ import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.CandidateStepPipelineRepository;
 import com.nemal.repository.MasterStepRepository;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -19,6 +21,8 @@ import java.util.Set;
 
 @Service
 public class CandidateStepPipelineService {
+
+    private static final Logger logger = LoggerFactory.getLogger(CandidateStepPipelineService.class);
 
     private static final Set<MasterStatus> APPENDABLE_STATUSES = EnumSet.of(
             MasterStatus.TECHNICAL_ROUND,
@@ -147,6 +151,60 @@ public class CandidateStepPipelineService {
     }
 
     /**
+     * Closes the pipeline when a candidate reaches a closing stage (Rejected, Selected, etc.).
+     * Fails or completes the current step, skips pending steps, then activates or appends the closing step.
+     */
+    @Transactional
+    public void closePipeline(Long candidateId, MasterStatus closingStatus) {
+        if (closingStatus == null) {
+            return;
+        }
+
+        MasterStep closingMasterStep = masterStepRepository.findByStatusKey(closingStatus.name());
+        if (closingMasterStep == null || !closingMasterStep.isClosingStep()) {
+            throw new IllegalArgumentException("Invalid closing status: " + closingStatus);
+        }
+
+        List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+        if (pipeline.isEmpty()) {
+            return;
+        }
+
+        Optional<CandidateStepPipeline> currentStep = pipeline.stream()
+                .filter(p -> p.getStepStatus() == PipelineStepStatus.CURRENT)
+                .findFirst();
+
+        if (currentStep.isPresent()) {
+            int sequenceOrder = currentStep.get().getSequenceOrder();
+            PipelineStepStatus terminalStatus = closingStatus == MasterStatus.REJECTED
+                    ? PipelineStepStatus.FAILED
+                    : PipelineStepStatus.COMPLETED;
+            pipelineRepository.updateStepStatus(candidateId, sequenceOrder, terminalStatus);
+            pipelineRepository.skipUpcomingSteps(candidateId, sequenceOrder);
+        } else {
+            pipeline.stream()
+                    .filter(p -> p.getStepStatus() == PipelineStepStatus.PENDING)
+                    .forEach(p -> pipelineRepository.updateStepStatus(
+                            candidateId, p.getSequenceOrder(), PipelineStepStatus.SKIPPED));
+        }
+
+        pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+
+        Optional<CandidateStepPipeline> existingClosingStep = pipeline.stream()
+                .filter(p -> p.getStep() != null
+                        && p.getStep().getStatusKey().equalsIgnoreCase(closingStatus.name()))
+                .findFirst();
+
+        if (existingClosingStep.isPresent()) {
+            activateExistingStep(candidateId, existingClosingStep.get().getSequenceOrder());
+            return;
+        }
+
+        int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
+        insertStepAfter(candidateId, closingStatus.name(), insertAfterSequenceOrder);
+    }
+
+    /**
      * When candidate macro-status changes, sync the pipeline:
      * - first visit to a pre-seeded PENDING default step activates that row
      * - every re-entry or new round appends after the current step (like interview history)
@@ -168,12 +226,7 @@ public class CandidateStepPipelineService {
 
         MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
         if (masterStep == null) {
-            if (newStatus == MasterStatus.REJECTED) {
-                pipeline.stream()
-                        .filter(p -> p.getStepStatus() == PipelineStepStatus.CURRENT)
-                        .findFirst()
-                        .ifPresent(current -> handleStepFailure(candidateId, current.getSequenceOrder()));
-            }
+            logger.warn("No master step configured for status key '{}' on candidate {}", newStatus.name(), candidateId);
             return;
         }
 

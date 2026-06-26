@@ -22,13 +22,15 @@ import com.nemal.repository.MasterStepRepository;
 import com.nemal.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -168,7 +170,7 @@ public class CandidateService {
             if (status != null) {
                 final MasterStatus st = status;
                 candidates = candidates.stream()
-                        .filter(c -> c.getStatus() == st)
+                        .filter(c -> Objects.equals(c.getStatus(), st))
                         .collect(Collectors.toList());
             }
         }
@@ -183,34 +185,32 @@ public class CandidateService {
             int page,
             int size
     ) {
-        List<CandidateDto> all = findWithFilters(departmentId, status, searchTerm);
         int safeSize = Math.max(1, size);
         int safePage = Math.max(0, page);
-        int fromIndex = safePage * safeSize;
+        String normalizedSearch = (searchTerm != null && !searchTerm.trim().isEmpty())
+                ? searchTerm.trim()
+                : null;
+        String statusKey = status != null ? status.name() : null;
 
-        if (fromIndex >= all.size()) {
-            return new PaginatedResponseDto<>(
-                    Collections.emptyList(),
-                    safePage,
-                    safeSize,
-                    all.size(),
-                    Math.max(1, (int) Math.ceil((double) all.size() / safeSize)),
-                    safePage == 0,
-                    true
-            );
-        }
+        Page<Candidate> result = candidateRepository.findWithFiltersPaged(
+                departmentId,
+                statusKey,
+                normalizedSearch,
+                PageRequest.of(safePage, safeSize)
+        );
 
-        int toIndex = Math.min(fromIndex + safeSize, all.size());
-        int totalPages = Math.max(1, (int) Math.ceil((double) all.size() / safeSize));
+        List<CandidateDto> content = result.getContent().stream()
+                .map(CandidateDto::from)
+                .collect(Collectors.toList());
 
         return new PaginatedResponseDto<>(
-                all.subList(fromIndex, toIndex),
-                safePage,
-                safeSize,
-                all.size(),
-                totalPages,
-                safePage == 0,
-                safePage >= totalPages - 1
+                content,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                Math.max(1, result.getTotalPages()),
+                result.isFirst(),
+                result.isLast()
         );
     }
 
@@ -312,7 +312,7 @@ public class CandidateService {
         if (dto.status() != null) {
             MasterStatus oldStatus = candidate.getStatus();
             boolean addPipelineRound = Boolean.TRUE.equals(dto.addPipelineRound());
-            boolean statusChanged = oldStatus != dto.status();
+            boolean statusChanged = !Objects.equals(oldStatus, dto.status());
             boolean shouldSyncPipeline = statusChanged || addPipelineRound;
 
             if (statusChanged) {

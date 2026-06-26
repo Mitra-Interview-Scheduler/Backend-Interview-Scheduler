@@ -20,19 +20,6 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
             "LEFT JOIN FETCH r.requiredTechnologies " +
             "LEFT JOIN FETCH p.candidate " +
             "WHERE p.candidate.id = :candidateId " +
-            "OR (:candidateName IS NOT NULL AND LOWER(TRIM(p.candidateName)) = LOWER(TRIM(:candidateName))) " +
-            "ORDER BY p.startDateTime DESC")
-    List<InterviewPanel> findByCandidateIdOrName(
-            @Param("candidateId") Long candidateId,
-            @Param("candidateName") String candidateName);
-
-    @Query("SELECT DISTINCT p FROM InterviewPanel p " +
-            "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer ai " +
-            "LEFT JOIN FETCH ai.currentDesignation " +
-            "LEFT JOIN FETCH r.interviewSchedule " +
-            "LEFT JOIN FETCH r.requiredTechnologies " +
-            "WHERE p.candidate.id = :candidateId " +
             "ORDER BY p.startDateTime DESC")
     List<InterviewPanel> findByCandidateId(@Param("candidateId") Long candidateId);
 

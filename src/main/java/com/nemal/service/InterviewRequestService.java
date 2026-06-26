@@ -263,10 +263,7 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByCandidate(Long candidateId) {
-        String candidateName = candidateRepository.findById(candidateId)
-                .map(Candidate::getName)
-                .orElse(null);
-        return interviewRequestRepository.findByCandidateIdOrNameWithSchedule(candidateId, candidateName)
+        return interviewRequestRepository.findByCandidateIdWithSchedule(candidateId)
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
     }
 
@@ -397,6 +394,8 @@ public class InterviewRequestService {
                 MasterStatus previousStatus = candidate.getStatus();
                 masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                candidateStepPipelineService.updatePipelineOnStatusChange(
+                        candidate.getId(), resetStatus, previousStatus, false);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
                         resetStatus,

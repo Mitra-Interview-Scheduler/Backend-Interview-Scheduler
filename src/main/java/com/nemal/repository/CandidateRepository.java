@@ -2,6 +2,8 @@ package com.nemal.repository;
 
 import com.nemal.entity.Candidate;
 import com.nemal.enums.MasterStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -69,6 +71,24 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             " LOWER(COALESCE(c.resourceRequestNumber, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
             "ORDER BY c.appliedAt DESC")
     List<Candidate> searchCandidates(@Param("searchTerm") String searchTerm);
+
+    @Query("""
+            SELECT c FROM Candidate c
+            LEFT JOIN c.masterStep ms
+            WHERE c.isActive = true
+            AND (:departmentId IS NULL OR c.department.id = :departmentId)
+            AND (:statusKey IS NULL OR ms.statusKey = :statusKey)
+            AND (:searchTerm IS NULL OR :searchTerm = '' OR
+                 LOWER(c.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
+                 LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
+                 LOWER(COALESCE(c.resourceRequestNumber, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%')))
+            ORDER BY c.appliedAt DESC
+            """)
+    Page<Candidate> findWithFiltersPaged(
+            @Param("departmentId") Long departmentId,
+            @Param("statusKey") String statusKey,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable);
 
     Optional<Candidate> findByIdAndIsActiveTrue(Long id);
 }

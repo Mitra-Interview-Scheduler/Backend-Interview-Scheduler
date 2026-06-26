@@ -40,11 +40,8 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
             "LEFT JOIN FETCH ai.currentDesignation " +
             "LEFT JOIN FETCH r.candidate " +
             "WHERE r.candidate.id = :candidateId " +
-            "OR (:candidateName IS NOT NULL AND LOWER(TRIM(r.candidateName)) = LOWER(TRIM(:candidateName))) " +
             "ORDER BY r.createdAt DESC")
-    List<InterviewRequest> findByCandidateIdOrNameWithSchedule(
-            @Param("candidateId") Long candidateId,
-            @Param("candidateName") String candidateName);
+    List<InterviewRequest> findByCandidateIdWithSchedule(@Param("candidateId") Long candidateId);
 
     List<InterviewRequest> findByAssignedInterviewerId(Long interviewerId);
 

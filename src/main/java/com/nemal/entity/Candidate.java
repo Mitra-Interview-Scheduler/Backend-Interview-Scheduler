@@ -1,6 +1,7 @@
 package com.nemal.entity;
 
 import com.nemal.enums.MasterStatus;
+import lombok.extern.slf4j.Slf4j;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @EntityListeners(AuditingEntityListener.class)
+@Slf4j
 public class Candidate {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -45,12 +47,14 @@ public class Candidate {
 
     public MasterStatus getStatus() {
         if (masterStep == null) {
-            return MasterStatus.NEW;
+            log.error("Candidate {} has no master step assigned", id);
+            return null;
         }
         try {
             return MasterStatus.valueOf(masterStep.getStatusKey());
         } catch (IllegalArgumentException ex) {
-            return MasterStatus.NEW;
+            log.error("Candidate {} has unknown master step status key '{}'", id, masterStep.getStatusKey());
+            return null;
         }
     }
 

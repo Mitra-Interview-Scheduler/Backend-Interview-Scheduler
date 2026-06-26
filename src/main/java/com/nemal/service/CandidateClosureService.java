@@ -87,12 +87,7 @@ public class CandidateClosureService {
         masterStepService.assignStatus(candidate, dto.status());
         candidateRepository.save(candidate);
 
-        candidateStepPipelineService.updatePipelineOnStatusChange(
-                candidateId,
-                dto.status(),
-                previousStatus,
-                false
-        );
+        candidateStepPipelineService.closePipeline(candidateId, dto.status());
 
         CandidateClosure closure = CandidateClosure.builder()
                 .candidate(candidate)

@@ -289,10 +289,7 @@ public class PanelInterviewService {
 
     @Transactional(readOnly = true)
     public List<InterviewPanelDto> getPanelsByCandidateId(Long candidateId) {
-        String candidateName = candidateRepository.findById(candidateId)
-                .map(Candidate::getName)
-                .orElse(null);
-        return panelRepository.findByCandidateIdOrName(candidateId, candidateName)
+        return panelRepository.findByCandidateId(candidateId)
                 .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
     }
 

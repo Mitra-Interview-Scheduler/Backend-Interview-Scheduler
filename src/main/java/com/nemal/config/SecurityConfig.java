@@ -110,6 +110,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/department/**").authenticated()
                         .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/closing-reasons/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidatePipeline/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/candidatePipeline/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
 
                         .requestMatchers(HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
