@@ -1,6 +1,7 @@
 package com.nemal.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.nemal.converter.PipelineAuditActionTypeConverter;
 import com.nemal.enums.PipelineAuditActionType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -29,13 +30,15 @@ public class CandidatePipelineStatusEvent {
     @EqualsAndHashCode.Exclude
     private Candidate candidate;
 
-    @Column(name = "status_key", nullable = false, length = 50)
-    private String statusKey;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "master_step_id", nullable = false)
+    private MasterStep masterStep;
 
-    @Column(name = "previous_status_key", length = 50)
-    private String previousStatusKey;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "previous_master_step_id")
+    private MasterStep previousMasterStep;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = PipelineAuditActionTypeConverter.class)
     @Column(name = "action_type", nullable = false, length = 50)
     private PipelineAuditActionType actionType;
 
@@ -45,12 +48,6 @@ public class CandidatePipelineStatusEvent {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private User changedBy;
-
-    @Column(name = "changed_by_name")
-    private String changedByName;
-
-    @Column(name = "changed_by_designation")
-    private String changedByDesignation;
 
     @Column(columnDefinition = "TEXT")
     private String notes;

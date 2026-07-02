@@ -217,7 +217,7 @@ public class CandidateService {
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     @Transactional
-    public CandidateDto createCandidate(CreateCandidateDto dto) {
+    public CandidateDto createCandidate(CreateCandidateDto dto, User changedBy) {
         if (dto.coordinatedHrId() == null) {
             throw new IllegalArgumentException("Candidate coordinator is required");
         }
@@ -272,6 +272,13 @@ public class CandidateService {
         masterStepService.assignStatus(candidate, MasterStatus.NEW);
         candidate = candidateRepository.save(candidate);
         candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
+        candidatePipelineAuditService.recordStatusChange(
+                candidate.getId(),
+                MasterStatus.NEW,
+                null,
+                PipelineAuditActionType.APPLICATION_CREATED,
+                changedBy != null ? changedBy : coordinatedHr,
+                null);
         return CandidateDto.from(candidate);
     }
 

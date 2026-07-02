@@ -478,6 +478,14 @@ public class InterviewRequestService {
             logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
         }
 
+        Candidate candidate = request.getCandidate();
+        if (candidate != null) {
+            InterviewType interviewType = schedule.getInterviewType() != null
+                    ? schedule.getInterviewType()
+                    : InterviewType.TECHNICAL;
+            candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
+        }
+
         return InterviewRequestDto.from(request);
     }
 

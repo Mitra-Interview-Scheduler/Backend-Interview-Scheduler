@@ -106,6 +106,39 @@ public class CandidateStepPipelineService {
     }
 
     /**
+     * Marks the active interview-round pipeline row as completed when its interview finishes.
+     */
+    @Transactional
+    public void completeInterviewRoundStep(Long candidateId, InterviewType interviewType) {
+        if (candidateId == null || interviewType == null) {
+            return;
+        }
+
+        MasterStatus roundStatus = interviewType.toCandidateStatus();
+        List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+        if (pipeline.isEmpty()) {
+            return;
+        }
+
+        Optional<CandidateStepPipeline> roundStep = pipeline.stream()
+                .filter(step -> step.getStep() != null
+                        && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
+                .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+
+        if (roundStep.isEmpty()) {
+            roundStep = pipeline.stream()
+                    .filter(step -> step.getStep() != null
+                            && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                    .filter(step -> step.getStepStatus() == PipelineStepStatus.PENDING)
+                    .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+        }
+
+        roundStep.ifPresent(step -> pipelineRepository.updateStepStatus(
+                candidateId, step.getSequenceOrder(), PipelineStepStatus.COMPLETED));
+    }
+
+    /**
      * Inserts a master step immediately after {@code insertAfterSequenceOrder}.
      * Steps at or after the new position are pushed back by one; the new step becomes CURRENT.
      */
@@ -121,8 +154,14 @@ public class CandidateStepPipelineService {
 
         int targetSequenceOrder = insertAfterSequenceOrder + 1;
 
-        // Complete the step we are inserting after
-        pipelineRepository.updateStepStatus(candidateId, insertAfterSequenceOrder, PipelineStepStatus.COMPLETED);
+        List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+        boolean shouldCompletePrior = pipeline.stream()
+                .anyMatch(step -> step.getSequenceOrder() == insertAfterSequenceOrder
+                        && step.getStepStatus() == PipelineStepStatus.CURRENT);
+
+        if (shouldCompletePrior) {
+            pipelineRepository.updateStepStatus(candidateId, insertAfterSequenceOrder, PipelineStepStatus.COMPLETED);
+        }
 
         // Push back every step at or after the insertion slot
         pipelineRepository.shiftSequenceOrdersUp(candidateId, targetSequenceOrder);
@@ -306,9 +345,25 @@ public class CandidateStepPipelineService {
             }
         }
 
-        int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);
-        insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
-        cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
+        if (shouldAppend) {
+            boolean appendAfterEngagedHistory = addPipelineRound
+                    || newStatus == MasterStatus.OFFER_PENDING;
+
+            if (appendAfterEngagedHistory) {
+                pipeline.stream()
+                        .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
+                        .forEach(step -> pipelineRepository.updateStepStatus(
+                                candidateId, step.getSequenceOrder(), PipelineStepStatus.COMPLETED));
+                pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+            }
+
+            int insertAfterSequenceOrder = appendAfterEngagedHistory
+                    ? resolveInsertAfterForNewRound(pipeline)
+                    : resolveInsertAfterSequenceOrder(pipeline);
+
+            insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
+            cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
+        }
     }
 
     /**
@@ -334,5 +389,18 @@ public class CandidateStepPipelineService {
                 .map(CandidateStepPipeline::getSequenceOrder)
                 .max(Comparator.naturalOrder())
                 .orElse(0);
+    }
+
+    /**
+     * When appending a new interview round, insert after the last engaged step
+     * (completed, failed, current, or skipped) so a later round appears after
+     * any cancelled or completed round rather than before it.
+     */
+    private int resolveInsertAfterForNewRound(List<CandidateStepPipeline> pipeline) {
+        return pipeline.stream()
+                .filter(step -> step.getStepStatus() != PipelineStepStatus.PENDING)
+                .map(CandidateStepPipeline::getSequenceOrder)
+                .max(Comparator.naturalOrder())
+                .orElseGet(() -> resolveInsertAfterSequenceOrder(pipeline));
     }
 }

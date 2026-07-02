@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.nemal.dto.*;
 import com.nemal.entity.*;
+import com.nemal.enums.InterviewType;
+import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.Role;
 import com.nemal.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,7 @@ public class FeedbackService {
     private final InterviewPanelRepository interviewPanelRepository;
     private final InterviewRequestRepository interviewRequestRepository;
     private final QuestionCategoryService questionCategoryService;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -357,6 +361,8 @@ public class FeedbackService {
                 .findByInterviewScheduleIdAndInterviewerId(schedule.getId(), interviewer.getId())
                 .orElseGet(FeedbackResponse::new);
 
+        boolean isNewSubmission = response.getId() == null;
+
         response.setInterviewSchedule(schedule);
         response.setInterviewer(interviewer);
         response.setForm(form);
@@ -373,7 +379,38 @@ public class FeedbackService {
             logger.warn("Failed to log saved FeedbackResponse: {}", e.getMessage());
         }
 
+        if (isNewSubmission) {
+            recordFeedbackSubmittedAudit(schedule, form, interviewer);
+        }
+
         return toResponseDto(saved);
+    }
+
+    private void recordFeedbackSubmittedAudit(InterviewSchedule schedule,
+                                              FeedbackForm form,
+                                              User interviewer) {
+        InterviewRequest request = schedule.getRequest();
+        if (request == null || request.getCandidate() == null) {
+            return;
+        }
+
+        Candidate candidate = request.getCandidate();
+        InterviewType interviewType = schedule.getInterviewType() != null
+                ? schedule.getInterviewType()
+                : InterviewType.TECHNICAL;
+        MasterStatus stageStatus = interviewType.toCandidateStatus();
+        String notes = interviewType.name() + " feedback submitted";
+        if (form != null && form.getName() != null && !form.getName().isBlank()) {
+            notes = form.getName() + " · " + notes;
+        }
+
+        candidatePipelineAuditService.recordStatusChange(
+                candidate.getId(),
+                stageStatus,
+                candidate.getStatus(),
+                PipelineAuditActionType.FEEDBACK_SUBMITTED,
+                interviewer,
+                notes);
     }
 
     @Transactional(readOnly = true)

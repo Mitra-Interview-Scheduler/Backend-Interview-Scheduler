@@ -146,9 +146,10 @@ public class CandidateController {
 
     @PostMapping
     public ResponseEntity<CandidateDto> createCandidate(
-            @RequestBody CreateCandidateDto dto) {
+            @RequestBody CreateCandidateDto dto,
+            @AuthenticationPrincipal User user) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(candidateService.createCandidate(dto));
+                .body(candidateService.createCandidate(dto, user));
     }
 
     @PutMapping("/{id}")

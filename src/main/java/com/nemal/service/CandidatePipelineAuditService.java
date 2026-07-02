@@ -3,12 +3,15 @@ package com.nemal.service;
 import com.nemal.dto.CandidatePipelineStatusEventDto;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidatePipelineStatusEvent;
-import com.nemal.entity.Designation;
+import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.repository.CandidatePipelineStatusEventRepository;
 import com.nemal.repository.CandidateRepository;
+import com.nemal.repository.MasterStepRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,13 +20,18 @@ import java.util.List;
 @Service
 public class CandidatePipelineAuditService {
 
+    private static final Logger logger = LoggerFactory.getLogger(CandidatePipelineAuditService.class);
+
     private final CandidatePipelineStatusEventRepository eventRepository;
     private final CandidateRepository candidateRepository;
+    private final MasterStepRepository masterStepRepository;
 
     public CandidatePipelineAuditService(CandidatePipelineStatusEventRepository eventRepository,
-                                         CandidateRepository candidateRepository) {
+                                         CandidateRepository candidateRepository,
+                                         MasterStepRepository masterStepRepository) {
         this.eventRepository = eventRepository;
         this.candidateRepository = candidateRepository;
+        this.masterStepRepository = masterStepRepository;
     }
 
     @Transactional
@@ -37,17 +45,30 @@ public class CandidatePipelineAuditService {
             return;
         }
 
+        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
+        if (masterStep == null) {
+            logger.warn("No master step configured for status key '{}' on candidate {}", newStatus.name(), candidateId);
+            return;
+        }
+
+        MasterStep previousMasterStep = null;
+        if (previousStatus != null) {
+            previousMasterStep = masterStepRepository.findByStatusKey(previousStatus.name());
+            if (previousMasterStep == null) {
+                logger.warn("No master step configured for previous status key '{}' on candidate {}",
+                        previousStatus.name(), candidateId);
+            }
+        }
+
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new RuntimeException("Candidate not found: " + candidateId));
 
         eventRepository.save(CandidatePipelineStatusEvent.builder()
                 .candidate(candidate)
-                .statusKey(newStatus.name())
-                .previousStatusKey(previousStatus != null ? previousStatus.name() : null)
+                .masterStep(masterStep)
+                .previousMasterStep(previousMasterStep)
                 .actionType(actionType)
                 .changedBy(changedBy)
-                .changedByName(resolveActorName(changedBy))
-                .changedByDesignation(resolveActorDesignation(changedBy))
                 .notes(notes)
                 .build());
     }
@@ -58,27 +79,5 @@ public class CandidatePipelineAuditService {
                 .stream()
                 .map(CandidatePipelineStatusEventDto::from)
                 .toList();
-    }
-
-    private String resolveActorName(User user) {
-        if (user == null) {
-            return "System";
-        }
-        String fullName = user.getFullName();
-        if (fullName != null && !fullName.isBlank()) {
-            return fullName.trim();
-        }
-        return user.getEmail() != null ? user.getEmail() : "Unknown user";
-    }
-
-    private String resolveActorDesignation(User user) {
-        if (user == null) {
-            return null;
-        }
-        Designation designation = user.getCurrentDesignation();
-        if (designation == null || designation.getName() == null || designation.getName().isBlank()) {
-            return null;
-        }
-        return designation.getName().trim();
     }
 }
