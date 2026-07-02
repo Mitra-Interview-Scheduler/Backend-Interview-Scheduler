@@ -13,7 +13,11 @@ public record AdminUserDto(
         Set<Role> roles,
         boolean active,
         String designationName,
-        String departmentName
+        String departmentName,
+        Long departmentId,
+        Long designationId,
+        Long tierId,
+        Integer yearsOfExperience
 ) {
     public static AdminUserDto from(User user) {
         return new AdminUserDto(
@@ -24,7 +28,13 @@ public record AdminUserDto(
                 user.getRoles(),
                 user.isActive(),
                 user.getCurrentDesignation() != null ? user.getCurrentDesignation().getName() : null,
-                user.getDepartment() != null ? user.getDepartment().getName() : null
+                user.getDepartment() != null ? user.getDepartment().getName() : null,
+                user.getDepartment() != null ? user.getDepartment().getId() : null,
+                user.getCurrentDesignation() != null ? user.getCurrentDesignation().getId() : null,
+                user.getCurrentDesignation() != null && user.getCurrentDesignation().getTier() != null
+                        ? user.getCurrentDesignation().getTier().getId()
+                        : null,
+                user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0
         );
     }
 }

@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.nemal.dto.*;
 import com.nemal.entity.*;
+import com.nemal.enums.Role;
 import com.nemal.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,33 +60,108 @@ public class ProfileService {
         if (updateDto.bio() != null) {
             existingUser.setBio(updateDto.bio());
         }
-        if (updateDto.yearsOfExperience() != null) {
-            existingUser.setYearsOfExperience(updateDto.yearsOfExperience());
-        }
 
-        // Update department
-        if (updateDto.departmentId() != null) {
-            Department department = departmentRepository.findById(updateDto.departmentId())
-                    .orElseThrow(() -> new RuntimeException("Department not found"));
-            existingUser.setDepartment(department);
-        }
-
-        // Update designation (which includes tier information)
-        if (updateDto.designationId() != null) {
-            Designation designation = designationRepository.findById(updateDto.designationId())
-                    .orElseThrow(() -> new RuntimeException("Designation not found"));
-
-            // Validate that designation belongs to the user's department
-            if (existingUser.getDepartment() != null &&
-                    !designation.getDepartment().getId().equals(existingUser.getDepartment().getId())) {
-                throw new RuntimeException("Designation must belong to your department");
-            }
-
-            existingUser.setCurrentDesignation(designation);
+        if (isAdmin(user)) {
+            applyProfessionalDetails(existingUser, updateDto.departmentId(), updateDto.designationId(), updateDto.yearsOfExperience());
+        } else if (hasProfessionalDetailChanges(updateDto)) {
+            throw new IllegalArgumentException("Professional details can only be updated by an administrator");
         }
 
         existingUser = userRepository.save(existingUser);
         return ProfileDto.from(existingUser);
+    }
+
+    @Transactional
+    public AdminUserDto updateProfessionalDetails(Long userId, AdminProfessionalDetailsUpdateDto updateDto) {
+        User existingUser = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        existingUser.setYearsOfExperience(
+                updateDto.yearsOfExperience() != null ? updateDto.yearsOfExperience() : 0
+        );
+
+        if (updateDto.departmentId() == null) {
+            existingUser.setDepartment(null);
+            existingUser.setCurrentDesignation(null);
+        } else {
+            Department department = departmentRepository.findById(updateDto.departmentId())
+                    .orElseThrow(() -> new RuntimeException("Department not found"));
+            existingUser.setDepartment(department);
+
+            if (updateDto.designationId() == null) {
+                existingUser.setCurrentDesignation(null);
+            } else {
+                Designation designation = designationRepository.findById(updateDto.designationId())
+                        .orElseThrow(() -> new RuntimeException("Designation not found"));
+
+                if (!designation.getDepartment().getId().equals(department.getId())) {
+                    throw new RuntimeException("Designation must belong to the user's department");
+                }
+
+                existingUser.setCurrentDesignation(designation);
+            }
+        }
+
+        existingUser = userRepository.save(existingUser);
+        return AdminUserDto.from(existingUser);
+    }
+
+    @Transactional
+    public AdminUserDto updateBasicInfo(Long userId, AdminUserBasicInfoUpdateDto updateDto) {
+        User existingUser = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (updateDto.firstName() == null || updateDto.firstName().isBlank()) {
+            throw new IllegalArgumentException("First name is required");
+        }
+        if (updateDto.lastName() == null || updateDto.lastName().isBlank()) {
+            throw new IllegalArgumentException("Last name is required");
+        }
+
+        existingUser.setFirstName(updateDto.firstName().trim());
+        existingUser.setLastName(updateDto.lastName().trim());
+
+        existingUser = userRepository.save(existingUser);
+        return AdminUserDto.from(existingUser);
+    }
+
+    private boolean isAdmin(User user) {
+        return user.getRoles().contains(Role.ADMIN);
+    }
+
+    private boolean hasProfessionalDetailChanges(ProfileUpdateDto updateDto) {
+        return updateDto.departmentId() != null
+                || updateDto.designationId() != null
+                || updateDto.yearsOfExperience() != null;
+    }
+
+    private void applyProfessionalDetails(
+            User existingUser,
+            Long departmentId,
+            Long designationId,
+            Integer yearsOfExperience
+    ) {
+        if (yearsOfExperience != null) {
+            existingUser.setYearsOfExperience(yearsOfExperience);
+        }
+
+        if (departmentId != null) {
+            Department department = departmentRepository.findById(departmentId)
+                    .orElseThrow(() -> new RuntimeException("Department not found"));
+            existingUser.setDepartment(department);
+        }
+
+        if (designationId != null) {
+            Designation designation = designationRepository.findById(designationId)
+                    .orElseThrow(() -> new RuntimeException("Designation not found"));
+
+            if (existingUser.getDepartment() != null &&
+                    !designation.getDepartment().getId().equals(existingUser.getDepartment().getId())) {
+                throw new RuntimeException("Designation must belong to the user's department");
+            }
+
+            existingUser.setCurrentDesignation(designation);
+        }
     }
 
     public List<InterviewerTechnologyDto> getInterviewerTechnologies(Long userId) {

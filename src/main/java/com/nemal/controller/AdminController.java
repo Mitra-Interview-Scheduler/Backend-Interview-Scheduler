@@ -1,10 +1,13 @@
 package com.nemal.controller;
 
+import com.nemal.dto.AdminProfessionalDetailsUpdateDto;
+import com.nemal.dto.AdminUserBasicInfoUpdateDto;
 import com.nemal.dto.AdminUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateRoleRequestDto;
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
+import com.nemal.service.ProfileService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,9 +26,11 @@ import com.nemal.enums.Role;
 public class AdminController {
 
     private final UserRepository userRepository;
+    private final ProfileService profileService;
 
-    public AdminController(UserRepository userRepository) {
+    public AdminController(UserRepository userRepository, ProfileService profileService) {
         this.userRepository = userRepository;
+        this.profileService = profileService;
     }
 
     // GET /api/admin/users
@@ -84,6 +89,24 @@ public class AdminController {
                 .map(AdminUserDto::from)
                 .toList();
         return ResponseEntity.ok(users);
+    }
+
+    // PUT /api/admin/users/{id}/professional-details
+    @PutMapping("/users/{id}/professional-details")
+    public ResponseEntity<AdminUserDto> updateProfessionalDetails(
+            @PathVariable Long id,
+            @RequestBody AdminProfessionalDetailsUpdateDto updateDto
+    ) {
+        return ResponseEntity.ok(profileService.updateProfessionalDetails(id, updateDto));
+    }
+
+    // PUT /api/admin/users/{id}/basic-info
+    @PutMapping("/users/{id}/basic-info")
+    public ResponseEntity<AdminUserDto> updateBasicInfo(
+            @PathVariable Long id,
+            @RequestBody AdminUserBasicInfoUpdateDto updateDto
+    ) {
+        return ResponseEntity.ok(profileService.updateBasicInfo(id, updateDto));
     }
 
     // PATCH /api/admin/users/{id}/status  — toggles isActive
