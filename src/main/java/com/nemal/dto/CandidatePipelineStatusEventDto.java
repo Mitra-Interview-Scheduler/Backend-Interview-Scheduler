@@ -13,6 +13,7 @@ public record CandidatePipelineStatusEventDto(
         PipelineAuditActionType actionType,
         Long changedByUserId,
         String changedByName,
+        String changedByDesignation,
         String notes,
         LocalDateTime createdAt
 ) {
@@ -25,6 +26,7 @@ public record CandidatePipelineStatusEventDto(
                 event.getActionType(),
                 event.getChangedBy() != null ? event.getChangedBy().getId() : null,
                 event.getChangedByName(),
+                event.getChangedByDesignation(),
                 event.getNotes(),
                 event.getCreatedAt()
         );

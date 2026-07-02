@@ -49,6 +49,9 @@ public class CandidatePipelineStatusEvent {
     @Column(name = "changed_by_name")
     private String changedByName;
 
+    @Column(name = "changed_by_designation")
+    private String changedByDesignation;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

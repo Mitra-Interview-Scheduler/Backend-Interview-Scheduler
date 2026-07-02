@@ -394,8 +394,8 @@ public class InterviewRequestService {
                 MasterStatus previousStatus = candidate.getStatus();
                 masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
-                candidateStepPipelineService.updatePipelineOnStatusChange(
-                        candidate.getId(), resetStatus, previousStatus, false);
+                candidateStepPipelineService.restorePipelineAfterInterviewCancel(
+                        candidate.getId(), interviewType);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
                         resetStatus,

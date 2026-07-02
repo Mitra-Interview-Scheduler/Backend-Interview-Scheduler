@@ -3,6 +3,7 @@ package com.nemal.service;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateStepPipeline;
 import com.nemal.entity.MasterStep;
+import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineStepStatus;
 import com.nemal.repository.CandidateRepository;
@@ -205,6 +206,57 @@ public class CandidateStepPipelineService {
     }
 
     /**
+     * When an interview is cancelled, mark the active round step as failed and reactivate
+     * the existing pre-interview stage (e.g. SCREENING) instead of appending a duplicate row.
+     */
+    @Transactional
+    public void restorePipelineAfterInterviewCancel(Long candidateId, InterviewType interviewType) {
+        MasterStatus roundStatus = interviewType.toCandidateStatus();
+        MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+
+        List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
+        if (pipeline.isEmpty()) {
+            return;
+        }
+
+        Optional<CandidateStepPipeline> roundToFail = pipeline.stream()
+                .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
+                .filter(step -> step.getStep() != null
+                        && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+
+        if (roundToFail.isEmpty()) {
+            roundToFail = pipeline.stream()
+                    .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
+                    .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+        }
+
+        roundToFail.ifPresent(step -> pipelineRepository.updateStepStatus(
+                candidateId, step.getSequenceOrder(), PipelineStepStatus.FAILED));
+
+        Optional<CandidateStepPipeline> restoreStep = pipeline.stream()
+                .filter(step -> step.getStep() != null
+                        && resetStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+
+        if (restoreStep.isEmpty()) {
+            logger.warn("No pipeline step found to restore for status {} on candidate {}", resetStatus, candidateId);
+            return;
+        }
+
+        int restoreSequenceOrder = restoreStep.get().getSequenceOrder();
+
+        pipeline.stream()
+                .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT
+                        && step.getSequenceOrder() != restoreSequenceOrder)
+                .forEach(step -> pipelineRepository.updateStepStatus(
+                        candidateId, step.getSequenceOrder(), PipelineStepStatus.COMPLETED));
+
+        pipelineRepository.updateStepStatusBefore(candidateId, restoreSequenceOrder, PipelineStepStatus.COMPLETED);
+        pipelineRepository.updateStepStatus(candidateId, restoreSequenceOrder, PipelineStepStatus.CURRENT);
+    }
+
+    /**
      * When candidate macro-status changes, sync the pipeline:
      * - first visit to a pre-seeded PENDING default step activates that row
      * - every re-entry or new round appends after the current step (like interview history)
@@ -237,13 +289,21 @@ public class CandidateStepPipelineService {
                 .findFirst();
 
         boolean shouldAppend = addPipelineRound
-                || APPENDABLE_STATUSES.contains(newStatus)
-                || pendingTemplateStep.isEmpty();
+                || (APPENDABLE_STATUSES.contains(newStatus) && pendingTemplateStep.isEmpty());
 
         if (!shouldAppend) {
-            activateExistingStep(candidateId, pendingTemplateStep.get().getSequenceOrder());
-            cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
-            return;
+            Optional<CandidateStepPipeline> stepToActivate = pendingTemplateStep;
+            if (stepToActivate.isEmpty()) {
+                stepToActivate = pipeline.stream()
+                        .filter(p -> p.getStep() != null
+                                && p.getStep().getStatusKey().equalsIgnoreCase(newStatus.name()))
+                        .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
+            }
+            if (stepToActivate.isPresent()) {
+                activateExistingStep(candidateId, stepToActivate.get().getSequenceOrder());
+                cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
+                return;
+            }
         }
 
         int insertAfterSequenceOrder = resolveInsertAfterSequenceOrder(pipeline);

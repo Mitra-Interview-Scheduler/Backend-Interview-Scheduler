@@ -3,6 +3,7 @@ package com.nemal.service;
 import com.nemal.dto.CandidatePipelineStatusEventDto;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidatePipelineStatusEvent;
+import com.nemal.entity.Designation;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
@@ -46,6 +47,7 @@ public class CandidatePipelineAuditService {
                 .actionType(actionType)
                 .changedBy(changedBy)
                 .changedByName(resolveActorName(changedBy))
+                .changedByDesignation(resolveActorDesignation(changedBy))
                 .notes(notes)
                 .build());
     }
@@ -67,5 +69,16 @@ public class CandidatePipelineAuditService {
             return fullName.trim();
         }
         return user.getEmail() != null ? user.getEmail() : "Unknown user";
+    }
+
+    private String resolveActorDesignation(User user) {
+        if (user == null) {
+            return null;
+        }
+        Designation designation = user.getCurrentDesignation();
+        if (designation == null || designation.getName() == null || designation.getName().isBlank()) {
+            return null;
+        }
+        return designation.getName().trim();
     }
 }

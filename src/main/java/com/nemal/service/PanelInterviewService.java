@@ -270,6 +270,8 @@ public class PanelInterviewService {
                 MasterStatus previousStatus = candidate.getStatus();
                 masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                candidateStepPipelineService.restorePipelineAfterInterviewCancel(
+                        candidate.getId(), interviewType);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
                         resetStatus,
