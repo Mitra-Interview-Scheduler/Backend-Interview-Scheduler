@@ -41,6 +41,7 @@ public class FeedbackService {
     private final InterviewRequestRepository interviewRequestRepository;
     private final QuestionCategoryService questionCategoryService;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -381,6 +382,17 @@ public class FeedbackService {
 
         if (isNewSubmission) {
             recordFeedbackSubmittedAudit(schedule, form, interviewer);
+            InterviewRequest request = schedule.getRequest();
+            if (request != null && request.getCandidate() != null) {
+                InterviewType interviewType = schedule.getInterviewType() != null
+                        ? schedule.getInterviewType()
+                        : InterviewType.TECHNICAL;
+                notificationService.sendFeedbackSubmittedNotification(
+                        request.getCandidate(),
+                        interviewer,
+                        interviewType
+                );
+            }
         }
 
         return toResponseDto(saved);

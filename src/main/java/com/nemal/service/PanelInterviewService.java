@@ -208,6 +208,12 @@ public class PanelInterviewService {
             }
         }
 
+        try {
+            notificationService.sendCoordinatedHrPanelInterviewScheduledNotification(savedPanel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel schedule notification: {}", e.getMessage());
+        }
+
         return InterviewPanelDto.from(savedPanel);
     }
 
@@ -251,6 +257,15 @@ public class PanelInterviewService {
             } catch (Exception e) {
                 logger.warn("Failed to send cancellation notification: {}", e.getMessage());
             }
+        }
+
+        try {
+            String candidateName = panel.getCandidate() != null
+                    ? panel.getCandidate().getName()
+                    : "the candidate";
+            notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
         }
 
         if (panel.getCandidate() != null) {

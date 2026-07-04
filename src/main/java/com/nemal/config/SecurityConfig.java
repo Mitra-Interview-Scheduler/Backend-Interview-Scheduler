@@ -107,6 +107,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/question-categories/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/question-categories/**").authenticated()
 
+                        .requestMatchers("/api/notifications/**").authenticated()
+
                         .requestMatchers("/api/profile/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/department/**").authenticated()

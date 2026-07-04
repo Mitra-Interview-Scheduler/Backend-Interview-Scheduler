@@ -50,6 +50,7 @@ public class CandidateService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final UserRepository userRepository;
     private final CandidateTechnologyService candidateTechnologyService;
+    private final NotificationService notificationService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -72,7 +73,8 @@ public class CandidateService {
             CandidateClosureService candidateClosureService,
             CandidatePipelineAuditService candidatePipelineAuditService,
             UserRepository userRepository,
-            CandidateTechnologyService candidateTechnologyService
+            CandidateTechnologyService candidateTechnologyService,
+            NotificationService notificationService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -86,6 +88,7 @@ public class CandidateService {
         this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.userRepository = userRepository;
         this.candidateTechnologyService = candidateTechnologyService;
+        this.notificationService = notificationService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -306,6 +309,7 @@ public class CandidateService {
                 PipelineAuditActionType.APPLICATION_CREATED,
                 changedBy != null ? changedBy : coordinatedHr,
                 null);
+        notificationService.sendCandidateCoordinatorAssignedNotification(candidate);
         return toCandidateDto(candidate);
     }
 
@@ -371,6 +375,12 @@ public class CandidateService {
                         PipelineAuditActionType.STATUS_CHANGED,
                         changedBy,
                         null);
+                notificationService.sendCandidateStatusChangedNotification(
+                        candidate,
+                        oldStatus,
+                        dto.status(),
+                        changedBy
+                );
             }
         }
 

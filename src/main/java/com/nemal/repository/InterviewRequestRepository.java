@@ -89,4 +89,16 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
             @Param("minTierOrder") Integer minTierOrder,
             @Param("exactTierOrder") Integer exactTierOrder
     );
+
+    @Query("""
+            SELECT r FROM InterviewRequest r
+            JOIN FETCH r.assignedInterviewer
+            WHERE r.status = 'ACCEPTED'
+              AND r.preferredStartDateTime > :now
+              AND r.preferredStartDateTime <= :windowEnd
+            """)
+    List<InterviewRequest> findAcceptedInterviewsStartingBetween(
+            @Param("now") LocalDateTime now,
+            @Param("windowEnd") LocalDateTime windowEnd
+    );
 }

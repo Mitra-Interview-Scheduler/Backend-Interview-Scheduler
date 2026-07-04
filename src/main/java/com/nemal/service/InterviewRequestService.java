@@ -131,6 +131,7 @@ public class InterviewRequestService {
 
         try {
             notificationService.sendInterviewScheduledNotification(saved);
+            notificationService.sendCoordinatedHrInterviewScheduledNotification(saved);
             if (interviewCoordinator != null) {
                 notificationService.sendInterviewCoordinatorScheduledNotification(saved);
             }
@@ -372,6 +373,7 @@ public class InterviewRequestService {
         try {
             InterviewRequest forNotification = interviewRequestRepository.findById(requestId).orElse(request);
             notificationService.sendInterviewCancelledNotification(forNotification);
+            notificationService.sendCoordinatedHrInterviewCancelledNotification(forNotification);
             logger.info("Cancellation notification sent");
         } catch (Exception e) {
             logger.warn("Failed to send cancellation notification: {}", e.getMessage());
