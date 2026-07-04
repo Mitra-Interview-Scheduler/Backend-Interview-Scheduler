@@ -9,6 +9,8 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "candidates")
@@ -102,6 +104,10 @@ public class Candidate {
     @ManyToOne
     @JoinColumn(name = "coordinated_hr_id")
     private User coordinatedHr;
+
+    @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<CandidateTechnology> candidateTechnologies = new HashSet<>();
 
     @PrePersist
     protected void onCreate() {

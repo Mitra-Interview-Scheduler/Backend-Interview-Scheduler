@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
+import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
@@ -28,8 +29,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Comparator;
-import java.util.Locale;
 import java.util.List;
+import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -47,6 +49,7 @@ public class CandidateService {
     private final CandidateClosureService candidateClosureService;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final UserRepository userRepository;
+    private final CandidateTechnologyService candidateTechnologyService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -68,7 +71,8 @@ public class CandidateService {
             MasterStepRepository masterStepRepository,
             CandidateClosureService candidateClosureService,
             CandidatePipelineAuditService candidatePipelineAuditService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            CandidateTechnologyService candidateTechnologyService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -81,6 +85,7 @@ public class CandidateService {
         this.candidateClosureService = candidateClosureService;
         this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.userRepository = userRepository;
+        this.candidateTechnologyService = candidateTechnologyService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -100,15 +105,16 @@ public class CandidateService {
 
     @Transactional(readOnly = true)
     public List<CandidateDto> getAllCandidates() {
-        return candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc()
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        List<Candidate> candidates = candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc();
+        return toCandidateDtos(candidates);
     }
 
     @Transactional(readOnly = true)
     public CandidateDto getCandidateById(Long id) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
-        return CandidateDto.from(candidate, candidateClosureService.getLatestClosure(id));
+        List<CandidateTechnologyDto> technologies = candidateTechnologyService.getCandidateTechnologies(id);
+        return CandidateDto.from(candidate, candidateClosureService.getLatestClosure(id), technologies);
     }
 
     @Transactional(readOnly = true)
@@ -130,18 +136,17 @@ public class CandidateService {
     }
 
     public List<CandidateDto> getCandidatesByDepartment(Long departmentId) {
-        return candidateRepository.findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(departmentId)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(
+                candidateRepository.findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(departmentId));
     }
 
     public List<CandidateDto> getCandidatesByStatus(MasterStatus status) {
-        return candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(
+                candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status));
     }
 
     public List<CandidateDto> searchCandidates(String searchTerm) {
-        return candidateRepository.searchCandidates(searchTerm)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(candidateRepository.searchCandidates(searchTerm));
     }
 
     public List<CandidateDto> findWithFilters(Long departmentId, MasterStatus status, String searchTerm) {
@@ -175,7 +180,7 @@ public class CandidateService {
             }
         }
 
-        return candidates.stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(candidates);
     }
 
     public PaginatedResponseDto<CandidateDto> findWithFiltersPaged(
@@ -199,9 +204,7 @@ public class CandidateService {
                 PageRequest.of(safePage, safeSize)
         );
 
-        List<CandidateDto> content = result.getContent().stream()
-                .map(CandidateDto::from)
-                .collect(Collectors.toList());
+        List<CandidateDto> content = toCandidateDtos(result.getContent());
 
         return new PaginatedResponseDto<>(
                 content,
@@ -211,6 +214,30 @@ public class CandidateService {
                 Math.max(1, result.getTotalPages()),
                 result.isFirst(),
                 result.isLast()
+        );
+    }
+
+    private List<CandidateDto> toCandidateDtos(List<Candidate> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Long> candidateIds = candidates.stream().map(Candidate::getId).toList();
+        Map<Long, List<CandidateTechnologyDto>> technologiesByCandidateId =
+                candidateTechnologyService.getTechnologiesByCandidateIds(candidateIds);
+        return candidates.stream()
+                .map(candidate -> CandidateDto.from(
+                        candidate,
+                        null,
+                        technologiesByCandidateId.getOrDefault(candidate.getId(), List.of())
+                ))
+                .collect(Collectors.toList());
+    }
+
+    private CandidateDto toCandidateDto(Candidate candidate) {
+        return CandidateDto.from(
+                candidate,
+                candidateClosureService.getLatestClosure(candidate.getId()),
+                candidateTechnologyService.getCandidateTechnologies(candidate.getId())
         );
     }
 
@@ -279,7 +306,7 @@ public class CandidateService {
                 PipelineAuditActionType.APPLICATION_CREATED,
                 changedBy != null ? changedBy : coordinatedHr,
                 null);
-        return CandidateDto.from(candidate);
+        return toCandidateDto(candidate);
     }
 
     @Transactional
@@ -370,7 +397,7 @@ public class CandidateService {
         }
 
         candidate = candidateRepository.save(candidate);
-        return CandidateDto.from(candidate);
+        return toCandidateDto(candidate);
     }
 
     @Transactional

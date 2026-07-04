@@ -1,7 +1,9 @@
 package com.nemal.controller;
 
+import com.nemal.dto.AddCandidateTechnologyDto;
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
+import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.dto.CloseCandidateDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
@@ -12,6 +14,7 @@ import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
 import com.nemal.service.CandidateClosureService;
 import com.nemal.service.CandidateService;
+import com.nemal.service.CandidateTechnologyService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -34,11 +37,14 @@ public class CandidateController {
     @Autowired
     private final CandidateService candidateService;
     private final CandidateClosureService candidateClosureService;
+    private final CandidateTechnologyService candidateTechnologyService;
 
     public CandidateController(CandidateService candidateService,
-                               CandidateClosureService candidateClosureService) {
+                               CandidateClosureService candidateClosureService,
+                               CandidateTechnologyService candidateTechnologyService) {
         this.candidateService = candidateService;
         this.candidateClosureService = candidateClosureService;
+        this.candidateTechnologyService = candidateTechnologyService;
     }
 
     @GetMapping("/statuses")
@@ -83,6 +89,29 @@ public class CandidateController {
     @GetMapping("/{id}")
     public ResponseEntity<CandidateDto> getCandidateById(@PathVariable Long id) {
         return ResponseEntity.ok(candidateService.getCandidateById(id));
+    }
+
+    @GetMapping("/{id}/technologies")
+    public ResponseEntity<List<CandidateTechnologyDto>> getCandidateTechnologies(@PathVariable Long id) {
+        return ResponseEntity.ok(candidateTechnologyService.getCandidateTechnologies(id));
+    }
+
+    @PostMapping("/{id}/technologies")
+    public ResponseEntity<CandidateTechnologyDto> addCandidateTechnology(
+            @PathVariable Long id,
+            @RequestBody AddCandidateTechnologyDto dto
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(candidateTechnologyService.addCandidateTechnology(id, dto));
+    }
+
+    @DeleteMapping("/{id}/technologies/{technologyAssignmentId}")
+    public ResponseEntity<Void> removeCandidateTechnology(
+            @PathVariable Long id,
+            @PathVariable Long technologyAssignmentId
+    ) {
+        candidateTechnologyService.removeCandidateTechnology(id, technologyAssignmentId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/documents")

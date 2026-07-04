@@ -4,6 +4,7 @@ import com.nemal.entity.Candidate;
 import com.nemal.enums.MasterStatus;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record CandidateDto(
         Long id,
@@ -35,13 +36,22 @@ public record CandidateDto(
         Long coordinatedHrId,
         String coordinatedHrName,
         Long coordinatedHrDepartmentId,
-        CandidateClosureDto closure
+        CandidateClosureDto closure,
+        List<CandidateTechnologyDto> technologies
 ) {
     public static CandidateDto from(Candidate candidate) {
-        return from(candidate, null);
+        return from(candidate, null, List.of());
     }
 
     public static CandidateDto from(Candidate candidate, CandidateClosureDto closure) {
+        return from(candidate, closure, List.of());
+    }
+
+    public static CandidateDto from(
+            Candidate candidate,
+            CandidateClosureDto closure,
+            List<CandidateTechnologyDto> technologies
+    ) {
         var desig = candidate.getTargetDesignation();
         var tier  = (desig != null) ? desig.getTier() : null;
 
@@ -76,7 +86,8 @@ public record CandidateDto(
                 candidate.getCoordinatedHr() != null && candidate.getCoordinatedHr().getDepartment() != null
                         ? candidate.getCoordinatedHr().getDepartment().getId()
                         : null,
-                closure
+                closure,
+                technologies != null ? technologies : List.of()
         );
     }
 }
