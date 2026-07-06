@@ -6,10 +6,12 @@ import com.nemal.dto.PagedResult;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
+import com.nemal.entity.Domain;
 import com.nemal.entity.InterviewerTechnology;
 import com.nemal.entity.Technology;
 import com.nemal.entity.Tier;
 import com.nemal.entity.User;
+import com.nemal.entity.UserDomain;
 import com.nemal.repository.AvailabilitySlotRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -131,6 +133,16 @@ public class HRAvailabilityService {
                 predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), techPredicate));
             }
 
+            // domain filter: available slots must match domains; booked always pass
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                Join<User, UserDomain> udJoin =
+                    interviewerJoin.join("userDomains", JoinType.LEFT);
+                Join<UserDomain, Domain> domainJoin =
+                    udJoin.join("domain", JoinType.LEFT);
+                Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
+                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), domainMatch));
+            }
+
             // min years of experience
             if (filter.minYearsOfExperience() != null) {
                 Expression<Integer> years = interviewerJoin.get("yearsOfExperience").as(Integer.class);
@@ -201,6 +213,14 @@ public class HRAvailabilityService {
                     Predicate techMatch = techJoin.get("id").in(filter.technologyIds());
                     Predicate techPredicate = cb.and(techActive, techMatch);
                 countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), techPredicate));
+            }
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                    Join<User, UserDomain> udJoin =
+                    countInterviewerJoin.join("userDomains", JoinType.LEFT);
+                    Join<UserDomain, Domain> domainJoin =
+                    udJoin.join("domain", JoinType.LEFT);
+                    Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
+                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), domainMatch));
             }
             if (filter.minYearsOfExperience() != null) {
                     Expression<Integer> years = countInterviewerJoin.get("yearsOfExperience").as(Integer.class);
@@ -296,6 +316,28 @@ public class HRAvailabilityService {
                         })
                         .collect(Collectors.toList());
                 logger.info("Step 3 – after technology filter: {}", slots.size());
+            }
+
+            // ── Step 3b: domain ─────────────────────────────────────────────
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                slots = slots.stream()
+                        .filter(slot -> {
+                            if ("BOOKED".equals(slot.getStatus().name())) return true;
+                            if (slot.getInterviewer() == null) return false;
+
+                            var userDomains = slot.getInterviewer().getUserDomains();
+                            if (!Hibernate.isInitialized(userDomains)) {
+                                Hibernate.initialize(userDomains);
+                            }
+                            if (userDomains == null || userDomains.isEmpty()) return false;
+
+                            return userDomains.stream()
+                                    .filter(ud -> ud != null && ud.getDomain() != null)
+                                    .anyMatch(ud -> filter.domainIds()
+                                            .contains(ud.getDomain().getId()));
+                        })
+                        .collect(Collectors.toList());
+                logger.info("Step 3b – after domain filter: {}", slots.size());
             }
 
             // ── Step 4: years of experience ───────────────────────────────────

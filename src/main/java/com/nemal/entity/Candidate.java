@@ -109,6 +109,10 @@ public class Candidate {
     @Builder.Default
     private Set<CandidateTechnology> candidateTechnologies = new HashSet<>();
 
+    @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<CandidateDomain> candidateDomains = new HashSet<>();
+
     @PrePersist
     protected void onCreate() {
         if (appliedAt == null) {

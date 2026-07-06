@@ -5,6 +5,7 @@ import com.nemal.dto.CandidateDocumentDto;
 import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
+import com.nemal.dto.DomainDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
@@ -50,6 +51,7 @@ public class CandidateService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final UserRepository userRepository;
     private final CandidateTechnologyService candidateTechnologyService;
+    private final EntityDomainService entityDomainService;
     private final NotificationService notificationService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
@@ -74,6 +76,7 @@ public class CandidateService {
             CandidatePipelineAuditService candidatePipelineAuditService,
             UserRepository userRepository,
             CandidateTechnologyService candidateTechnologyService,
+            EntityDomainService entityDomainService,
             NotificationService notificationService
 
     ) {
@@ -88,6 +91,7 @@ public class CandidateService {
         this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.userRepository = userRepository;
         this.candidateTechnologyService = candidateTechnologyService;
+        this.entityDomainService = entityDomainService;
         this.notificationService = notificationService;
     }
 
@@ -117,7 +121,13 @@ public class CandidateService {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
         List<CandidateTechnologyDto> technologies = candidateTechnologyService.getCandidateTechnologies(id);
-        return CandidateDto.from(candidate, candidateClosureService.getLatestClosure(id), technologies);
+        List<DomainDto> domains = entityDomainService.getCandidateDomains(id);
+        return CandidateDto.from(
+                candidate,
+                candidateClosureService.getLatestClosure(id),
+                technologies,
+                domains
+        );
     }
 
     @Transactional(readOnly = true)
@@ -227,11 +237,14 @@ public class CandidateService {
         List<Long> candidateIds = candidates.stream().map(Candidate::getId).toList();
         Map<Long, List<CandidateTechnologyDto>> technologiesByCandidateId =
                 candidateTechnologyService.getTechnologiesByCandidateIds(candidateIds);
+        Map<Long, List<DomainDto>> domainsByCandidateId =
+                entityDomainService.getDomainsByCandidateIds(candidateIds);
         return candidates.stream()
                 .map(candidate -> CandidateDto.from(
                         candidate,
                         null,
-                        technologiesByCandidateId.getOrDefault(candidate.getId(), List.of())
+                        technologiesByCandidateId.getOrDefault(candidate.getId(), List.of()),
+                        domainsByCandidateId.getOrDefault(candidate.getId(), List.of())
                 ))
                 .collect(Collectors.toList());
     }
@@ -240,7 +253,8 @@ public class CandidateService {
         return CandidateDto.from(
                 candidate,
                 candidateClosureService.getLatestClosure(candidate.getId()),
-                candidateTechnologyService.getCandidateTechnologies(candidate.getId())
+                candidateTechnologyService.getCandidateTechnologies(candidate.getId()),
+                entityDomainService.getCandidateDomains(candidate.getId())
         );
     }
 
@@ -301,6 +315,7 @@ public class CandidateService {
 
         masterStepService.assignStatus(candidate, MasterStatus.NEW);
         candidate = candidateRepository.save(candidate);
+        entityDomainService.syncCandidateDomains(candidate, dto.domainIds());
         candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
         candidatePipelineAuditService.recordStatusChange(
                 candidate.getId(),
@@ -406,6 +421,7 @@ public class CandidateService {
             candidate.setCoordinatedHr(resolveCoordinatedHr(dto.coordinatedHrId()));
         }
 
+        entityDomainService.syncCandidateDomains(candidate, dto.domainIds());
         candidate = candidateRepository.save(candidate);
         return toCandidateDto(candidate);
     }

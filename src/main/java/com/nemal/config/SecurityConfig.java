@@ -107,6 +107,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/question-categories/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/question-categories/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/domains", "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/domains/**").authenticated()
+
                         .requestMatchers("/api/notifications/**").authenticated()
 
                         .requestMatchers("/api/profile/**").authenticated()

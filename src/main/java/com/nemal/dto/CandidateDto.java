@@ -37,20 +37,30 @@ public record CandidateDto(
         String coordinatedHrName,
         Long coordinatedHrDepartmentId,
         CandidateClosureDto closure,
-        List<CandidateTechnologyDto> technologies
+        List<CandidateTechnologyDto> technologies,
+        List<DomainDto> domains
 ) {
     public static CandidateDto from(Candidate candidate) {
-        return from(candidate, null, List.of());
+        return from(candidate, null, List.of(), List.of());
     }
 
     public static CandidateDto from(Candidate candidate, CandidateClosureDto closure) {
-        return from(candidate, closure, List.of());
+        return from(candidate, closure, List.of(), List.of());
     }
 
     public static CandidateDto from(
             Candidate candidate,
             CandidateClosureDto closure,
             List<CandidateTechnologyDto> technologies
+    ) {
+        return from(candidate, closure, technologies, List.of());
+    }
+
+    public static CandidateDto from(
+            Candidate candidate,
+            CandidateClosureDto closure,
+            List<CandidateTechnologyDto> technologies,
+            List<DomainDto> domains
     ) {
         var desig = candidate.getTargetDesignation();
         var tier  = (desig != null) ? desig.getTier() : null;
@@ -87,7 +97,8 @@ public record CandidateDto(
                         ? candidate.getCoordinatedHr().getDepartment().getId()
                         : null,
                 closure,
-                technologies != null ? technologies : List.of()
+                technologies != null ? technologies : List.of(),
+                domains != null ? domains : List.of()
         );
     }
 }

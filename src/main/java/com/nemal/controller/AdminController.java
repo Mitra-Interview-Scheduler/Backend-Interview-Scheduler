@@ -3,10 +3,12 @@ package com.nemal.controller;
 import com.nemal.dto.AdminProfessionalDetailsUpdateDto;
 import com.nemal.dto.AdminUserBasicInfoUpdateDto;
 import com.nemal.dto.AdminUserDto;
+import com.nemal.dto.DomainDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateRoleRequestDto;
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
+import com.nemal.service.EntityDomainService;
 import com.nemal.service.ProfileService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,7 @@ import org.springframework.data.domain.Sort;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.nemal.enums.Role;
 
@@ -27,10 +30,16 @@ public class AdminController {
 
     private final UserRepository userRepository;
     private final ProfileService profileService;
+    private final EntityDomainService entityDomainService;
 
-    public AdminController(UserRepository userRepository, ProfileService profileService) {
+    public AdminController(
+            UserRepository userRepository,
+            ProfileService profileService,
+            EntityDomainService entityDomainService
+    ) {
         this.userRepository = userRepository;
         this.profileService = profileService;
+        this.entityDomainService = entityDomainService;
     }
 
     // GET /api/admin/users
@@ -70,8 +79,7 @@ public class AdminController {
             int toIndex = Math.min(fromIndex + sizeValue, total);
             int totalPages = Math.max(1, (int) Math.ceil((double) total / sizeValue));
 
-            List<AdminUserDto> content = filteredUsers.subList(fromIndex, toIndex)
-                    .stream().map(AdminUserDto::from).toList();
+            List<AdminUserDto> content = toAdminUserDtos(filteredUsers.subList(fromIndex, toIndex));
 
             return ResponseEntity.ok(new PaginatedResponseDto<>(
                     content,
@@ -84,11 +92,26 @@ public class AdminController {
             ));
         }
 
-        List<AdminUserDto> users = userRepository.findAll()
-                .stream()
-                .map(AdminUserDto::from)
-                .toList();
+        List<AdminUserDto> users = toAdminUserDtos(userRepository.findAll());
         return ResponseEntity.ok(users);
+    }
+
+    private List<AdminUserDto> toAdminUserDtos(List<User> users) {
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+        List<Long> userIds = users.stream().map(User::getId).toList();
+        Map<Long, List<DomainDto>> domainsByUserId = entityDomainService.getDomainsByUserIds(userIds);
+        return users.stream()
+                .map(user -> AdminUserDto.from(
+                        user,
+                        domainsByUserId.getOrDefault(user.getId(), List.of())
+                ))
+                .toList();
+    }
+
+    private AdminUserDto toAdminUserDto(User user) {
+        return AdminUserDto.from(user, entityDomainService.getUserDomains(user.getId()));
     }
 
     // PUT /api/admin/users/{id}/professional-details
@@ -116,7 +139,7 @@ public class AdminController {
                 .orElseThrow(() -> new RuntimeException("User not found: " + id));
         user.setActive(!user.isActive());
         userRepository.save(user);
-        return ResponseEntity.ok(AdminUserDto.from(user));
+        return ResponseEntity.ok(toAdminUserDto(user));
     }
 
     // PUT /api/admin/users/{id}/roles  — replace all roles
@@ -137,7 +160,7 @@ public class AdminController {
 
         user.setRoles(new HashSet<>(request.roles()));
         userRepository.save(user);
-        return ResponseEntity.ok(AdminUserDto.from(user));
+        return ResponseEntity.ok(toAdminUserDto(user));
     }
 
     // POST /api/admin/users/{id}/roles/{role}  — add a single role
@@ -152,7 +175,7 @@ public class AdminController {
             roles.add(roleEnum);
             user.setRoles(roles);
             userRepository.save(user);
-            return ResponseEntity.ok(AdminUserDto.from(user));
+            return ResponseEntity.ok(toAdminUserDto(user));
         } catch (IllegalArgumentException ex) {
             throw new RuntimeException("Invalid role: " + role);
         }
@@ -186,7 +209,7 @@ public class AdminController {
 
             user.setRoles(roles);
             userRepository.save(user);
-            return ResponseEntity.ok(AdminUserDto.from(user));
+            return ResponseEntity.ok(toAdminUserDto(user));
         } catch (IllegalArgumentException ex) {
             throw new RuntimeException("Invalid role: " + role);
         }

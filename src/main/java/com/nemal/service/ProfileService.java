@@ -18,19 +18,22 @@ public class ProfileService {
     private final InterviewerTechnologyRepository interviewerTechnologyRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
+    private final EntityDomainService entityDomainService;
 
     public ProfileService(
             UserRepository userRepository,
             TechnologyRepository technologyRepository,
             InterviewerTechnologyRepository interviewerTechnologyRepository,
             DepartmentRepository departmentRepository,
-            DesignationRepository designationRepository
+            DesignationRepository designationRepository,
+            EntityDomainService entityDomainService
     ) {
         this.userRepository = userRepository;
         this.technologyRepository = technologyRepository;
         this.interviewerTechnologyRepository = interviewerTechnologyRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
+        this.entityDomainService = entityDomainService;
     }
 
     @Transactional(readOnly = true)
@@ -103,7 +106,11 @@ public class ProfileService {
         }
 
         existingUser = userRepository.save(existingUser);
-        return AdminUserDto.from(existingUser);
+        entityDomainService.syncUserDomains(existingUser, updateDto.domainIds());
+        return AdminUserDto.from(
+                existingUser,
+                entityDomainService.getUserDomains(existingUser.getId())
+        );
     }
 
     @Transactional
@@ -122,7 +129,10 @@ public class ProfileService {
         existingUser.setLastName(updateDto.lastName().trim());
 
         existingUser = userRepository.save(existingUser);
-        return AdminUserDto.from(existingUser);
+        return AdminUserDto.from(
+                existingUser,
+                entityDomainService.getUserDomains(existingUser.getId())
+        );
     }
 
     private boolean isAdmin(User user) {

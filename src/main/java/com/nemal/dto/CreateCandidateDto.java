@@ -14,5 +14,6 @@ public record CreateCandidateDto(
         String location,
         String notes,
         Integer yearsOfExperience,
-        Long coordinatedHrId
+        Long coordinatedHrId,
+        java.util.List<Long> domainIds
 ) {}

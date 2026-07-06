@@ -3,6 +3,7 @@ package com.nemal.dto;
 import com.nemal.entity.User;
 import com.nemal.enums.Role;
 
+import java.util.List;
 import java.util.Set;
 
 public record AdminUserDto(
@@ -17,9 +18,14 @@ public record AdminUserDto(
         Long departmentId,
         Long designationId,
         Long tierId,
-        Integer yearsOfExperience
+        Integer yearsOfExperience,
+        List<DomainDto> domains
 ) {
     public static AdminUserDto from(User user) {
+        return from(user, List.of());
+    }
+
+    public static AdminUserDto from(User user, List<DomainDto> domains) {
         return new AdminUserDto(
                 user.getId(),
                 user.getEmail(),
@@ -34,7 +40,8 @@ public record AdminUserDto(
                 user.getCurrentDesignation() != null && user.getCurrentDesignation().getTier() != null
                         ? user.getCurrentDesignation().getTier().getId()
                         : null,
-                user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0
+                user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0,
+                domains != null ? domains : List.of()
         );
     }
 }

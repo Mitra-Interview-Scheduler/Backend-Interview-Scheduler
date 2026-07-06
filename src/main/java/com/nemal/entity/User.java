@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 // Solution: only use `id` for equals/hashCode. Safe, stable, correct for JPA.
 // ────────────────────────────────────────────────────────────────────────────
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@ToString(exclude = {"interviewerTechnologies", "currentDesignation", "department", "settings"})
+@ToString(exclude = {"interviewerTechnologies", "userDomains", "currentDesignation", "department", "settings"})
 @EntityListeners(AuditingEntityListener.class)
 public class User implements UserDetails {
 
@@ -85,6 +85,10 @@ public class User implements UserDetails {
     @OneToMany(mappedBy = "interviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private Set<InterviewerTechnology> interviewerTechnologies = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private Set<UserDomain> userDomains = new HashSet<>();
 
     @Builder.Default
     private boolean isActive = true;
