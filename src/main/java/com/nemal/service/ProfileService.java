@@ -200,7 +200,29 @@ public class ProfileService {
                 .technology(technology)
                 .yearsOfExperience(dto.yearsOfExperience())
                 .isActive(true)
+                .isCore(Boolean.TRUE.equals(dto.isCore()))
                 .build();
+
+        it = interviewerTechnologyRepository.save(it);
+        return InterviewerTechnologyDto.from(it);
+    }
+
+    @Transactional
+    public InterviewerTechnologyDto updateInterviewerTechnology(
+            Long userId,
+            Long interviewerTechId,
+            UpdateInterviewerTechnologyDto dto
+    ) {
+        InterviewerTechnology it = interviewerTechnologyRepository.findById(interviewerTechId)
+                .orElseThrow(() -> new RuntimeException("Technology assignment not found"));
+
+        if (!it.getInterviewer().getId().equals(userId)) {
+            throw new RuntimeException("Unauthorized");
+        }
+
+        if (dto.isCore() != null) {
+            it.setCore(dto.isCore());
+        }
 
         it = interviewerTechnologyRepository.save(it);
         return InterviewerTechnologyDto.from(it);

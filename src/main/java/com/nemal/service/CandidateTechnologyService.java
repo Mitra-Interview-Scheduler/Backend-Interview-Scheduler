@@ -1,6 +1,7 @@
 package com.nemal.service;
 
 import com.nemal.dto.AddCandidateTechnologyDto;
+import com.nemal.dto.UpdateCandidateTechnologyDto;
 import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateTechnology;
@@ -72,7 +73,30 @@ public class CandidateTechnologyService {
                 .candidate(candidate)
                 .technology(technology)
                 .isActive(true)
+                .isCore(Boolean.TRUE.equals(dto.isCore()))
                 .build();
+
+        ct = candidateTechnologyRepository.save(ct);
+        return CandidateTechnologyDto.from(ct);
+    }
+
+    @Transactional
+    public CandidateTechnologyDto updateCandidateTechnology(
+            Long candidateId,
+            Long candidateTechnologyId,
+            UpdateCandidateTechnologyDto dto
+    ) {
+        ensureActiveCandidate(candidateId);
+        CandidateTechnology ct = candidateTechnologyRepository.findById(candidateTechnologyId)
+                .orElseThrow(() -> new RuntimeException("Technology assignment not found"));
+
+        if (!ct.getCandidate().getId().equals(candidateId)) {
+            throw new IllegalArgumentException("Unauthorized");
+        }
+
+        if (dto.isCore() != null) {
+            ct.setCore(dto.isCore());
+        }
 
         ct = candidateTechnologyRepository.save(ct);
         return CandidateTechnologyDto.from(ct);

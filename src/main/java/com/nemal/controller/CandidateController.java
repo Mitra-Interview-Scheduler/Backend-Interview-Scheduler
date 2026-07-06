@@ -9,6 +9,7 @@ import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
+import com.nemal.dto.UpdateCandidateTechnologyDto;
 import com.nemal.entity.CandidateDocument;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
@@ -103,6 +104,17 @@ public class CandidateController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(candidateTechnologyService.addCandidateTechnology(id, dto));
+    }
+
+    @PutMapping("/{id}/technologies/{technologyAssignmentId}")
+    public ResponseEntity<CandidateTechnologyDto> updateCandidateTechnology(
+            @PathVariable Long id,
+            @PathVariable Long technologyAssignmentId,
+            @RequestBody UpdateCandidateTechnologyDto dto
+    ) {
+        return ResponseEntity.ok(
+                candidateTechnologyService.updateCandidateTechnology(id, technologyAssignmentId, dto)
+        );
     }
 
     @DeleteMapping("/{id}/technologies/{technologyAssignmentId}")
