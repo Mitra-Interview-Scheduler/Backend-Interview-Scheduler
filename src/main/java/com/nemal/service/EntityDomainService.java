@@ -42,6 +42,7 @@ public class EntityDomainService {
     public List<DomainDto> getUserDomains(Long userId) {
         return userDomainRepository.findByUserId(userId).stream()
                 .map(UserDomain::getDomain)
+                .filter(Objects::nonNull)
                 .filter(Domain::isActive)
                 .map(DomainDto::from)
                 .collect(Collectors.toList());
@@ -55,7 +56,10 @@ public class EntityDomainService {
         return userDomainRepository.findByUserIdIn(userIds).stream()
                 .collect(Collectors.groupingBy(
                         ud -> ud.getUser().getId(),
-                        Collectors.mapping(ud -> DomainDto.from(ud.getDomain()), Collectors.toList())
+                        Collectors.mapping(
+                                ud -> ud.getDomain() != null ? DomainDto.from(ud.getDomain()) : null,
+                                Collectors.filtering(Objects::nonNull, Collectors.toList())
+                        )
                 ));
     }
 
@@ -63,6 +67,7 @@ public class EntityDomainService {
     public List<DomainDto> getCandidateDomains(Long candidateId) {
         return candidateDomainRepository.findByCandidateId(candidateId).stream()
                 .map(CandidateDomain::getDomain)
+                .filter(Objects::nonNull)
                 .filter(Domain::isActive)
                 .map(DomainDto::from)
                 .collect(Collectors.toList());
@@ -76,7 +81,10 @@ public class EntityDomainService {
         return candidateDomainRepository.findByCandidateIdIn(candidateIds).stream()
                 .collect(Collectors.groupingBy(
                         cd -> cd.getCandidate().getId(),
-                        Collectors.mapping(cd -> DomainDto.from(cd.getDomain()), Collectors.toList())
+                        Collectors.mapping(
+                                cd -> cd.getDomain() != null ? DomainDto.from(cd.getDomain()) : null,
+                                Collectors.filtering(Objects::nonNull, Collectors.toList())
+                        )
                 ));
     }
 
@@ -85,24 +93,29 @@ public class EntityDomainService {
         if (domainIds == null) {
             return;
         }
-        applyDomainDiff(
-                distinctIds(domainIds),
-                userDomainRepository.findByUserId(user.getId()),
-                link -> link.getDomain().getId(),
-                link -> {
-                    userDomainRepository.delete(link);
-                    detachUserDomainFromCollection(user, link.getDomain().getId());
-                },
-                domainId -> {
-                    if (userDomainRepository.existsByUserIdAndDomainId(user.getId(), domainId)) {
-                        return;
-                    }
-                    userDomainRepository.save(UserDomain.builder()
-                            .user(user)
-                            .domain(domainService.requireActiveDomain(domainId))
-                            .build());
-                }
-        );
+
+        Set<Long> desired = distinctIds(domainIds);
+        List<UserDomain> existing = userDomainRepository.findByUserId(user.getId());
+        Set<Long> current = existing.stream()
+                .map(EntityDomainService::extractUserDomainId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        for (UserDomain link : existing) {
+            Long domainId = extractUserDomainId(link);
+            if (domainId == null || !desired.contains(domainId)) {
+                userDomainRepository.delete(link);
+            }
+        }
+
+        for (Long domainId : desired) {
+            if (!current.contains(domainId)) {
+                userDomainRepository.save(UserDomain.builder()
+                        .user(user)
+                        .domain(domainService.requireActiveDomain(domainId))
+                        .build());
+            }
+        }
     }
 
     @Transactional
@@ -110,69 +123,42 @@ public class EntityDomainService {
         if (domainIds == null) {
             return;
         }
-        applyDomainDiff(
-                distinctIds(domainIds),
-                candidateDomainRepository.findByCandidateId(candidate.getId()),
-                link -> link.getDomain().getId(),
-                link -> {
-                    candidateDomainRepository.delete(link);
-                    detachCandidateDomainFromCollection(candidate, link.getDomain().getId());
-                },
-                domainId -> {
-                    if (candidateDomainRepository.existsByCandidateIdAndDomainId(candidate.getId(), domainId)) {
-                        return;
-                    }
-                    candidateDomainRepository.save(CandidateDomain.builder()
-                            .candidate(candidate)
-                            .domain(domainService.requireActiveDomain(domainId))
-                            .build());
-                }
-        );
-    }
 
-    private static <T> void applyDomainDiff(
-            Set<Long> desired,
-            List<T> existing,
-            java.util.function.Function<T, Long> domainIdExtractor,
-            java.util.function.Consumer<T> removeLink,
-            java.util.function.LongConsumer addDomainId
-    ) {
+        Set<Long> desired = distinctIds(domainIds);
+        List<CandidateDomain> existing = candidateDomainRepository.findByCandidateId(candidate.getId());
         Set<Long> current = existing.stream()
-                .map(domainIdExtractor)
+                .map(EntityDomainService::extractCandidateDomainId)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(HashSet::new));
 
-        for (T link : existing) {
-            if (!desired.contains(domainIdExtractor.apply(link))) {
-                removeLink.accept(link);
+        for (CandidateDomain link : existing) {
+            Long domainId = extractCandidateDomainId(link);
+            if (domainId == null || !desired.contains(domainId)) {
+                candidateDomainRepository.delete(link);
             }
         }
 
         for (Long domainId : desired) {
             if (!current.contains(domainId)) {
-                addDomainId.accept(domainId);
+                candidateDomainRepository.save(CandidateDomain.builder()
+                        .candidate(candidate)
+                        .domain(domainService.requireActiveDomain(domainId))
+                        .build());
             }
         }
+    }
+
+    private static Long extractUserDomainId(UserDomain link) {
+        return link != null && link.getDomain() != null ? link.getDomain().getId() : null;
+    }
+
+    private static Long extractCandidateDomainId(CandidateDomain link) {
+        return link != null && link.getDomain() != null ? link.getDomain().getId() : null;
     }
 
     private static Set<Long> distinctIds(List<Long> domainIds) {
         return domainIds.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private static void detachUserDomainFromCollection(User user, Long domainId) {
-        Set<UserDomain> collection = user.getUserDomains();
-        if (collection == null || collection.isEmpty()) {
-            return;
-        }
-        collection.removeIf(link -> link.getDomain() != null && domainId.equals(link.getDomain().getId()));
-    }
-
-    private static void detachCandidateDomainFromCollection(Candidate candidate, Long domainId) {
-        Set<CandidateDomain> collection = candidate.getCandidateDomains();
-        if (collection == null || collection.isEmpty()) {
-            return;
-        }
-        collection.removeIf(link -> link.getDomain() != null && domainId.equals(link.getDomain().getId()));
     }
 }

@@ -62,8 +62,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
+        String detail = ex.getMessage();
+        if (detail == null || detail.isBlank()) {
+            detail = ex.getClass().getSimpleName();
+        }
         return ResponseEntity.internalServerError()
-                .body(Map.of("message", "An error occurred: " + ex.getMessage()));
+                .body(Map.of("message", "An error occurred: " + detail));
     }
 
     @ExceptionHandler(BadCredentialsException.class)

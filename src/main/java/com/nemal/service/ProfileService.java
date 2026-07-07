@@ -105,8 +105,8 @@ public class ProfileService {
             }
         }
 
-        existingUser = userRepository.save(existingUser);
         entityDomainService.syncUserDomains(existingUser, updateDto.domainIds());
+        existingUser = userRepository.save(existingUser);
         return AdminUserDto.from(
                 existingUser,
                 entityDomainService.getUserDomains(existingUser.getId())
@@ -174,6 +174,7 @@ public class ProfileService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<InterviewerTechnologyDto> getInterviewerTechnologies(Long userId) {
         return interviewerTechnologyRepository.findByInterviewerId(userId).stream()
                 .map(InterviewerTechnologyDto::from)
