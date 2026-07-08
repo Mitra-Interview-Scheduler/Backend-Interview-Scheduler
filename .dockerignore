@@ -1,0 +1,10 @@
+target/
+.git/
+.idea/
+.vscode/
+.mvn/wrapper/maven-wrapper.jar
+*.iml
+HELP.md
+.env
+.env.local
+src/main/resources/application.properties
