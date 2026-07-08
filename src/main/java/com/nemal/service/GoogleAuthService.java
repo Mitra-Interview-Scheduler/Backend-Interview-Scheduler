@@ -96,7 +96,7 @@ public class GoogleAuthService {
                 .firstName(firstName != null ? firstName : "GoogleUser")
                 .lastName(lastName != null ? lastName : "")
                 .profilePictureUrl(pictureUrl)
-                .roles(Set.of(Role.ADMIN))
+                .roles(Set.of(Role.INTERVIEWER))
                 .isActive(true)
                 .passwordHash(null)
                 .build();
