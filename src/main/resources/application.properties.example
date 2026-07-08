@@ -49,7 +49,7 @@ spring.mail.properties.mail.smtp.starttls.enable=true
 # Server
 server.port=8080
 
-# CORS (comma-separated). Add your Railway frontend URL in production.
+# CORS (comma-separated). Add your Vercel frontend URL in production.
 app.cors.allowed-origins=http://localhost:5173,http://localhost:3000
 
 # Multipart uploads (candidate documents — max 10 MB per file in CandidateService)

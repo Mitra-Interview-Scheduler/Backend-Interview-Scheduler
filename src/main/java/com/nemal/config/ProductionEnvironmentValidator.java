@@ -12,11 +12,9 @@ import java.util.List;
 public class ProductionEnvironmentValidator {
 
     private static final List<String> REQUIRED_ENV_VARS = List.of(
-            "PGHOST",
-            "PGPORT",
-            "PGDATABASE",
-            "PGUSER",
-            "PGPASSWORD",
+            "SPRING_DATASOURCE_URL",
+            "SPRING_DATASOURCE_USERNAME",
+            "SPRING_DATASOURCE_PASSWORD",
             "JWT_SECRET",
             "GOOGLE_CLIENT_ID",
             "APP_CORS_ALLOWED_ORIGINS"

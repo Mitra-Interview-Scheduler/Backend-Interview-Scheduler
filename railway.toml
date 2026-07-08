@@ -1,8 +1,0 @@
-[build]
-builder = "NIXPACKS"
-buildCommand = "mvn -DskipTests package"
-
-[deploy]
-startCommand = "java -Dserver.port=$PORT -jar target/demo-0.0.1-SNAPSHOT.jar"
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
