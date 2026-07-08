@@ -57,7 +57,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
                         .requestMatchers("/api/auth/verify").authenticated()
                         .requestMatchers("/ws/**", "/ws").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 
                         .requestMatchers("/api/debug/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
