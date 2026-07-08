@@ -37,6 +37,7 @@ public class HRAvailabilityController {
                     AvailabilityFilterDto utcFilter = filter == null ? null : new AvailabilityFilterDto(
                         filter.departmentIds(),
                         filter.technologyIds(),
+                        filter.domainIds(),
                         TimeZoneMapper.toUtc(filter.startDateTime(), zone),
                         TimeZoneMapper.toUtc(filter.endDateTime(), zone),
                         filter.minYearsOfExperience(),

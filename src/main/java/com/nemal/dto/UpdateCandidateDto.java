@@ -19,5 +19,6 @@ public record UpdateCandidateDto(
         Integer yearsOfExperience,
         Boolean isActive,
         Boolean addPipelineRound,
-        Long coordinatedHrId
+        Long coordinatedHrId,
+        java.util.List<Long> domainIds
 ) {}

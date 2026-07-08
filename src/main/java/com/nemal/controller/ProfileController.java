@@ -56,6 +56,15 @@ public class ProfileController {
         return ResponseEntity.ok(profileService.addInterviewerTechnology(user, dto));
     }
 
+    @PutMapping("/profile/interviewer-technologies/{id}")
+    public ResponseEntity<InterviewerTechnologyDto> updateInterviewerTechnology(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id,
+            @RequestBody UpdateInterviewerTechnologyDto dto
+    ) {
+        return ResponseEntity.ok(profileService.updateInterviewerTechnology(user.getId(), id, dto));
+    }
+
     @DeleteMapping("/profile/interviewer-technologies/{id}")
     public ResponseEntity<Void> removeInterviewerTechnology(
             @AuthenticationPrincipal User user,

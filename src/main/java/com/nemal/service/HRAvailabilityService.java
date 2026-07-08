@@ -6,10 +6,12 @@ import com.nemal.dto.PagedResult;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
+import com.nemal.entity.Domain;
 import com.nemal.entity.InterviewerTechnology;
 import com.nemal.entity.Technology;
 import com.nemal.entity.Tier;
 import com.nemal.entity.User;
+import com.nemal.entity.UserDomain;
 import com.nemal.repository.AvailabilitySlotRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import com.nemal.enums.SlotStatus;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -62,6 +65,10 @@ public class HRAvailabilityService {
                     : filterSlots(filter, from);
 
             logger.info("Total slots (available + booked): {}", slots.size());
+
+            if (filter != null && shouldPrioritizeMatches(filter)) {
+                slots = sortSlotsByMatchPriority(slots, filter);
+            }
 
             List<InterviewerAvailabilityDto> result = new ArrayList<>();
             for (AvailabilitySlot slot : slots) {
@@ -119,16 +126,27 @@ public class HRAvailabilityService {
                 predicates.add(deptMatch);
             }
 
-            // technology filter: available slots must match techs; booked always pass
+            // technology filter: match interviewer core technologies only; booked always pass
             if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
                 Join<User, InterviewerTechnology> itJoin =
                     interviewerJoin.join("interviewerTechnologies", JoinType.LEFT);
                 Join<InterviewerTechnology, Technology> techJoin =
                     itJoin.join("technology", JoinType.LEFT);
                 Predicate techActive = cb.isTrue(itJoin.get("isActive"));
+                Predicate techCore = cb.isTrue(itJoin.get("isCore"));
                 Predicate techMatch = techJoin.get("id").in(filter.technologyIds());
-                Predicate techPredicate = cb.and(techActive, techMatch);
+                Predicate techPredicate = cb.and(techActive, techCore, techMatch);
                 predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), techPredicate));
+            }
+
+            // domain filter: available slots must match domains; booked always pass
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                Join<User, UserDomain> udJoin =
+                    interviewerJoin.join("userDomains", JoinType.LEFT);
+                Join<UserDomain, Domain> domainJoin =
+                    udJoin.join("domain", JoinType.LEFT);
+                Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
+                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), domainMatch));
             }
 
             // min years of experience
@@ -167,12 +185,22 @@ public class HRAvailabilityService {
             }
 
             cq.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
-            cq.orderBy(cb.asc(root.get("startDateTime")));
 
             var query = entityManager.createQuery(cq);
-            query.setFirstResult(page * size);
-            query.setMaxResults(size);
-            var slots = query.getResultList();
+            List<AvailabilitySlot> slots;
+            if (shouldPrioritizeMatches(filter)) {
+                slots = query.getResultList();
+                slots = sortSlotsByMatchPriority(slots, filter);
+                int fromIndex = page * size;
+                int toIndex = Math.min(fromIndex + size, slots.size());
+                slots = fromIndex < slots.size() ? slots.subList(fromIndex, toIndex) : List.of();
+            } else {
+                cq.orderBy(cb.asc(root.get("startDateTime")));
+                query = entityManager.createQuery(cq);
+                query.setFirstResult(page * size);
+                query.setMaxResults(size);
+                slots = query.getResultList();
+            }
 
             // count query
             var countCq = cb.createQuery(Long.class);
@@ -198,9 +226,18 @@ public class HRAvailabilityService {
                     Join<InterviewerTechnology, Technology> techJoin =
                     itJoin.join("technology", JoinType.LEFT);
                     Predicate techActive = cb.isTrue(itJoin.get("isActive"));
+                    Predicate techCore = cb.isTrue(itJoin.get("isCore"));
                     Predicate techMatch = techJoin.get("id").in(filter.technologyIds());
-                    Predicate techPredicate = cb.and(techActive, techMatch);
+                    Predicate techPredicate = cb.and(techActive, techCore, techMatch);
                 countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), techPredicate));
+            }
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                    Join<User, UserDomain> udJoin =
+                    countInterviewerJoin.join("userDomains", JoinType.LEFT);
+                    Join<UserDomain, Domain> domainJoin =
+                    udJoin.join("domain", JoinType.LEFT);
+                    Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
+                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), domainMatch));
             }
             if (filter.minYearsOfExperience() != null) {
                     Expression<Integer> years = countInterviewerJoin.get("yearsOfExperience").as(Integer.class);
@@ -271,8 +308,30 @@ public class HRAvailabilityService {
                 logger.info("Step 2 – after department filter: {}", slots.size());
             }
 
-            // ── Step 3: technology ────────────────────────────────────────────
-            // AVAILABLE slots filtered by interviewer's active technologies.
+            // ── Step 3: domain (priority 1) ─────────────────────────────────
+            if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
+                slots = slots.stream()
+                        .filter(slot -> {
+                            if ("BOOKED".equals(slot.getStatus().name())) return true;
+                            if (slot.getInterviewer() == null) return false;
+
+                            var userDomains = slot.getInterviewer().getUserDomains();
+                            if (!Hibernate.isInitialized(userDomains)) {
+                                Hibernate.initialize(userDomains);
+                            }
+                            if (userDomains == null || userDomains.isEmpty()) return false;
+
+                            return userDomains.stream()
+                                    .filter(ud -> ud != null && ud.getDomain() != null)
+                                    .anyMatch(ud -> filter.domainIds()
+                                            .contains(ud.getDomain().getId()));
+                        })
+                        .collect(Collectors.toList());
+                logger.info("Step 3 – after domain filter: {}", slots.size());
+            }
+
+            // ── Step 4: core technology (priority 2) ───────────────────────
+            // AVAILABLE slots filtered by interviewer's core technologies.
             // BOOKED slots always pass — HR must see who is busy even if tech
             // doesn't match the current filter.
             if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
@@ -290,15 +349,16 @@ public class HRAvailabilityService {
                             return techs.stream()
                                     .filter(it -> it != null
                                             && it.isActive()
+                                            && it.isCore()
                                             && it.getTechnology() != null)
                                     .anyMatch(it -> filter.technologyIds()
                                             .contains(it.getTechnology().getId()));
                         })
                         .collect(Collectors.toList());
-                logger.info("Step 3 – after technology filter: {}", slots.size());
+                logger.info("Step 4 – after core technology filter: {}", slots.size());
             }
 
-            // ── Step 4: years of experience ───────────────────────────────────
+            // ── Step 5: years of experience ───────────────────────────────────
             if (filter.minYearsOfExperience() != null) {
                 slots = slots.stream()
                         .filter(slot -> {
@@ -308,10 +368,10 @@ public class HRAvailabilityService {
                             return years != null && years >= filter.minYearsOfExperience();
                         })
                         .collect(Collectors.toList());
-                logger.info("Step 4 – after experience filter: {}", slots.size());
+                logger.info("Step 5 – after experience filter: {}", slots.size());
             }
 
-            // ── Step 5: tier / level hierarchy ────────────────────────────────
+            // ── Step 6: tier / level hierarchy ────────────────────────────────
             if (filter.minTierId() != null && filter.departmentIdForDesignationFilter() != null) {
                 final int candidateTierOrder  = filter.minTierId().intValue();
                 final int candidateLevelOrder = filter.minDesignationLevelInDepartment() != null
@@ -387,5 +447,78 @@ public class HRAvailabilityService {
             logger.error("Error filtering slots: {}", e.getMessage(), e);
             throw new RuntimeException("Error filtering availability slots", e);
         }
+    }
+
+    private boolean shouldPrioritizeMatches(AvailabilityFilterDto filter) {
+        return filter != null
+                && ((filter.domainIds() != null && !filter.domainIds().isEmpty())
+                || (filter.technologyIds() != null && !filter.technologyIds().isEmpty()));
+    }
+
+    private List<AvailabilitySlot> sortSlotsByMatchPriority(
+            List<AvailabilitySlot> slots,
+            AvailabilityFilterDto filter
+    ) {
+        Comparator<AvailabilitySlot> comparator = Comparator
+                .comparing((AvailabilitySlot slot) -> SlotStatus.BOOKED.equals(slot.getStatus()))
+                .thenComparing(
+                        slot -> countDomainMatches(slot.getInterviewer(), filter.domainIds()),
+                        Comparator.reverseOrder()
+                )
+                .thenComparing(
+                        slot -> countCoreTechnologyMatches(slot.getInterviewer(), filter.technologyIds()),
+                        Comparator.reverseOrder()
+                )
+                .thenComparing(
+                        AvailabilitySlot::getStartDateTime,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                );
+
+        return slots.stream().sorted(comparator).collect(Collectors.toList());
+    }
+
+    private int countDomainMatches(User interviewer, List<Long> domainIds) {
+        if (interviewer == null || domainIds == null || domainIds.isEmpty()) {
+            return 0;
+        }
+
+        var userDomains = interviewer.getUserDomains();
+        if (!Hibernate.isInitialized(userDomains)) {
+            Hibernate.initialize(userDomains);
+        }
+        if (userDomains == null || userDomains.isEmpty()) {
+            return 0;
+        }
+
+        return (int) userDomains.stream()
+                .filter(ud -> ud != null && ud.getDomain() != null)
+                .map(ud -> ud.getDomain().getId())
+                .filter(domainIds::contains)
+                .distinct()
+                .count();
+    }
+
+    private int countCoreTechnologyMatches(User interviewer, List<Long> technologyIds) {
+        if (interviewer == null || technologyIds == null || technologyIds.isEmpty()) {
+            return 0;
+        }
+
+        var techs = interviewer.getInterviewerTechnologies();
+        if (!Hibernate.isInitialized(techs)) {
+            Hibernate.initialize(techs);
+        }
+        if (techs == null || techs.isEmpty()) {
+            return 0;
+        }
+
+        return (int) techs.stream()
+                .filter(it -> it != null
+                        && it.isActive()
+                        && it.isCore()
+                        && it.getTechnology() != null)
+                .map(it -> it.getTechnology().getId())
+                .filter(technologyIds::contains)
+                .distinct()
+                .count();
     }
 }

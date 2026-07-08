@@ -4,6 +4,8 @@ import com.nemal.dto.ScreeningSaveRequestDTO;
 import com.nemal.dto.ScreeningResponseDTO;
 import com.nemal.entity.*;
 import com.nemal.enums.EngagementType;
+import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ public class CandidateScreeningService {
     private final DepartmentRepository departmentRepository;
     private final TierRepository tierRepository;
     private final DesignationRepository designationRepository;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
 
     @Transactional(readOnly = true)
     public ScreeningResponseDTO getScreeningByCandidateId(Long candidateId) {
@@ -32,7 +35,7 @@ public class CandidateScreeningService {
     }
 
     @Transactional
-    public ScreeningResponseDTO saveOrUpdateScreening(Long candidateId, ScreeningSaveRequestDTO dto) {
+    public ScreeningResponseDTO saveOrUpdateScreening(Long candidateId, ScreeningSaveRequestDTO dto, User savedBy) {
         // 1. Verify primary candidate anchor exists
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new EntityNotFoundException("Candidate profile target missing for ID: " + candidateId));
@@ -62,7 +65,11 @@ public class CandidateScreeningService {
         screening.setRegion(dto.getRegion());
         screening.setTargetStartDate(dto.getTargetStartDate());
         screening.setProfileSource(dto.getProfileSource());
-        screening.setScreenedBy(dto.getScreenedBy());
+        String screenedBy = dto.getScreenedBy();
+        if ((screenedBy == null || screenedBy.isBlank()) && savedBy != null) {
+            screenedBy = savedBy.getFullName();
+        }
+        screening.setScreenedBy(screenedBy);
         screening.setFeedback(dto.getFeedback());
         screening.setNatureOfRecruitment(dto.getNatureOfRecruitment());
         screening.setRoleStretch(dto.getRoleStretch());
@@ -99,6 +106,15 @@ public class CandidateScreeningService {
         validateScreeningPayload(screening);
 
         CandidateScreening savedRecord = screeningRepository.save(screening);
+
+        candidatePipelineAuditService.recordStatusChange(
+                candidateId,
+                MasterStatus.SCREENING,
+                candidate.getStatus(),
+                PipelineAuditActionType.SCREENING_SAVED,
+                savedBy,
+                screenedBy != null && !screenedBy.isBlank() ? "Screened by " + screenedBy : null);
+
         return ScreeningResponseDTO.fromEntity(savedRecord);
     }
 

@@ -7,6 +7,7 @@ import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
@@ -42,6 +43,7 @@ public class InterviewRequestService {
     private final InterviewPanelRepository interviewPanelRepository;
     private final MasterStepService masterStepService;
     private final UserRepository userRepository;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -124,11 +126,12 @@ public class InterviewRequestService {
         saved.setInterviewSchedule(schedule);
 
         if (candidate != null) {
-            applyCandidateStatusForScheduledInterview(candidate, interviewType);
+            applyCandidateStatusForScheduledInterview(candidate, interviewType, requestedBy);
         }
 
         try {
             notificationService.sendInterviewScheduledNotification(saved);
+            notificationService.sendCoordinatedHrInterviewScheduledNotification(saved);
             if (interviewCoordinator != null) {
                 notificationService.sendInterviewCoordinatorScheduledNotification(saved);
             }
@@ -261,10 +264,7 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByCandidate(Long candidateId) {
-        String candidateName = candidateRepository.findById(candidateId)
-                .map(Candidate::getName)
-                .orElse(null);
-        return interviewRequestRepository.findByCandidateIdOrNameWithSchedule(candidateId, candidateName)
+        return interviewRequestRepository.findByCandidateIdWithSchedule(candidateId)
                 .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
     }
 
@@ -373,6 +373,7 @@ public class InterviewRequestService {
         try {
             InterviewRequest forNotification = interviewRequestRepository.findById(requestId).orElse(request);
             notificationService.sendInterviewCancelledNotification(forNotification);
+            notificationService.sendCoordinatedHrInterviewCancelledNotification(forNotification);
             logger.info("Cancellation notification sent");
         } catch (Exception e) {
             logger.warn("Failed to send cancellation notification: {}", e.getMessage());
@@ -392,8 +393,18 @@ public class InterviewRequestService {
                         .map(InterviewSchedule::getInterviewType)
                         .orElse(InterviewType.TECHNICAL);
                 MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                MasterStatus previousStatus = candidate.getStatus();
                 masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                candidateStepPipelineService.restorePipelineAfterInterviewCancel(
+                        candidate.getId(), interviewType);
+                candidatePipelineAuditService.recordStatusChange(
+                        candidate.getId(),
+                        resetStatus,
+                        previousStatus,
+                        PipelineAuditActionType.INTERVIEW_CANCELLED,
+                        user,
+                        "Interview cancelled");
                 logger.info("Candidate {} reset to {} after {} interview cancel",
                         candidate.getId(), resetStatus, interviewType);
             }
@@ -469,6 +480,14 @@ public class InterviewRequestService {
             logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
         }
 
+        Candidate candidate = request.getCandidate();
+        if (candidate != null) {
+            InterviewType interviewType = schedule.getInterviewType() != null
+                    ? schedule.getInterviewType()
+                    : InterviewType.TECHNICAL;
+            candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
+        }
+
         return InterviewRequestDto.from(request);
     }
 
@@ -536,13 +555,22 @@ public class InterviewRequestService {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private void applyCandidateStatusForScheduledInterview(Candidate candidate, InterviewType interviewType) {
+    private void applyCandidateStatusForScheduledInterview(Candidate candidate,
+                                                           InterviewType interviewType,
+                                                           User changedBy) {
         MasterStatus targetStatus = interviewType.toCandidateStatus();
         MasterStatus oldStatus = candidate.getStatus();
         masterStepService.assignStatus(candidate, targetStatus);
         candidateRepository.save(candidate);
         candidateStepPipelineService.updatePipelineOnStatusChange(
                 candidate.getId(), targetStatus, oldStatus, true);
+        candidatePipelineAuditService.recordStatusChange(
+                candidate.getId(),
+                targetStatus,
+                oldStatus,
+                PipelineAuditActionType.INTERVIEW_SCHEDULED,
+                changedBy,
+                interviewType.name() + " interview scheduled");
     }
 
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {

@@ -1,6 +1,7 @@
 package com.nemal.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.nemal.converter.PipelineStepStatusConverter;
 import com.nemal.enums.PipelineStepStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -42,7 +43,7 @@ public class CandidateStepPipeline {
     @Column(name = "sequence_order", nullable = false)
     private Integer sequenceOrder;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = PipelineStepStatusConverter.class)
     @Column(name = "step_status", nullable = false, length = 20)
     @Builder.Default
     private PipelineStepStatus stepStatus = PipelineStepStatus.PENDING;

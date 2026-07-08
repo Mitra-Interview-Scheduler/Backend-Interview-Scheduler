@@ -10,11 +10,14 @@ public record TechnologyDto(
         boolean isActive
 ) {
     public static TechnologyDto from(Technology tech) {
+        if (tech == null) {
+            return null;
+        }
         return new TechnologyDto(
                 tech.getId(),
                 tech.getCode(),
                 tech.getName(),
-                TechnologyCategoryDto.from(tech.getCategory()),
+                tech.getCategory() != null ? TechnologyCategoryDto.from(tech.getCategory()) : null,
                 tech.isActive()
         );
     }

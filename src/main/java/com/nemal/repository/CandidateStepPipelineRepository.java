@@ -37,10 +37,10 @@ public interface CandidateStepPipelineRepository extends JpaRepository<Candidate
                               @Param("status") PipelineStepStatus status);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE CandidateStepPipeline cps SET cps.stepStatus = 'SKIPPED' " +
+    @Query("UPDATE CandidateStepPipeline cps SET cps.stepStatus = com.nemal.enums.PipelineStepStatus.SKIPPED " +
             "WHERE cps.candidate.id = :candidateId " +
             "AND cps.sequenceOrder > :currentSequenceOrder " +
-            "AND cps.stepStatus = 'PENDING'")
+            "AND cps.stepStatus = com.nemal.enums.PipelineStepStatus.PENDING")
     int skipUpcomingSteps(@Param("candidateId") Long candidateId,
                           @Param("currentSequenceOrder") Integer currentSequenceOrder);
 

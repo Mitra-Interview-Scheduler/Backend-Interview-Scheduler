@@ -6,6 +6,7 @@ import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
@@ -37,6 +38,7 @@ public class PanelInterviewService {
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final MasterStepService masterStepService;
     private final UserRepository userRepository;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -50,7 +52,8 @@ public class PanelInterviewService {
             NotificationService notificationService,
             CandidateStepPipelineService candidateStepPipelineService,
             MasterStepService masterStepService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            CandidatePipelineAuditService candidatePipelineAuditService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -63,6 +66,7 @@ public class PanelInterviewService {
         this.candidateStepPipelineService = candidateStepPipelineService;
         this.masterStepService = masterStepService;
         this.userRepository = userRepository;
+        this.candidatePipelineAuditService = candidatePipelineAuditService;
     }
 
     @Transactional
@@ -184,6 +188,13 @@ public class PanelInterviewService {
             candidateRepository.save(candidate);
             candidateStepPipelineService.updatePipelineOnStatusChange(
                     candidate.getId(), targetStatus, oldStatus, true);
+            candidatePipelineAuditService.recordStatusChange(
+                    candidate.getId(),
+                    targetStatus,
+                    oldStatus,
+                    PipelineAuditActionType.INTERVIEW_SCHEDULED,
+                    requestedBy,
+                    interviewType.name() + " panel interview scheduled");
         }
 
         InterviewPanel savedPanel = panelRepository.findByIdWithDetails(panel.getId())
@@ -195,6 +206,12 @@ public class PanelInterviewService {
             } catch (Exception e) {
                 logger.warn("Failed to send coordinator panel notification: {}", e.getMessage());
             }
+        }
+
+        try {
+            notificationService.sendCoordinatedHrPanelInterviewScheduledNotification(savedPanel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel schedule notification: {}", e.getMessage());
         }
 
         return InterviewPanelDto.from(savedPanel);
@@ -242,6 +259,15 @@ public class PanelInterviewService {
             }
         }
 
+        try {
+            String candidateName = panel.getCandidate() != null
+                    ? panel.getCandidate().getName()
+                    : "the candidate";
+            notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+        }
+
         if (panel.getCandidate() != null) {
             Candidate candidate = panel.getCandidate();
             long activeCount = requestRepository.findByCandidateId(candidate.getId())
@@ -256,8 +282,18 @@ public class PanelInterviewService {
                         .findFirst()
                         .orElse(InterviewType.TECHNICAL);
                 MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                MasterStatus previousStatus = candidate.getStatus();
                 masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                candidateStepPipelineService.restorePipelineAfterInterviewCancel(
+                        candidate.getId(), interviewType);
+                candidatePipelineAuditService.recordStatusChange(
+                        candidate.getId(),
+                        resetStatus,
+                        previousStatus,
+                        PipelineAuditActionType.INTERVIEW_CANCELLED,
+                        hrUser,
+                        "Panel interview cancelled");
                 logger.info("Candidate {} reset to {} after panel {} cancel",
                         candidate.getId(), resetStatus, panelId);
             }
@@ -270,10 +306,7 @@ public class PanelInterviewService {
 
     @Transactional(readOnly = true)
     public List<InterviewPanelDto> getPanelsByCandidateId(Long candidateId) {
-        String candidateName = candidateRepository.findById(candidateId)
-                .map(Candidate::getName)
-                .orElse(null);
-        return panelRepository.findByCandidateIdOrName(candidateId, candidateName)
+        return panelRepository.findByCandidateId(candidateId)
                 .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
     }
 

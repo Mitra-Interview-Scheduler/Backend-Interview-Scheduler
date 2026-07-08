@@ -65,6 +65,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/candidates/*/documents", "/api/candidates/*/documents/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/candidates/*/close").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/candidates").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidates/*/technologies").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/candidates/*/technologies/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/candidates/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/candidates/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
@@ -105,11 +107,19 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/question-categories/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/question-categories/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/domains", "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/domains/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/domains/**").authenticated()
+
+                        .requestMatchers("/api/notifications/**").authenticated()
+
                         .requestMatchers("/api/profile/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/department/**").authenticated()
                         .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers("/api/closing-reasons/**").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidatePipeline/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers("/api/candidatePipeline/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
 
                         .requestMatchers(HttpMethod.GET, "/api/feedback/questions").hasAnyRole("INTERVIEWER", "HR", "ADMIN")

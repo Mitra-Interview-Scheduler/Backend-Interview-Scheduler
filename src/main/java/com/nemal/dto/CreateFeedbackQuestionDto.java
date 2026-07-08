@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 
 public record CreateFeedbackQuestionDto(
         Integer order,
-        @NotBlank @Size(max = 1000, message = "Question label must be at most 1000 characters") String label,
+        @NotBlank @Size(max = 2000, message = "Question label must be at most 2000 characters") String label,
         Long categoryId,
         String category,
         @NotBlank String type,

@@ -2,8 +2,10 @@ package com.nemal.service;
 
 import com.nemal.dto.CandidateDto;
 import com.nemal.dto.CandidateDocumentDto;
+import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
+import com.nemal.dto.DomainDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.entity.Candidate;
@@ -13,6 +15,7 @@ import com.nemal.entity.Designation;
 import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
@@ -21,13 +24,16 @@ import com.nemal.repository.MasterStepRepository;
 import com.nemal.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Comparator;
-import java.util.Locale;
 import java.util.List;
+import java.util.Map;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,7 +48,11 @@ public class CandidateService {
     private final MasterStepService masterStepService;
     private final MasterStepRepository masterStepRepository;
     private final CandidateClosureService candidateClosureService;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final UserRepository userRepository;
+    private final CandidateTechnologyService candidateTechnologyService;
+    private final EntityDomainService entityDomainService;
+    private final NotificationService notificationService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -63,7 +73,11 @@ public class CandidateService {
             MasterStepService masterStepService,
             MasterStepRepository masterStepRepository,
             CandidateClosureService candidateClosureService,
-            UserRepository userRepository
+            CandidatePipelineAuditService candidatePipelineAuditService,
+            UserRepository userRepository,
+            CandidateTechnologyService candidateTechnologyService,
+            EntityDomainService entityDomainService,
+            NotificationService notificationService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -74,7 +88,11 @@ public class CandidateService {
         this.masterStepService = masterStepService;
         this.masterStepRepository = masterStepRepository;
         this.candidateClosureService = candidateClosureService;
+        this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.userRepository = userRepository;
+        this.candidateTechnologyService = candidateTechnologyService;
+        this.entityDomainService = entityDomainService;
+        this.notificationService = notificationService;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -94,15 +112,22 @@ public class CandidateService {
 
     @Transactional(readOnly = true)
     public List<CandidateDto> getAllCandidates() {
-        return candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc()
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        List<Candidate> candidates = candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc();
+        return toCandidateDtos(candidates);
     }
 
     @Transactional(readOnly = true)
     public CandidateDto getCandidateById(Long id) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
-        return CandidateDto.from(candidate, candidateClosureService.getLatestClosure(id));
+        List<CandidateTechnologyDto> technologies = candidateTechnologyService.getCandidateTechnologies(id);
+        List<DomainDto> domains = entityDomainService.getCandidateDomains(id);
+        return CandidateDto.from(
+                candidate,
+                candidateClosureService.getLatestClosure(id),
+                technologies,
+                domains
+        );
     }
 
     @Transactional(readOnly = true)
@@ -124,18 +149,17 @@ public class CandidateService {
     }
 
     public List<CandidateDto> getCandidatesByDepartment(Long departmentId) {
-        return candidateRepository.findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(departmentId)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(
+                candidateRepository.findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(departmentId));
     }
 
     public List<CandidateDto> getCandidatesByStatus(MasterStatus status) {
-        return candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(
+                candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status));
     }
 
     public List<CandidateDto> searchCandidates(String searchTerm) {
-        return candidateRepository.searchCandidates(searchTerm)
-                .stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(candidateRepository.searchCandidates(searchTerm));
     }
 
     public List<CandidateDto> findWithFilters(Long departmentId, MasterStatus status, String searchTerm) {
@@ -164,12 +188,12 @@ public class CandidateService {
             if (status != null) {
                 final MasterStatus st = status;
                 candidates = candidates.stream()
-                        .filter(c -> c.getStatus() == st)
+                        .filter(c -> Objects.equals(c.getStatus(), st))
                         .collect(Collectors.toList());
             }
         }
 
-        return candidates.stream().map(CandidateDto::from).collect(Collectors.toList());
+        return toCandidateDtos(candidates);
     }
 
     public PaginatedResponseDto<CandidateDto> findWithFiltersPaged(
@@ -179,41 +203,65 @@ public class CandidateService {
             int page,
             int size
     ) {
-        List<CandidateDto> all = findWithFilters(departmentId, status, searchTerm);
         int safeSize = Math.max(1, size);
         int safePage = Math.max(0, page);
-        int fromIndex = safePage * safeSize;
+        String normalizedSearch = (searchTerm != null && !searchTerm.trim().isEmpty())
+                ? searchTerm.trim()
+                : null;
+        String statusKey = status != null ? status.name() : null;
 
-        if (fromIndex >= all.size()) {
-            return new PaginatedResponseDto<>(
-                    Collections.emptyList(),
-                    safePage,
-                    safeSize,
-                    all.size(),
-                    Math.max(1, (int) Math.ceil((double) all.size() / safeSize)),
-                    safePage == 0,
-                    true
-            );
-        }
+        Page<Candidate> result = candidateRepository.findWithFiltersPaged(
+                departmentId,
+                statusKey,
+                normalizedSearch,
+                PageRequest.of(safePage, safeSize)
+        );
 
-        int toIndex = Math.min(fromIndex + safeSize, all.size());
-        int totalPages = Math.max(1, (int) Math.ceil((double) all.size() / safeSize));
+        List<CandidateDto> content = toCandidateDtos(result.getContent());
 
         return new PaginatedResponseDto<>(
-                all.subList(fromIndex, toIndex),
-                safePage,
-                safeSize,
-                all.size(),
-                totalPages,
-                safePage == 0,
-                safePage >= totalPages - 1
+                content,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                Math.max(1, result.getTotalPages()),
+                result.isFirst(),
+                result.isLast()
+        );
+    }
+
+    private List<CandidateDto> toCandidateDtos(List<Candidate> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Long> candidateIds = candidates.stream().map(Candidate::getId).toList();
+        Map<Long, List<CandidateTechnologyDto>> technologiesByCandidateId =
+                candidateTechnologyService.getTechnologiesByCandidateIds(candidateIds);
+        Map<Long, List<DomainDto>> domainsByCandidateId =
+                entityDomainService.getDomainsByCandidateIds(candidateIds);
+        return candidates.stream()
+                .map(candidate -> CandidateDto.from(
+                        candidate,
+                        null,
+                        technologiesByCandidateId.getOrDefault(candidate.getId(), List.of()),
+                        domainsByCandidateId.getOrDefault(candidate.getId(), List.of())
+                ))
+                .collect(Collectors.toList());
+    }
+
+    private CandidateDto toCandidateDto(Candidate candidate) {
+        return CandidateDto.from(
+                candidate,
+                candidateClosureService.getLatestClosure(candidate.getId()),
+                candidateTechnologyService.getCandidateTechnologies(candidate.getId()),
+                entityDomainService.getCandidateDomains(candidate.getId())
         );
     }
 
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     @Transactional
-    public CandidateDto createCandidate(CreateCandidateDto dto) {
+    public CandidateDto createCandidate(CreateCandidateDto dto, User changedBy) {
         if (dto.coordinatedHrId() == null) {
             throw new IllegalArgumentException("Candidate coordinator is required");
         }
@@ -267,12 +315,21 @@ public class CandidateService {
 
         masterStepService.assignStatus(candidate, MasterStatus.NEW);
         candidate = candidateRepository.save(candidate);
+        entityDomainService.syncCandidateDomains(candidate, dto.domainIds());
         candidateStepPipelineService.initializeDefaultPipeline(candidate.getId());
-        return CandidateDto.from(candidate);
+        candidatePipelineAuditService.recordStatusChange(
+                candidate.getId(),
+                MasterStatus.NEW,
+                null,
+                PipelineAuditActionType.APPLICATION_CREATED,
+                changedBy != null ? changedBy : coordinatedHr,
+                null);
+        notificationService.sendCandidateCoordinatorAssignedNotification(candidate);
+        return toCandidateDto(candidate);
     }
 
     @Transactional
-    public CandidateDto updateCandidate(Long id, UpdateCandidateDto dto) {
+    public CandidateDto updateCandidate(Long id, UpdateCandidateDto dto, User changedBy) {
         Candidate candidate = candidateRepository.findByIdAndIsActiveTrue(id)
                 .orElseThrow(() -> new RuntimeException("Candidate not found"));
 
@@ -308,7 +365,7 @@ public class CandidateService {
         if (dto.status() != null) {
             MasterStatus oldStatus = candidate.getStatus();
             boolean addPipelineRound = Boolean.TRUE.equals(dto.addPipelineRound());
-            boolean statusChanged = oldStatus != dto.status();
+            boolean statusChanged = !Objects.equals(oldStatus, dto.status());
             boolean shouldSyncPipeline = statusChanged || addPipelineRound;
 
             if (statusChanged) {
@@ -323,6 +380,22 @@ public class CandidateService {
             if (shouldSyncPipeline) {
                 candidateStepPipelineService.updatePipelineOnStatusChange(
                         id, dto.status(), oldStatus, addPipelineRound);
+            }
+
+            if (statusChanged) {
+                candidatePipelineAuditService.recordStatusChange(
+                        id,
+                        dto.status(),
+                        oldStatus,
+                        PipelineAuditActionType.STATUS_CHANGED,
+                        changedBy,
+                        null);
+                notificationService.sendCandidateStatusChangedNotification(
+                        candidate,
+                        oldStatus,
+                        dto.status(),
+                        changedBy
+                );
             }
         }
 
@@ -348,8 +421,9 @@ public class CandidateService {
             candidate.setCoordinatedHr(resolveCoordinatedHr(dto.coordinatedHrId()));
         }
 
+        entityDomainService.syncCandidateDomains(candidate, dto.domainIds());
         candidate = candidateRepository.save(candidate);
-        return CandidateDto.from(candidate);
+        return toCandidateDto(candidate);
     }
 
     @Transactional

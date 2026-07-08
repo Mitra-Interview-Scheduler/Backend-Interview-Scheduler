@@ -28,6 +28,7 @@ public record InterviewerAvailabilityDto(
         String designation,
         Integer yearsOfExperience,
         List<String> technologies,
+        List<String> coreTechnologies,
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         String status,
@@ -87,10 +88,15 @@ public record InterviewerAvailabilityDto(
 
         // ── Technologies ─────────────────────────────────────────────────────
         List<String> techs = List.of();
+        List<String> coreTechs = List.of();
         if (slot.getInterviewer() != null
                 && slot.getInterviewer().getInterviewerTechnologies() != null) {
             techs = slot.getInterviewer().getInterviewerTechnologies().stream()
                     .filter(it -> it != null && it.isActive() && it.getTechnology() != null)
+                    .map(it -> it.getTechnology().getName())
+                    .collect(Collectors.toList());
+            coreTechs = slot.getInterviewer().getInterviewerTechnologies().stream()
+                    .filter(it -> it != null && it.isActive() && it.isCore() && it.getTechnology() != null)
                     .map(it -> it.getTechnology().getName())
                     .collect(Collectors.toList());
         }
@@ -120,6 +126,7 @@ public record InterviewerAvailabilityDto(
                         ? slot.getInterviewer().getCurrentDesignation().getName() : null,
                 slot.getInterviewer() != null ? slot.getInterviewer().getYearsOfExperience() : null,
                 techs,
+                coreTechs,
                 slot.getStartDateTime(),
                 slot.getEndDateTime(),
                 slot.getStatus() != null ? slot.getStatus().name() : "AVAILABLE",

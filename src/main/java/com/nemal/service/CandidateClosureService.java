@@ -9,6 +9,7 @@ import com.nemal.entity.ClosingReason;
 import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.repository.CandidateClosureRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.ClosingReasonRepository;
@@ -26,6 +27,7 @@ public class CandidateClosureService {
     private final MasterStepRepository masterStepRepository;
     private final MasterStepService masterStepService;
     private final CandidateStepPipelineService candidateStepPipelineService;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
 
     public CandidateClosureService(
             CandidateRepository candidateRepository,
@@ -33,7 +35,8 @@ public class CandidateClosureService {
             CandidateClosureRepository candidateClosureRepository,
             MasterStepRepository masterStepRepository,
             MasterStepService masterStepService,
-            CandidateStepPipelineService candidateStepPipelineService
+            CandidateStepPipelineService candidateStepPipelineService,
+            CandidatePipelineAuditService candidatePipelineAuditService
     ) {
         this.candidateRepository = candidateRepository;
         this.closingReasonRepository = closingReasonRepository;
@@ -41,6 +44,7 @@ public class CandidateClosureService {
         this.masterStepRepository = masterStepRepository;
         this.masterStepService = masterStepService;
         this.candidateStepPipelineService = candidateStepPipelineService;
+        this.candidatePipelineAuditService = candidatePipelineAuditService;
     }
 
     @Transactional(readOnly = true)
@@ -83,12 +87,7 @@ public class CandidateClosureService {
         masterStepService.assignStatus(candidate, dto.status());
         candidateRepository.save(candidate);
 
-        candidateStepPipelineService.updatePipelineOnStatusChange(
-                candidateId,
-                dto.status(),
-                previousStatus,
-                false
-        );
+        candidateStepPipelineService.closePipeline(candidateId, dto.status());
 
         CandidateClosure closure = CandidateClosure.builder()
                 .candidate(candidate)
@@ -99,6 +98,14 @@ public class CandidateClosureService {
                 .closedAt(LocalDateTime.now())
                 .build();
         candidateClosureRepository.save(closure);
+
+        candidatePipelineAuditService.recordStatusChange(
+                candidateId,
+                dto.status(),
+                previousStatus,
+                PipelineAuditActionType.APPLICATION_CLOSED,
+                closedBy,
+                comment.isEmpty() ? null : comment);
 
         return CandidateDto.from(candidate, CandidateClosureDto.from(closure));
     }
