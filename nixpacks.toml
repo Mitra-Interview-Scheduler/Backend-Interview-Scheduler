@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["jdk21", "maven"]
+
+[phases.build]
+cmds = ["mvn -DskipTests package"]
+
+[start]
+cmd = "java -Dserver.port=$PORT -jar target/demo-0.0.1-SNAPSHOT.jar"
