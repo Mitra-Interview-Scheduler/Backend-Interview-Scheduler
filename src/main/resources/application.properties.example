@@ -1,9 +1,11 @@
 spring.application.name=Scheduler Backend
 
 # Datasource
+# Copy this file to application.properties and fill in local values.
+# application.properties is gitignored — do not commit secrets.
 spring.datasource.url=jdbc:postgresql://localhost:5432/interview_db_local
 spring.datasource.username=postgres
-spring.datasource.password=1234
+spring.datasource.password=CHANGE_ME
 spring.datasource.driver-class-name=org.postgresql.Driver
 
 # Connection pool (HikariCP)
@@ -32,7 +34,8 @@ spring.flyway.repair=false
 spring.flyway.validate-on-migrate=true
 
 # Security / JWT
-jwt.secret=159f8eb92b8df3d32ccc2e80292edd5a9aae00269cac9f5fdfe02469e55e8ebf
+# Generate a strong secret for each environment (do not reuse examples)
+jwt.secret=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
 jwt.expiration-ms=86400000
 
 # Mail
@@ -53,7 +56,7 @@ spring.servlet.multipart.max-request-size=10MB
 server.tomcat.max-http-form-post-size=10MB
 server.tomcat.max-swallow-size=-1
 
-google.client.id=900823361118-ni0cofl1dn63a976vt8v6rgvaka8ggd4.apps.googleusercontent.com
+google.client.id=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
 
 # Logging
 logging.level.org.springframework.security=WARN
