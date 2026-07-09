@@ -28,6 +28,7 @@ public class GoogleCalendarOAuthService {
     private static final long STATE_EXPIRATION_MS = 10 * 60 * 1000;
 
     private final GoogleCalendarTokenService tokenService;
+    private final CalendarSyncService calendarSyncService;
     private final UserRepository userRepository;
     private final String clientId;
     private final String frontendUrl;
@@ -35,11 +36,13 @@ public class GoogleCalendarOAuthService {
 
     public GoogleCalendarOAuthService(
             GoogleCalendarTokenService tokenService,
+            CalendarSyncService calendarSyncService,
             UserRepository userRepository,
             @Value("${google.client.id}") String clientId,
             @Value("${app.frontend.url:http://localhost:5173}") String frontendUrl,
             @Value("${jwt.secret}") String jwtSecret) {
         this.tokenService = tokenService;
+        this.calendarSyncService = calendarSyncService;
         this.userRepository = userRepository;
         this.clientId = clientId;
         this.frontendUrl = frontendUrl.endsWith("/") ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl;
@@ -86,6 +89,10 @@ public class GoogleCalendarOAuthService {
                     tokenResponse.getAccessToken(),
                     tokenResponse.getRefreshToken(),
                     expiresIn);
+
+            if (user.hasInterviewerRole()) {
+                calendarSyncService.syncUnsyncedAvailabilitySlots(user);
+            }
 
             String returnPath = stateClaims.returnTo() != null ? stateClaims.returnTo() : "/settings";
             return frontendUrl + returnPath + "?googleCalendar=connected";

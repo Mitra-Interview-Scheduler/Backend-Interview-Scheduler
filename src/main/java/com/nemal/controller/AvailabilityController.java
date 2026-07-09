@@ -1,11 +1,15 @@
 package com.nemal.controller;
 
+import com.nemal.dto.AvailabilityRangeResponseDto;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.User;
 import com.nemal.service.AvailabilityService;
+import com.nemal.service.CalendarSyncService;
+import com.nemal.service.GoogleCalendarTokenService;
 import com.nemal.util.TimeZoneMapper;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -24,9 +28,16 @@ import java.util.Map;
 public class AvailabilityController {
 
     private final AvailabilityService availabilityService;
+    private final CalendarSyncService calendarSyncService;
+    private final GoogleCalendarTokenService tokenService;
 
-    public AvailabilityController(AvailabilityService availabilityService) {
+    public AvailabilityController(
+            AvailabilityService availabilityService,
+            CalendarSyncService calendarSyncService,
+            GoogleCalendarTokenService tokenService) {
         this.availabilityService = availabilityService;
+        this.calendarSyncService = calendarSyncService;
+        this.tokenService = tokenService;
     }
 
     @GetMapping
@@ -40,7 +51,7 @@ public class AvailabilityController {
     }
 
     @GetMapping("/range")
-    public ResponseEntity<List<AvailabilitySlotDto>> getAvailabilityByDateRange(
+    public ResponseEntity<AvailabilityRangeResponseDto> getAvailabilityByDateRange(
             @AuthenticationPrincipal User user,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
@@ -51,12 +62,27 @@ public class AvailabilityController {
         ZoneId zone = TimeZoneMapper.resolveZone(timezone);
         LocalDateTime utcStart = TimeZoneMapper.toUtc(start, zone);
         LocalDateTime utcEnd = TimeZoneMapper.toUtc(end, zone);
-        return ResponseEntity.ok(
-                TimeZoneMapper.fromUtcAvailability(
-                        availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
-                        zone
-                )
+        List<AvailabilitySlotDto> items = TimeZoneMapper.fromUtcAvailability(
+                availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
+                zone
         );
+
+        List<GoogleCalendarExternalEventDto> googleExternalEvents = List.of();
+        if (user.hasInterviewerRole() && tokenService.isConnected(user)) {
+            googleExternalEvents = calendarSyncService
+                    .listExternalGoogleCalendarEvents(user, utcStart, utcEnd)
+                    .stream()
+                    .map(event -> new GoogleCalendarExternalEventDto(
+                            event.googleEventId(),
+                            event.title(),
+                            TimeZoneMapper.fromUtc(event.startDateTime(), zone),
+                            TimeZoneMapper.fromUtc(event.endDateTime(), zone),
+                            event.allDay(),
+                            true))
+                    .toList();
+        }
+
+        return ResponseEntity.ok(new AvailabilityRangeResponseDto(items, googleExternalEvents));
     }
 
     @PostMapping

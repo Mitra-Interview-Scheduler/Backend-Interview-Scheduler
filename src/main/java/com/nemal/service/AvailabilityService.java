@@ -164,6 +164,7 @@ public class AvailabilityService {
         if (!slot.getInterviewer().getId().equals(interviewer.getId())) {
             throw new RuntimeException("Unauthorized: this slot does not belong to you");
         }
+        calendarSyncService.ensureInterviewerConnected(interviewer);
         if (slot.getStatus() == SlotStatus.BOOKED) {
             throw new RuntimeException("Cannot edit a booked slot — it has an interview scheduled");
         }
@@ -254,6 +255,7 @@ public class AvailabilityService {
         if (!slot.getInterviewer().getId().equals(interviewer.getId())) {
             throw new RuntimeException("Unauthorized");
         }
+        calendarSyncService.ensureInterviewerConnected(interviewer);
         if (slot.getStatus() == SlotStatus.BOOKED) {
             throw new RuntimeException("Cannot delete booked slots");
         }

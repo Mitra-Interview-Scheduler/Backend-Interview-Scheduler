@@ -1,20 +1,29 @@
 package com.nemal.service;
 
+import com.google.api.services.calendar.model.Event;
+import com.nemal.dto.GoogleCalendarAvailabilitySyncDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.entity.*;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
 import com.nemal.repository.InterviewPanelRepository;
 import com.nemal.repository.InterviewScheduleRepository;
+import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class CalendarSyncService {
@@ -56,6 +65,111 @@ public class CalendarSyncService {
                 throw new RuntimeException(message);
             }
             logger.warn("Interviewer {} has no Google Calendar connection", interviewer.getId());
+        }
+    }
+
+    @Transactional
+    public int syncUnsyncedAvailabilitySlots(User interviewer) {
+        if (!interviewer.hasInterviewerRole() || !tokenService.isConnected(interviewer)) {
+            return 0;
+        }
+
+        List<AvailabilitySlot> unsyncedSlots = availabilitySlotRepository
+                .findByInterviewerIdAndIsActiveTrue(interviewer.getId())
+                .stream()
+                .filter(slot -> slot.getGoogleCalendarEventId() == null)
+                .filter(slot -> slot.getStatus() == SlotStatus.AVAILABLE)
+                .toList();
+
+        int syncedCount = 0;
+        for (AvailabilitySlot slot : unsyncedSlots) {
+            try {
+                syncAvailabilitySlotCreated(slot);
+                if (slot.getGoogleCalendarEventId() != null) {
+                    syncedCount++;
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to backfill availability slot {} to Google Calendar: {}",
+                        slot.getId(), e.getMessage());
+            }
+        }
+
+        logger.info("Backfilled {} of {} availability slots to Google Calendar for user {}",
+                syncedCount, unsyncedSlots.size(), interviewer.getId());
+        return syncedCount;
+    }
+
+    @Transactional
+    public GoogleCalendarAvailabilitySyncDto syncUnsyncedAvailabilitySlotsResult(User interviewer) {
+        List<AvailabilitySlot> unsyncedSlots = availabilitySlotRepository
+                .findByInterviewerIdAndIsActiveTrue(interviewer.getId())
+                .stream()
+                .filter(slot -> slot.getGoogleCalendarEventId() == null)
+                .filter(slot -> slot.getStatus() == SlotStatus.AVAILABLE)
+                .toList();
+
+        int syncedCount = syncUnsyncedAvailabilitySlots(interviewer);
+        return new GoogleCalendarAvailabilitySyncDto(syncedCount, unsyncedSlots.size());
+    }
+
+    public List<GoogleCalendarExternalEventDto> listExternalGoogleCalendarEvents(
+            User interviewer,
+            LocalDateTime utcStart,
+            LocalDateTime utcEnd) {
+        if (!interviewer.hasInterviewerRole() || !tokenService.isConnected(interviewer)) {
+            return List.of();
+        }
+
+        Set<String> managedEventIds = availabilitySlotRepository
+                .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
+                        interviewer.getId(), utcStart, utcEnd)
+                .stream()
+                .map(AvailabilitySlot::getGoogleCalendarEventId)
+                .filter(Objects::nonNull)
+                .filter(id -> !id.isBlank())
+                .collect(Collectors.toCollection(HashSet::new));
+
+        try {
+            ZoneId zone = ZoneId.of(resolveTimeZone(interviewer));
+            List<Event> events = eventService.listEventsInRange(interviewer, utcStart, utcEnd);
+            List<GoogleCalendarExternalEventDto> externalEvents = new ArrayList<>();
+
+            for (Event event : events) {
+                if (event.getId() == null || managedEventIds.contains(event.getId())) {
+                    continue;
+                }
+                if ("cancelled".equalsIgnoreCase(event.getStatus())) {
+                    continue;
+                }
+
+                boolean allDay = event.getStart() != null && event.getStart().getDate() != null;
+                LocalDateTime start = eventService.parseEventStart(event, zone);
+                LocalDateTime end = eventService.parseEventEnd(event, zone);
+                if (start == null || end == null) {
+                    continue;
+                }
+                if (!allDay && !end.isAfter(start)) {
+                    continue;
+                }
+
+                String title = event.getSummary();
+                if (title == null || title.isBlank()) {
+                    title = "(No title)";
+                }
+
+                externalEvents.add(new GoogleCalendarExternalEventDto(
+                        event.getId(),
+                        title,
+                        TimeZoneMapper.toUtc(start, zone),
+                        TimeZoneMapper.toUtc(end, zone),
+                        allDay));
+            }
+
+            return externalEvents;
+        } catch (Exception e) {
+            logger.warn("Failed to list external Google Calendar events for user {}: {}",
+                    interviewer.getId(), e.getMessage());
+            return List.of();
         }
     }
 

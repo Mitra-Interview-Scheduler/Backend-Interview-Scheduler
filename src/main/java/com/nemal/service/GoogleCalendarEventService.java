@@ -7,8 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +66,60 @@ public class GoogleCalendarEventService {
         }
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
         calendar.events().delete("primary", eventId).execute();
+    }
+
+    public List<Event> listEventsInRange(
+            User interviewer,
+            LocalDateTime startUtc,
+            LocalDateTime endUtc) throws Exception {
+        Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        ZoneId utc = ZoneOffset.UTC;
+        com.google.api.client.util.DateTime timeMin = new com.google.api.client.util.DateTime(
+                startUtc.atZone(utc).toInstant().toEpochMilli());
+        com.google.api.client.util.DateTime timeMax = new com.google.api.client.util.DateTime(
+                endUtc.atZone(utc).toInstant().toEpochMilli());
+
+        Events result = calendar.events().list("primary")
+                .setTimeMin(timeMin)
+                .setTimeMax(timeMax)
+                .setSingleEvents(true)
+                .setOrderBy("startTime")
+                .setMaxResults(2500)
+                .execute();
+
+        return result.getItems() != null ? result.getItems() : List.of();
+    }
+
+    public LocalDateTime parseEventStart(Event event, ZoneId fallbackZone) {
+        return parseEventBoundary(event.getStart(), fallbackZone);
+    }
+
+    public LocalDateTime parseEventEnd(Event event, ZoneId fallbackZone) {
+        LocalDateTime end = parseEventBoundary(event.getEnd(), fallbackZone);
+        if (event.getStart() != null && event.getStart().getDate() != null && end != null) {
+            // Google all-day events use an exclusive end date.
+            return end;
+        }
+        return end;
+    }
+
+    private LocalDateTime parseEventBoundary(EventDateTime eventDateTime, ZoneId fallbackZone) {
+        if (eventDateTime == null) {
+            return null;
+        }
+        if (eventDateTime.getDateTime() != null) {
+            ZoneId zone = eventDateTime.getTimeZone() != null && !eventDateTime.getTimeZone().isBlank()
+                    ? ZoneId.of(eventDateTime.getTimeZone())
+                    : fallbackZone;
+            return Instant.ofEpochMilli(eventDateTime.getDateTime().getValue())
+                    .atZone(zone)
+                    .toLocalDateTime();
+        }
+        if (eventDateTime.getDate() != null) {
+            LocalDate date = LocalDate.parse(eventDateTime.getDate().toString());
+            return date.atStartOfDay();
+        }
+        return null;
     }
 
     public CalendarEventResult bookInterviewEvent(
