@@ -91,4 +91,7 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             Pageable pageable);
 
     Optional<Candidate> findByIdAndIsActiveTrue(Long id);
+
+    @Query("SELECT c FROM Candidate c LEFT JOIN FETCH c.coordinatedHr WHERE c.id = :id")
+    Optional<Candidate> findByIdWithCoordinatedHr(@Param("id") Long id);
 }

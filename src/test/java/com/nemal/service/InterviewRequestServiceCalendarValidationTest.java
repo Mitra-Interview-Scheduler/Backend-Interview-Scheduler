@@ -3,12 +3,15 @@ package com.nemal.service;
 import com.nemal.dto.CreateInterviewRequestDto;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Candidate;
+import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
 import com.nemal.entity.User;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -16,8 +19,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,7 +67,7 @@ class InterviewRequestServiceCalendarValidationTest {
     }
 
     @Test
-    void createInterviewRequest_rejectsCandidateWithoutEmail() {
+    void createInterviewRequest_storesInviteEmailFromDtoWithoutProfileEmail() {
         LocalDateTime start = LocalDateTime.of(2026, 7, 10, 10, 0);
         LocalDateTime end = LocalDateTime.of(2026, 7, 10, 11, 0);
 
@@ -84,10 +88,22 @@ class InterviewRequestServiceCalendarValidationTest {
 
         when(availabilitySlotRepository.findById(10L)).thenReturn(Optional.of(slot));
         when(candidateRepository.findById(1L)).thenReturn(Optional.of(candidate));
+        when(availabilitySlotRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(interviewRequestRepository.save(any())).thenAnswer(invocation -> {
+            InterviewRequest request = invocation.getArgument(0);
+            request.setId(100L);
+            return request;
+        });
+        when(interviewScheduleRepository.save(any())).thenAnswer(invocation -> {
+            InterviewSchedule schedule = invocation.getArgument(0);
+            schedule.setId(200L);
+            return schedule;
+        });
 
         CreateInterviewRequestDto dto = new CreateInterviewRequestDto(
                 1L,
                 "Jane Doe",
+                "guest@gmail.com",
                 null,
                 List.of(),
                 10L,
@@ -100,7 +116,10 @@ class InterviewRequestServiceCalendarValidationTest {
                 null
         );
 
-        assertThrows(RuntimeException.class, () ->
-                interviewRequestService.createInterviewRequest(User.builder().id(99L).build(), dto));
+        interviewRequestService.createInterviewRequest(User.builder().id(99L).build(), dto);
+
+        ArgumentCaptor<InterviewRequest> captor = ArgumentCaptor.forClass(InterviewRequest.class);
+        verify(interviewRequestRepository).save(captor.capture());
+        assertEquals("guest@gmail.com", captor.getValue().getCandidateInviteEmail());
     }
 }

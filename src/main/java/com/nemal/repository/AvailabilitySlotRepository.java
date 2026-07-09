@@ -25,7 +25,8 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
      */
     @Query("SELECT s FROM AvailabilitySlot s " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.panel " +
             "WHERE s.interviewer.id = :interviewerId " +
             "AND s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.startDateTime >= :from)")
@@ -46,7 +47,8 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
     @Query(
             value = "SELECT s FROM AvailabilitySlot s " +
                     "LEFT JOIN FETCH s.interviewSchedule sch " +
-                    "LEFT JOIN FETCH sch.request " +
+                    "LEFT JOIN FETCH sch.request req " +
+                    "LEFT JOIN FETCH req.panel " +
                     "WHERE s.interviewer.id = :interviewerId " +
                     "AND s.startDateTime BETWEEN :start AND :end " +
                     "AND s.isActive = true " +

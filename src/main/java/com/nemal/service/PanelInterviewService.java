@@ -85,12 +85,12 @@ public class PanelInterviewService {
         if (dto.candidateId() != null) {
             candidate = candidateRepository.findById(dto.candidateId())
                     .orElseThrow(() -> new RuntimeException("Candidate not found"));
-            validateCandidateEmailForCalendar(candidate);
         }
         String candidateName = candidate != null ? candidate.getName() : dto.candidateName();
         if (candidateName == null || candidateName.trim().isEmpty()) {
             throw new RuntimeException("Candidate name is required");
         }
+        String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
 
         Designation designation = null;
         if (dto.candidateDesignationId() != null) {
@@ -127,6 +127,7 @@ public class PanelInterviewService {
         InterviewPanel panel = InterviewPanel.builder()
                 .candidate(candidate)
                 .candidateName(candidateName)
+                .candidateInviteEmail(candidateInviteEmail)
                 .startDateTime(dto.startDateTime())
                 .endDateTime(dto.endDateTime())
                 .requestedBy(requestedBy)
@@ -149,6 +150,7 @@ public class PanelInterviewService {
 
             InterviewRequest request = InterviewRequest.builder()
                     .candidateName(finalCandidateName)
+                    .candidateInviteEmail(candidateInviteEmail)
                     .candidate(candidate)
                     .candidateDesignation(finalDesignation)
                     .requiredTechnologies(new HashSet<>(finalTechnologies))
@@ -489,14 +491,13 @@ public class PanelInterviewService {
         return user;
     }
 
-    private void validateCandidateEmailForCalendar(Candidate candidate) {
-        if (candidate == null) {
-            return;
+    private String resolveCandidateInviteEmail(String dtoEmail, Candidate candidate) {
+        if (dtoEmail != null && !dtoEmail.isBlank()) {
+            return dtoEmail.trim();
         }
-        String email = candidate.getEmail();
-        if (email == null || email.isBlank()) {
-            throw new RuntimeException(
-                    "Candidate email is required to schedule panel interviews with Google Calendar invites");
+        if (candidate != null && candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
+            return candidate.getEmail().trim();
         }
+        return null;
     }
 }

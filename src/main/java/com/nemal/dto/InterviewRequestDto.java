@@ -2,6 +2,7 @@ package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.InterviewSchedule;
+import com.nemal.entity.InterviewPanel;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 
@@ -91,8 +92,25 @@ public record InterviewRequestDto(
                 schedule != null ? schedule.getStartDateTime() : null,
                 schedule != null ? schedule.getEndDateTime() : null,
                 schedule != null ? schedule.getCompletedAt() : null,
-                schedule != null ? schedule.getMeetingLink() : null,
+                schedule != null && schedule.getStatus() == InterviewStatus.SCHEDULED
+                        ? resolveMeetingLink(schedule, request)
+                        : null,
                 schedule != null ? schedule.getGoogleCalendarEventId() : null
         );
+    }
+
+    private static String resolveMeetingLink(InterviewSchedule schedule, InterviewRequest request) {
+        if (schedule == null || schedule.getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = schedule.getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewPanel panel = request != null ? request.getPanel() : null;
+        if (panel != null && panel.getMeetingLink() != null && !panel.getMeetingLink().isBlank()) {
+            return panel.getMeetingLink();
+        }
+        return null;
     }
 }

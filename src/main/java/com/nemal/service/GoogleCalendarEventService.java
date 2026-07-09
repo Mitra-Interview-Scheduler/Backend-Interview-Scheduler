@@ -61,11 +61,19 @@ public class GoogleCalendarEventService {
     }
 
     public void deleteEvent(User interviewer, String eventId) throws Exception {
+        deleteEvent(interviewer, eventId, false);
+    }
+
+    public void deleteEvent(User interviewer, String eventId, boolean notifyGuests) throws Exception {
         if (eventId == null || eventId.isBlank()) {
             return;
         }
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        calendar.events().delete("primary", eventId).execute();
+        var deleteRequest = calendar.events().delete("primary", eventId);
+        if (notifyGuests) {
+            deleteRequest.setSendUpdates("all");
+        }
+        deleteRequest.execute();
     }
 
     public List<Event> listEventsInRange(
@@ -132,13 +140,16 @@ public class GoogleCalendarEventService {
             List<String> attendeeEmails,
             boolean createNewIfMissing) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        Event event = buildInterviewEvent(timeZone, start, end, title, attendeeEmails);
+        Event interviewEvent = buildInterviewEvent(timeZone, start, end, title, attendeeEmails);
 
         Event result;
         if (eventId != null && !eventId.isBlank()) {
             try {
+                Event existing = calendar.events().get("primary", eventId).execute();
+                interviewEvent.setId(eventId);
+                interviewEvent.setSequence(existing.getSequence());
                 result = calendar.events()
-                        .patch("primary", eventId, event)
+                        .update("primary", eventId, interviewEvent)
                         .setConferenceDataVersion(1)
                         .setSendUpdates("all")
                         .execute();
@@ -146,22 +157,35 @@ public class GoogleCalendarEventService {
                 if (!createNewIfMissing) {
                     throw e;
                 }
-                logger.warn("Failed to patch event {}, creating new interview event", eventId);
+                logger.warn("Failed to update event {} with interview guests, creating new event: {}",
+                        eventId, e.getMessage());
                 result = calendar.events()
-                        .insert("primary", event)
+                        .insert("primary", interviewEvent)
                         .setConferenceDataVersion(1)
                         .setSendUpdates("all")
                         .execute();
             }
         } else {
             result = calendar.events()
-                    .insert("primary", event)
+                    .insert("primary", interviewEvent)
                     .setConferenceDataVersion(1)
                     .setSendUpdates("all")
                     .execute();
         }
 
         return new CalendarEventResult(result.getId(), extractMeetLink(result));
+    }
+
+    public CalendarEventResult createBusyBlockEvent(
+            User calendarOwner,
+            String timeZone,
+            LocalDateTime start,
+            LocalDateTime end,
+            String description) throws Exception {
+        Calendar calendar = tokenService.buildCalendarClient(calendarOwner);
+        Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
+        Event created = calendar.events().insert("primary", busyEvent).execute();
+        return new CalendarEventResult(created.getId(), null);
     }
 
     public CalendarEventResult createPanelInterviewEvent(
@@ -189,16 +213,75 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String description) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        Event event = baseAvailabilityEvent(timeZone, start, end, description);
-        event.setAttendees(new ArrayList<>());
-        event.setConferenceData(null);
+
+        try {
+            calendar.events()
+                    .delete("primary", eventId)
+                    .setSendUpdates("all")
+                    .execute();
+            logger.info("Deleted Google Calendar interview event {} and notified guests", eventId);
+        } catch (Exception e) {
+            if (!isDeletedOrMissingEvent(e)) {
+                logger.warn("Failed to delete Google Calendar event {}, falling back to update: {}",
+                        eventId, e.getMessage());
+                return revertToBusyBlockViaUpdate(
+                        calendar, eventId, timeZone, start, end, description);
+            }
+        }
+
+        Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
+        Event created = calendar.events().insert("primary", busyEvent).execute();
+        return new CalendarEventResult(created.getId(), null);
+    }
+
+    private CalendarEventResult revertToBusyBlockViaUpdate(
+            Calendar calendar,
+            String eventId,
+            String timeZone,
+            LocalDateTime start,
+            LocalDateTime end,
+            String description) throws Exception {
+        Event existing = calendar.events().get("primary", eventId).execute();
+
+        Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
+        busyEvent.setId(eventId);
+        busyEvent.setSequence(existing.getSequence());
+        busyEvent.setAttendees(new ArrayList<>());
+        busyEvent.setConferenceData(null);
+        busyEvent.setHangoutLink(null);
+        busyEvent.setGuestsCanSeeOtherGuests(null);
 
         Event updated = calendar.events()
-                .patch("primary", eventId, event)
+                .update("primary", eventId, busyEvent)
                 .setConferenceDataVersion(1)
                 .setSendUpdates("all")
                 .execute();
         return new CalendarEventResult(updated.getId(), null);
+    }
+
+    private boolean isDeletedOrMissingEvent(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+        return message.contains("404")
+                || message.contains("410")
+                || message.contains("not found")
+                || message.contains("deleted");
+    }
+
+    private Event baseBusyBlockEvent(
+            String timeZone,
+            LocalDateTime start,
+            LocalDateTime end,
+            String description) {
+        Event event = new Event();
+        event.setSummary(description != null && !description.isBlank()
+                ? description
+                : "Available for Interview");
+        event.setDescription("Interview availability slot managed by Mitra");
+        event.setTransparency("opaque");
+        event.setVisibility("private");
+        event.setStart(toEventDateTime(start, timeZone));
+        event.setEnd(toEventDateTime(end, timeZone));
+        return event;
     }
 
     private Event baseAvailabilityEvent(
@@ -226,7 +309,7 @@ public class GoogleCalendarEventService {
             List<String> attendeeEmails) {
         Event event = new Event();
         event.setSummary(title);
-        event.setDescription("Interview scheduled via Mitra");
+        event.setDescription("Interview scheduled via Mitra Interview Scheduler");
         event.setTransparency("opaque");
         event.setVisibility("private");
         event.setGuestsCanSeeOtherGuests(false);

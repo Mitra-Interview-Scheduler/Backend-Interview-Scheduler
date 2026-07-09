@@ -4,6 +4,7 @@ import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Designation;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.Tier;
+import com.nemal.enums.InterviewStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -63,7 +64,9 @@ public record InterviewerAvailabilityDto(
             if (slot.getInterviewSchedule().getInterviewType() != null) {
                 interviewType = slot.getInterviewSchedule().getInterviewType().name();
             }
-            meetingLink = slot.getInterviewSchedule().getMeetingLink();
+            if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
+                meetingLink = resolveMeetingLink(slot);
+            }
             InterviewRequest req = slot.getInterviewSchedule().getRequest();
             if (req != null) {
                 candidateName = req.getCandidateName();
@@ -144,5 +147,24 @@ public record InterviewerAvailabilityDto(
                 coordinatedHrName,
                 meetingLink
         );
+    }
+
+    private static String resolveMeetingLink(AvailabilitySlot slot) {
+        if (slot.getInterviewSchedule() == null
+                || slot.getInterviewSchedule().getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = slot.getInterviewSchedule().getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewRequest req = slot.getInterviewSchedule().getRequest();
+        if (req != null && req.getPanel() != null) {
+            String panelLink = req.getPanel().getMeetingLink();
+            if (panelLink != null && !panelLink.isBlank()) {
+                return panelLink;
+            }
+        }
+        return null;
     }
 }

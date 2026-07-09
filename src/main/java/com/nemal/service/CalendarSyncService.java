@@ -6,6 +6,7 @@ import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.entity.*;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.InterviewPanelRepository;
 import com.nemal.repository.InterviewScheduleRepository;
 import com.nemal.util.TimeZoneMapper;
@@ -36,6 +37,7 @@ public class CalendarSyncService {
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final InterviewPanelRepository interviewPanelRepository;
+    private final CandidateRepository candidateRepository;
     private final boolean calendarRequired;
 
     public CalendarSyncService(
@@ -45,6 +47,7 @@ public class CalendarSyncService {
             AvailabilitySlotRepository availabilitySlotRepository,
             InterviewScheduleRepository interviewScheduleRepository,
             InterviewPanelRepository interviewPanelRepository,
+            CandidateRepository candidateRepository,
             @Value("${google.calendar.required:false}") boolean calendarRequired) {
         this.eventService = eventService;
         this.tokenService = tokenService;
@@ -52,6 +55,7 @@ public class CalendarSyncService {
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.interviewScheduleRepository = interviewScheduleRepository;
         this.interviewPanelRepository = interviewPanelRepository;
+        this.candidateRepository = candidateRepository;
         this.calendarRequired = calendarRequired;
     }
 
@@ -250,37 +254,63 @@ public class CalendarSyncService {
             InterviewRequest request,
             InterviewSchedule schedule) {
         User interviewer = bookedSlot.getInterviewer();
-        if (!tokenService.isConnected(interviewer)) {
+        Candidate candidate = resolveCandidateForSync(request.getCandidate());
+        User organizer = resolveInterviewOrganizer(interviewer, candidate);
+
+        if (!tokenService.isConnected(organizer) && !tokenService.isConnected(interviewer)) {
             return;
+        }
+        if (!tokenService.isConnected(organizer)) {
+            organizer = interviewer;
         }
 
         try {
-            String timeZone = resolveTimeZone(interviewer);
             boolean partialBooking = !originalSlot.getId().equals(bookedSlot.getId());
+            List<String> attendees = buildInterviewAttendees(request, organizer);
+            String title = "Interview: " + request.getCandidateName();
+            logger.info("Booking Google Calendar interview for request {} with organizer {} and {} guest(s)",
+                    request.getId(), organizer.getId(), attendees.size());
 
-            if (partialBooking) {
-                if (originalSlot.getGoogleCalendarEventId() != null) {
-                    eventService.deleteEvent(interviewer, originalSlot.getGoogleCalendarEventId());
-                    originalSlot.setGoogleCalendarEventId(null);
-                    availabilitySlotRepository.save(originalSlot);
+            if (isSameUser(organizer, interviewer)) {
+                if (partialBooking) {
+                    if (originalSlot.getGoogleCalendarEventId() != null) {
+                        eventService.deleteEvent(interviewer, originalSlot.getGoogleCalendarEventId());
+                        originalSlot.setGoogleCalendarEventId(null);
+                        availabilitySlotRepository.save(originalSlot);
+                    }
+                    syncNewAvailabilityFragments(interviewer, originalSlot.getStartDateTime(), originalSlot.getEndDateTime());
                 }
-                syncNewAvailabilityFragments(interviewer, originalSlot.getStartDateTime(), originalSlot.getEndDateTime());
+
+                String timeZone = resolveTimeZone(interviewer);
+                var result = eventService.bookInterviewEvent(
+                        interviewer,
+                        partialBooking ? null : bookedSlot.getGoogleCalendarEventId(),
+                        timeZone,
+                        bookedSlot.getStartDateTime(),
+                        bookedSlot.getEndDateTime(),
+                        title,
+                        attendees,
+                        true);
+
+                bookedSlot.setGoogleCalendarEventId(result.eventId());
+                availabilitySlotRepository.save(bookedSlot);
+                schedule.setGoogleCalendarEventId(result.eventId());
+                schedule.setMeetingLink(result.meetingLink());
+                interviewScheduleRepository.save(schedule);
+                return;
             }
 
-            List<String> attendees = buildInterviewAttendees(request);
-            String title = "Interview: " + request.getCandidateName();
+            syncInterviewerBusyBlock(interviewer, bookedSlot, partialBooking ? originalSlot : null, title);
+            String organizerTimeZone = resolveTimeZone(organizer);
             var result = eventService.bookInterviewEvent(
-                    interviewer,
-                    partialBooking ? null : bookedSlot.getGoogleCalendarEventId(),
-                    timeZone,
+                    organizer,
+                    null,
+                    organizerTimeZone,
                     bookedSlot.getStartDateTime(),
                     bookedSlot.getEndDateTime(),
                     title,
                     attendees,
                     true);
-
-            bookedSlot.setGoogleCalendarEventId(result.eventId());
-            availabilitySlotRepository.save(bookedSlot);
 
             schedule.setGoogleCalendarEventId(result.eventId());
             schedule.setMeetingLink(result.meetingLink());
@@ -295,17 +325,41 @@ public class CalendarSyncService {
             InterviewRequest request,
             InterviewSchedule schedule,
             AvailabilitySlot restoredSlot) {
+        if (schedule != null) {
+            schedule.setMeetingLink(null);
+            interviewScheduleRepository.save(schedule);
+        }
+
         User interviewer = restoredSlot.getInterviewer();
-        if (!tokenService.isConnected(interviewer)) {
+        Candidate candidate = resolveCandidateForSync(request.getCandidate());
+        User organizer = resolveInterviewOrganizer(interviewer, candidate);
+        if (!tokenService.isConnected(organizer)) {
+            organizer = interviewer;
+        }
+
+        if (!tokenService.isConnected(interviewer) && !tokenService.isConnected(organizer)) {
             return;
         }
 
         try {
-            String eventId = schedule.getGoogleCalendarEventId() != null
-                    ? schedule.getGoogleCalendarEventId()
-                    : restoredSlot.getGoogleCalendarEventId();
+            String scheduleEventId = schedule != null ? schedule.getGoogleCalendarEventId() : null;
+            if (!isSameUser(organizer, interviewer) && scheduleEventId != null && tokenService.isConnected(organizer)) {
+                eventService.deleteEvent(organizer, scheduleEventId, true);
+                if (schedule != null) {
+                    schedule.setGoogleCalendarEventId(null);
+                    interviewScheduleRepository.save(schedule);
+                }
+            }
 
-            if (eventId == null) {
+            if (!tokenService.isConnected(interviewer)) {
+                return;
+            }
+
+            String slotEventId = restoredSlot.getGoogleCalendarEventId();
+            if (slotEventId == null && scheduleEventId != null && isSameUser(organizer, interviewer)) {
+                slotEventId = scheduleEventId;
+            }
+            if (slotEventId == null) {
                 syncAvailabilitySlotCreated(restoredSlot);
                 return;
             }
@@ -313,7 +367,7 @@ public class CalendarSyncService {
             String timeZone = resolveTimeZone(interviewer);
             var result = eventService.revertToAvailabilityEvent(
                     interviewer,
-                    eventId,
+                    slotEventId,
                     timeZone,
                     restoredSlot.getStartDateTime(),
                     restoredSlot.getEndDateTime(),
@@ -322,9 +376,11 @@ public class CalendarSyncService {
             restoredSlot.setGoogleCalendarEventId(result.eventId());
             availabilitySlotRepository.save(restoredSlot);
 
-            schedule.setGoogleCalendarEventId(result.eventId());
-            schedule.setMeetingLink(null);
-            interviewScheduleRepository.save(schedule);
+            if (schedule != null && isSameUser(organizer, interviewer)) {
+                schedule.setGoogleCalendarEventId(result.eventId());
+                schedule.setMeetingLink(null);
+                interviewScheduleRepository.save(schedule);
+            }
         } catch (Exception e) {
             logger.warn("Failed to cancel Google Calendar interview for request {}: {}", request.getId(), e.getMessage());
         }
@@ -339,29 +395,88 @@ public class CalendarSyncService {
             return;
         }
 
-        User leadInterviewer = bookedSlots.get(0).getInterviewer();
-        if (!tokenService.isConnected(leadInterviewer)) {
+        User leadInterviewer = null;
+        for (AvailabilitySlot bookedSlot : bookedSlots) {
+            User interviewer = bookedSlot.getInterviewer();
+            if (interviewer != null && tokenService.isConnected(interviewer)) {
+                leadInterviewer = interviewer;
+                break;
+            }
+        }
+
+        InterviewPanel panelForSync = interviewPanelRepository.findByIdWithDetails(panel.getId()).orElse(panel);
+        Candidate candidate = resolveCandidateForSync(panelForSync.getCandidate());
+        User organizer = resolveInterviewOrganizer(leadInterviewer, candidate);
+
+        if (organizer == null || !tokenService.isConnected(organizer)) {
+            logger.warn(
+                    "Panel {} not synced to Google Calendar: no connected HR coordinator or interviewer calendar",
+                    panel.getId());
             return;
         }
 
         try {
-            for (AvailabilitySlot bookedSlot : bookedSlots) {
-                User interviewer = bookedSlot.getInterviewer();
-                if (bookedSlot.getGoogleCalendarEventId() != null && tokenService.isConnected(interviewer)) {
-                    eventService.deleteEvent(interviewer, bookedSlot.getGoogleCalendarEventId());
-                    bookedSlot.setGoogleCalendarEventId(null);
-                    availabilitySlotRepository.save(bookedSlot);
+            String title = "Panel Interview: " + panelForSync.getCandidateName();
+            List<String> attendees = buildPanelAttendees(requests, panelForSync, organizer);
+            logger.info(
+                    "Creating panel Google Calendar event for panel {} with organizer {} and {} guest(s)",
+                    panel.getId(),
+                    organizer.getId(),
+                    attendees.size());
+
+            if (isSameUser(organizer, leadInterviewer)) {
+                for (AvailabilitySlot bookedSlot : bookedSlots) {
+                    User interviewer = bookedSlot.getInterviewer();
+                    if (bookedSlot.getGoogleCalendarEventId() != null && tokenService.isConnected(interviewer)) {
+                        eventService.deleteEvent(interviewer, bookedSlot.getGoogleCalendarEventId());
+                        bookedSlot.setGoogleCalendarEventId(null);
+                        availabilitySlotRepository.save(bookedSlot);
+                    }
                 }
+
+                String timeZone = resolveTimeZone(organizer);
+                var result = eventService.createPanelInterviewEvent(
+                        organizer,
+                        timeZone,
+                        panelForSync.getStartDateTime(),
+                        panelForSync.getEndDateTime(),
+                        title,
+                        attendees);
+
+                panel.setGoogleCalendarEventId(result.eventId());
+                panel.setMeetingLink(result.meetingLink());
+                interviewPanelRepository.save(panel);
+
+                for (InterviewRequest request : requests) {
+                    interviewScheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
+                        schedule.setGoogleCalendarEventId(result.eventId());
+                        schedule.setMeetingLink(result.meetingLink());
+                        interviewScheduleRepository.save(schedule);
+
+                        if (request.getAvailabilitySlot() != null) {
+                            AvailabilitySlot slot = request.getAvailabilitySlot();
+                            slot.setGoogleCalendarEventId(result.eventId());
+                            availabilitySlotRepository.save(slot);
+                        }
+                    });
+                }
+                return;
             }
 
-            String timeZone = resolveTimeZone(leadInterviewer);
-            List<String> attendees = buildPanelAttendees(requests, panel);
-            String title = "Panel Interview: " + panel.getCandidateName();
+            for (AvailabilitySlot bookedSlot : bookedSlots) {
+                User interviewer = bookedSlot.getInterviewer();
+                if (interviewer == null || !tokenService.isConnected(interviewer)) {
+                    continue;
+                }
+                syncInterviewerBusyBlock(interviewer, bookedSlot, null, title);
+            }
+
+            String organizerTimeZone = resolveTimeZone(organizer);
             var result = eventService.createPanelInterviewEvent(
-                    leadInterviewer,
-                    timeZone,
-                    panel.getStartDateTime(),
-                    panel.getEndDateTime(),
+                    organizer,
+                    organizerTimeZone,
+                    panelForSync.getStartDateTime(),
+                    panelForSync.getEndDateTime(),
                     title,
                     attendees);
 
@@ -374,12 +489,6 @@ public class CalendarSyncService {
                     schedule.setGoogleCalendarEventId(result.eventId());
                     schedule.setMeetingLink(result.meetingLink());
                     interviewScheduleRepository.save(schedule);
-
-                    if (request.getAvailabilitySlot() != null) {
-                        AvailabilitySlot slot = request.getAvailabilitySlot();
-                        slot.setGoogleCalendarEventId(result.eventId());
-                        availabilitySlotRepository.save(slot);
-                    }
                 });
             }
         } catch (Exception e) {
@@ -392,14 +501,25 @@ public class CalendarSyncService {
             InterviewPanel panel,
             List<InterviewRequest> requests,
             List<AvailabilitySlot> restoredSlots) {
-        if (panel.getGoogleCalendarEventId() != null && !restoredSlots.isEmpty()) {
-            User leadInterviewer = restoredSlots.get(0).getInterviewer();
-            if (tokenService.isConnected(leadInterviewer)) {
-                try {
-                    eventService.deleteEvent(leadInterviewer, panel.getGoogleCalendarEventId());
-                } catch (Exception e) {
-                    logger.warn("Failed to delete panel Google event {}: {}", panel.getId(), e.getMessage());
-                }
+        User leadInterviewer = restoredSlots.isEmpty() ? null : restoredSlots.get(0).getInterviewer();
+        InterviewPanel panelForSync = interviewPanelRepository.findByIdWithDetails(panel.getId()).orElse(panel);
+        Candidate candidate = resolveCandidateForSync(panelForSync.getCandidate());
+        User organizer = leadInterviewer != null
+                ? resolveInterviewOrganizer(leadInterviewer, candidate)
+                : null;
+        if (organizer == null || !tokenService.isConnected(organizer)) {
+            organizer = leadInterviewer;
+        }
+
+        boolean hrOrganized = organizer != null
+                && leadInterviewer != null
+                && !isSameUser(organizer, leadInterviewer);
+
+        if (panel.getGoogleCalendarEventId() != null && organizer != null && tokenService.isConnected(organizer)) {
+            try {
+                eventService.deleteEvent(organizer, panel.getGoogleCalendarEventId(), true);
+            } catch (Exception e) {
+                logger.warn("Failed to delete panel Google event {}: {}", panel.getId(), e.getMessage());
             }
         }
 
@@ -408,9 +528,21 @@ public class CalendarSyncService {
         interviewPanelRepository.save(panel);
 
         for (AvailabilitySlot restoredSlot : restoredSlots) {
+            User interviewer = restoredSlot.getInterviewer();
+            if (hrOrganized && restoredSlot.getGoogleCalendarEventId() != null
+                    && interviewer != null && tokenService.isConnected(interviewer)) {
+                try {
+                    eventService.deleteEvent(interviewer, restoredSlot.getGoogleCalendarEventId());
+                } catch (Exception e) {
+                    logger.warn("Failed to delete interviewer busy block for slot {}: {}",
+                            restoredSlot.getId(), e.getMessage());
+                }
+            }
             restoredSlot.setGoogleCalendarEventId(null);
             availabilitySlotRepository.save(restoredSlot);
-            syncAvailabilitySlotCreated(restoredSlot);
+            if (interviewer != null && tokenService.isConnected(interviewer)) {
+                syncAvailabilitySlotCreated(restoredSlot);
+            }
         }
 
         for (InterviewRequest request : requests) {
@@ -439,41 +571,133 @@ public class CalendarSyncService {
         }
     }
 
-    private List<String> buildInterviewAttendees(InterviewRequest request) {
+    private List<String> buildInterviewAttendees(InterviewRequest request, User organizer) {
         Set<String> emails = new LinkedHashSet<>();
-        if (request.getCandidate() != null && request.getCandidate().getEmail() != null) {
-            emails.add(request.getCandidate().getEmail());
+        String candidateEmail = resolveInviteEmail(request.getCandidateInviteEmail(), request.getCandidate());
+        if (candidateEmail != null) {
+            emails.add(candidateEmail);
+        }
+        if (request.getAssignedInterviewer() != null
+                && request.getAssignedInterviewer().getEmail() != null
+                && !isSameUser(organizer, request.getAssignedInterviewer())) {
+            emails.add(request.getAssignedInterviewer().getEmail().trim());
         }
         if (request.getInterviewCoordinator() != null && request.getInterviewCoordinator().getEmail() != null) {
-            emails.add(request.getInterviewCoordinator().getEmail());
+            emails.add(request.getInterviewCoordinator().getEmail().trim());
         }
         if (request.getCandidate() != null
                 && request.getCandidate().getCoordinatedHr() != null
-                && request.getCandidate().getCoordinatedHr().getEmail() != null) {
-            emails.add(request.getCandidate().getCoordinatedHr().getEmail());
+                && request.getCandidate().getCoordinatedHr().getEmail() != null
+                && !isSameUser(organizer, request.getCandidate().getCoordinatedHr())) {
+            emails.add(request.getCandidate().getCoordinatedHr().getEmail().trim());
         }
         return new ArrayList<>(emails);
     }
 
-    private List<String> buildPanelAttendees(List<InterviewRequest> requests, InterviewPanel panel) {
+    private String resolveCandidateEmail(Candidate candidate) {
+        if (candidate == null || candidate.getId() == null) {
+            return null;
+        }
+        return candidateRepository.findById(candidate.getId())
+                .map(Candidate::getEmail)
+                .map(String::trim)
+                .filter(email -> !email.isBlank())
+                .orElse(null);
+    }
+
+    private String resolveInviteEmail(String storedInviteEmail, Candidate candidate) {
+        if (storedInviteEmail != null && !storedInviteEmail.isBlank()) {
+            return storedInviteEmail.trim();
+        }
+        return resolveCandidateEmail(candidate);
+    }
+
+    private List<String> buildPanelAttendees(List<InterviewRequest> requests, InterviewPanel panel, User organizer) {
         Set<String> emails = new LinkedHashSet<>();
+        String candidateEmail = resolveInviteEmail(panel.getCandidateInviteEmail(), panel.getCandidate());
+        if (candidateEmail != null) {
+            emails.add(candidateEmail);
+        }
         for (InterviewRequest request : requests) {
-            if (request.getAssignedInterviewer() != null && request.getAssignedInterviewer().getEmail() != null) {
-                emails.add(request.getAssignedInterviewer().getEmail());
+            if (request.getAssignedInterviewer() != null
+                    && request.getAssignedInterviewer().getEmail() != null
+                    && !isSameUser(organizer, request.getAssignedInterviewer())) {
+                emails.add(request.getAssignedInterviewer().getEmail().trim());
             }
         }
-        if (panel.getCandidate() != null && panel.getCandidate().getEmail() != null) {
-            emails.add(panel.getCandidate().getEmail());
-        }
         if (panel.getInterviewCoordinator() != null && panel.getInterviewCoordinator().getEmail() != null) {
-            emails.add(panel.getInterviewCoordinator().getEmail());
+            emails.add(panel.getInterviewCoordinator().getEmail().trim());
         }
         if (panel.getCandidate() != null
                 && panel.getCandidate().getCoordinatedHr() != null
-                && panel.getCandidate().getCoordinatedHr().getEmail() != null) {
-            emails.add(panel.getCandidate().getCoordinatedHr().getEmail());
+                && panel.getCandidate().getCoordinatedHr().getEmail() != null
+                && !isSameUser(organizer, panel.getCandidate().getCoordinatedHr())) {
+            emails.add(panel.getCandidate().getCoordinatedHr().getEmail().trim());
         }
         return new ArrayList<>(emails);
+    }
+
+    private User resolveInterviewOrganizer(User fallbackInterviewer, Candidate candidate) {
+        if (candidate != null && candidate.getCoordinatedHr() != null) {
+            User coordinatedHr = candidate.getCoordinatedHr();
+            if (tokenService.isConnected(coordinatedHr)) {
+                logger.info(
+                        "Using candidate HR coordinator {} as Google Calendar organizer for interview",
+                        coordinatedHr.getId());
+                return coordinatedHr;
+            }
+            if (fallbackInterviewer != null) {
+                logger.info(
+                        "Candidate HR coordinator {} is not connected to Google Calendar; interviewer {} remains organizer",
+                        coordinatedHr.getId(),
+                        fallbackInterviewer.getId());
+            }
+        }
+        return fallbackInterviewer;
+    }
+
+    private Candidate resolveCandidateForSync(Candidate candidate) {
+        if (candidate == null || candidate.getId() == null) {
+            return null;
+        }
+        return candidateRepository.findByIdWithCoordinatedHr(candidate.getId()).orElse(candidate);
+    }
+
+    private void syncInterviewerBusyBlock(
+            User interviewer,
+            AvailabilitySlot bookedSlot,
+            AvailabilitySlot originalSlot,
+            String title) throws Exception {
+        if (!tokenService.isConnected(interviewer)) {
+            return;
+        }
+
+        if (originalSlot != null) {
+            if (originalSlot.getGoogleCalendarEventId() != null) {
+                eventService.deleteEvent(interviewer, originalSlot.getGoogleCalendarEventId());
+                originalSlot.setGoogleCalendarEventId(null);
+                availabilitySlotRepository.save(originalSlot);
+            }
+            syncNewAvailabilityFragments(interviewer, originalSlot.getStartDateTime(), originalSlot.getEndDateTime());
+        }
+
+        if (bookedSlot.getGoogleCalendarEventId() != null) {
+            eventService.deleteEvent(interviewer, bookedSlot.getGoogleCalendarEventId());
+        }
+
+        String interviewerTimeZone = resolveTimeZone(interviewer);
+        var busyResult = eventService.createBusyBlockEvent(
+                interviewer,
+                interviewerTimeZone,
+                bookedSlot.getStartDateTime(),
+                bookedSlot.getEndDateTime(),
+                title);
+        bookedSlot.setGoogleCalendarEventId(busyResult.eventId());
+        availabilitySlotRepository.save(bookedSlot);
+    }
+
+    private boolean isSameUser(User left, User right) {
+        return left != null && right != null && Objects.equals(left.getId(), right.getId());
     }
 
     private String resolveTimeZone(User user) {

@@ -63,6 +63,9 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
     );
 
     @Query("SELECT DISTINCT p FROM InterviewPanel p " +
+            "LEFT JOIN FETCH p.candidate c " +
+            "LEFT JOIN FETCH c.coordinatedHr " +
+            "LEFT JOIN FETCH p.interviewCoordinator " +
             "LEFT JOIN FETCH p.panelRequests r " +
             "LEFT JOIN FETCH r.assignedInterviewer ai " +
             "LEFT JOIN FETCH ai.currentDesignation " +

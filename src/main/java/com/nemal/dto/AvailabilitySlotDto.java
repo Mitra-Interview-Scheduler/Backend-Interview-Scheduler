@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.AvailabilitySlot;
+import com.nemal.entity.InterviewRequest;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.SlotStatus;
 
@@ -19,7 +20,8 @@ public record AvailabilitySlotDto(
         String candidateName,   // populated for BOOKED slots via description or schedule chain
         String interviewStatus,  // SCHEDULED | COMPLETED | CANCELLED
         String googleCalendarEventId,
-        boolean googleCalendarSynced
+        boolean googleCalendarSynced,
+        String meetingLink
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
         return from(slot, null);
@@ -28,6 +30,7 @@ public record AvailabilitySlotDto(
     public static AvailabilitySlotDto from(AvailabilitySlot slot, InterviewStatus effectiveInterviewStatus) {
         String candidateName = null;
         String interviewStatus = null;
+        String meetingLink = null;
 
         // 1. Try via interviewSchedule → request chain (set for full bookings)
         if (slot.getStatus() == SlotStatus.BOOKED
@@ -36,6 +39,9 @@ public record AvailabilitySlotDto(
                 interviewStatus = effectiveInterviewStatus.name();
             } else if (slot.getInterviewSchedule().getStatus() != null) {
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
+            }
+            if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
+                meetingLink = resolveMeetingLink(slot);
             }
             if (slot.getInterviewSchedule().getRequest() != null) {
                 candidateName = slot.getInterviewSchedule().getRequest().getCandidateName();
@@ -73,7 +79,27 @@ public record AvailabilitySlotDto(
                 candidateName,
                 interviewStatus,
                 slot.getGoogleCalendarEventId(),
-                slot.getGoogleCalendarEventId() != null
+                slot.getGoogleCalendarEventId() != null,
+                meetingLink
         );
+    }
+
+    private static String resolveMeetingLink(AvailabilitySlot slot) {
+        if (slot.getInterviewSchedule() == null
+                || slot.getInterviewSchedule().getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = slot.getInterviewSchedule().getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewRequest request = slot.getInterviewSchedule().getRequest();
+        if (request != null && request.getPanel() != null) {
+            String panelLink = request.getPanel().getMeetingLink();
+            if (panelLink != null && !panelLink.isBlank()) {
+                return panelLink;
+            }
+        }
+        return null;
     }
 }

@@ -47,7 +47,8 @@ public final class TimeZoneMapper {
                 dto.candidateName(),
                 dto.interviewStatus(),
                 dto.googleCalendarEventId(),
-                dto.googleCalendarSynced()
+                dto.googleCalendarSynced(),
+                dto.meetingLink()
         );
     }
 
@@ -130,6 +131,7 @@ public final class TimeZoneMapper {
         return new CreateInterviewRequestDto(
                 dto.candidateId(),
                 dto.candidateName(),
+                dto.candidateEmail(),
                 dto.candidateDesignationId(),
                 dto.requiredTechnologyIds(),
                 dto.availabilitySlotId(),
@@ -147,6 +149,7 @@ public final class TimeZoneMapper {
         return new CreatePanelInterviewDto(
                 dto.candidateId(),
                 dto.candidateName(),
+                dto.candidateEmail(),
                 dto.candidateDesignationId(),
                 toUtc(dto.startDateTime(), sourceZone),
                 toUtc(dto.endDateTime(), sourceZone),

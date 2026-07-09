@@ -38,6 +38,9 @@ public class InterviewPanel {
     @Column(nullable = false)
     private String candidateName;
 
+    @Column(name = "candidate_invite_email")
+    private String candidateInviteEmail;
+
     @Column(nullable = false)
     private LocalDateTime startDateTime;
 

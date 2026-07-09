@@ -70,10 +70,10 @@ public class InterviewRequestService {
         if (dto.candidateId() != null) {
             candidate = candidateRepository.findById(dto.candidateId())
                     .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
-            validateCandidateEmailForCalendar(candidate);
         }
         String candidateName = dto.candidateName() != null ? dto.candidateName()
                 : (candidate != null ? candidate.getName() : "Unknown");
+        String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
 
         Designation candidateDesignation = null;
         if (dto.candidateDesignationId() != null) {
@@ -94,6 +94,7 @@ public class InterviewRequestService {
 
         InterviewRequest request = InterviewRequest.builder()
                 .candidateName(candidateName)
+                .candidateInviteEmail(candidateInviteEmail)
                 .candidate(candidate)
                 .candidateDesignation(candidateDesignation)
                 .preferredStartDateTime(bookingStart)
@@ -367,6 +368,7 @@ public class InterviewRequestService {
         if (schedule != null) {
             logger.info("Cancelling InterviewSchedule {}", schedule.getId());
             schedule.setStatus(InterviewStatus.CANCELLED);
+            schedule.setMeetingLink(null);
             interviewScheduleRepository.save(schedule);
         }
 
@@ -643,14 +645,13 @@ public class InterviewRequestService {
         return user;
     }
 
-    private void validateCandidateEmailForCalendar(Candidate candidate) {
-        if (candidate == null) {
-            return;
+    private String resolveCandidateInviteEmail(String dtoEmail, Candidate candidate) {
+        if (dtoEmail != null && !dtoEmail.isBlank()) {
+            return dtoEmail.trim();
         }
-        String email = candidate.getEmail();
-        if (email == null || email.isBlank()) {
-            throw new RuntimeException(
-                    "Candidate email is required to schedule interviews with Google Calendar invites");
+        if (candidate != null && candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
+            return candidate.getEmail().trim();
         }
+        return null;
     }
 }

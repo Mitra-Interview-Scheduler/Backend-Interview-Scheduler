@@ -8,6 +8,7 @@ import java.util.List;
 public record CreatePanelInterviewDto(
         Long candidateId,
         String candidateName,
+        String candidateEmail,
         Long candidateDesignationId,
 
         @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
