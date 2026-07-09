@@ -29,7 +29,7 @@ public class NotificationService {
     public NotificationService(
             NotificationRepository notificationRepository,
             SimpMessagingTemplate messagingTemplate,
-            @Value("${notification.retention.days:30}") int retentionDays
+            @Value("${notification.retention.days:15}") int retentionDays
     ) {
         this.notificationRepository = notificationRepository;
         this.messagingTemplate = messagingTemplate;
