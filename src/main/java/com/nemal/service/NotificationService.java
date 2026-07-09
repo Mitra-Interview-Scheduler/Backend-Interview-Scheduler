@@ -403,7 +403,7 @@ public class NotificationService {
         Notification saved = notificationRepository.save(notification);
         NotificationDto dto = NotificationDto.from(saved);
         messagingTemplate.convertAndSendToUser(
-                saved.getRecipient().getUsername(),
+                saved.getRecipient().getEmail(),
                 "/queue/notifications",
                 dto
         );
