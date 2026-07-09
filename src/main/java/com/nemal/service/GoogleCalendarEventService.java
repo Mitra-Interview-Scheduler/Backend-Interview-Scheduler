@@ -14,7 +14,9 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -30,6 +32,8 @@ public class GoogleCalendarEventService {
     }
 
     public record CalendarEventResult(String eventId, String meetingLink) {}
+
+    public record ListedCalendarEvent(Event event, String calendarName) {}
 
     public CalendarEventResult createAvailabilityEvent(
             User interviewer,
@@ -76,26 +80,103 @@ public class GoogleCalendarEventService {
         deleteRequest.execute();
     }
 
-    public List<Event> listEventsInRange(
+    public List<ListedCalendarEvent> listEventsInRange(
             User interviewer,
             LocalDateTime startUtc,
             LocalDateTime endUtc) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        ZoneId utc = ZoneOffset.UTC;
-        com.google.api.client.util.DateTime timeMin = new com.google.api.client.util.DateTime(
-                startUtc.atZone(utc).toInstant().toEpochMilli());
-        com.google.api.client.util.DateTime timeMax = new com.google.api.client.util.DateTime(
-                endUtc.atZone(utc).toInstant().toEpochMilli());
+        com.google.api.client.util.DateTime timeMin = toGoogleDateTime(startUtc);
+        com.google.api.client.util.DateTime timeMax = toGoogleDateTime(endUtc);
 
-        Events result = calendar.events().list("primary")
+        try {
+            return listEventsFromVisibleCalendars(calendar, timeMin, timeMax);
+        } catch (Exception e) {
+            logger.warn("Failed to list all Google calendars for user {}, falling back to primary: {}",
+                    interviewer.getId(), e.getMessage());
+            return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+        }
+    }
+
+    private List<ListedCalendarEvent> listEventsFromVisibleCalendars(
+            Calendar calendar,
+            com.google.api.client.util.DateTime timeMin,
+            com.google.api.client.util.DateTime timeMax) throws Exception {
+        CalendarList calendarList = calendar.calendarList()
+                .list()
+                .setMinAccessRole("reader")
+                .setShowHidden(false)
+                .execute();
+
+        if (calendarList.getItems() == null || calendarList.getItems().isEmpty()) {
+            return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+        }
+
+        Map<String, ListedCalendarEvent> deduped = new LinkedHashMap<>();
+        for (CalendarListEntry entry : calendarList.getItems()) {
+            if (entry == null || entry.getId() == null || entry.getId().isBlank()) {
+                continue;
+            }
+            if (Boolean.FALSE.equals(entry.getSelected())) {
+                continue;
+            }
+
+            String calendarName = entry.getSummaryOverride() != null && !entry.getSummaryOverride().isBlank()
+                    ? entry.getSummaryOverride()
+                    : entry.getSummary();
+            if (calendarName == null || calendarName.isBlank()) {
+                calendarName = entry.getId();
+            }
+
+            try {
+                for (ListedCalendarEvent listedEvent : listEventsFromCalendar(
+                        calendar, entry.getId(), calendarName, timeMin, timeMax)) {
+                    String dedupeKey = dedupeKey(listedEvent.event(), entry.getId());
+                    deduped.putIfAbsent(dedupeKey, listedEvent);
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to list Google Calendar events for calendar {}: {}",
+                        entry.getId(), e.getMessage());
+            }
+        }
+
+        return new ArrayList<>(deduped.values());
+    }
+
+    private List<ListedCalendarEvent> listEventsFromCalendar(
+            Calendar calendar,
+            String calendarId,
+            String calendarName,
+            com.google.api.client.util.DateTime timeMin,
+            com.google.api.client.util.DateTime timeMax) throws Exception {
+        Events result = calendar.events().list(calendarId)
                 .setTimeMin(timeMin)
                 .setTimeMax(timeMax)
                 .setSingleEvents(true)
                 .setOrderBy("startTime")
-                .setMaxResults(2500)
+                .setMaxResults(250)
                 .execute();
 
-        return result.getItems() != null ? result.getItems() : List.of();
+        List<ListedCalendarEvent> events = new ArrayList<>();
+        if (result.getItems() == null) {
+            return events;
+        }
+        for (Event event : result.getItems()) {
+            events.add(new ListedCalendarEvent(event, calendarName));
+        }
+        return events;
+    }
+
+    private com.google.api.client.util.DateTime toGoogleDateTime(LocalDateTime utcDateTime) {
+        ZoneId utc = ZoneOffset.UTC;
+        return new com.google.api.client.util.DateTime(
+                utcDateTime.atZone(utc).toInstant().toEpochMilli());
+    }
+
+    private String dedupeKey(Event event, String calendarId) {
+        if (event.getICalUID() != null && !event.getICalUID().isBlank()) {
+            return event.getICalUID();
+        }
+        return calendarId + ":" + event.getId();
     }
 
     public LocalDateTime parseEventStart(Event event, ZoneId fallbackZone) {

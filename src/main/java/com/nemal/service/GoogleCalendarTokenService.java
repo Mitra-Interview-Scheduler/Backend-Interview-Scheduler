@@ -22,14 +22,14 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class GoogleCalendarTokenService {
 
-    public static final List<String> CALENDAR_SCOPES = Collections.singletonList(CalendarScopes.CALENDAR_EVENTS);
+    /** Full calendar access: list subscribed calendars and read/write events on all of them. */
+    public static final List<String> CALENDAR_SCOPES = List.of(CalendarScopes.CALENDAR);
 
     private final UserGoogleCalendarCredentialsRepository credentialsRepository;
     private final TokenEncryptionService tokenEncryptionService;

@@ -78,7 +78,8 @@ public class AvailabilityController {
                             TimeZoneMapper.fromUtc(event.startDateTime(), zone),
                             TimeZoneMapper.fromUtc(event.endDateTime(), zone),
                             event.allDay(),
-                            true))
+                            true,
+                            event.calendarName()))
                     .toList();
         }
 

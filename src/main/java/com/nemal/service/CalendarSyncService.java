@@ -135,10 +135,12 @@ public class CalendarSyncService {
 
         try {
             ZoneId zone = ZoneId.of(resolveTimeZone(interviewer));
-            List<Event> events = eventService.listEventsInRange(interviewer, utcStart, utcEnd);
+            List<GoogleCalendarEventService.ListedCalendarEvent> listedEvents =
+                    eventService.listEventsInRange(interviewer, utcStart, utcEnd);
             List<GoogleCalendarExternalEventDto> externalEvents = new ArrayList<>();
 
-            for (Event event : events) {
+            for (GoogleCalendarEventService.ListedCalendarEvent listedEvent : listedEvents) {
+                Event event = listedEvent.event();
                 if (event.getId() == null || managedEventIds.contains(event.getId())) {
                     continue;
                 }
@@ -166,7 +168,9 @@ public class CalendarSyncService {
                         title,
                         TimeZoneMapper.toUtc(start, zone),
                         TimeZoneMapper.toUtc(end, zone),
-                        allDay));
+                        allDay,
+                        true,
+                        listedEvent.calendarName()));
             }
 
             return externalEvents;

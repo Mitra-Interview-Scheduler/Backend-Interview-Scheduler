@@ -119,18 +119,14 @@ public class GoogleCalendarIntegrationController {
                         TimeZoneMapper.fromUtc(event.startDateTime(), zone),
                         TimeZoneMapper.fromUtc(event.endDateTime(), zone),
                         event.allDay(),
-                        true))
+                        true,
+                        event.calendarName()))
                 .toList();
         return ResponseEntity.ok(events);
     }
 
     @DeleteMapping
     public ResponseEntity<Void> disconnect(@AuthenticationPrincipal User user) {
-        if (calendarRequired && user.hasInterviewerRole()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Google Calendar is required for interviewer accounts and cannot be disconnected.");
-        }
         tokenService.revokeToken(user);
         tokenService.deleteCredentials(user);
         return ResponseEntity.noContent().build();

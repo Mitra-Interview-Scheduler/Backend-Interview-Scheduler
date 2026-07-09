@@ -8,7 +8,8 @@ public record GoogleCalendarExternalEventDto(
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         boolean allDay,
-        boolean readOnly
+        boolean readOnly,
+        String calendarName
 ) {
     public GoogleCalendarExternalEventDto(
             String googleEventId,
@@ -16,6 +17,16 @@ public record GoogleCalendarExternalEventDto(
             LocalDateTime startDateTime,
             LocalDateTime endDateTime,
             boolean allDay) {
-        this(googleEventId, title, startDateTime, endDateTime, allDay, true);
+        this(googleEventId, title, startDateTime, endDateTime, allDay, true, null);
+    }
+
+    public GoogleCalendarExternalEventDto(
+            String googleEventId,
+            String title,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime,
+            boolean allDay,
+            boolean readOnly) {
+        this(googleEventId, title, startDateTime, endDateTime, allDay, readOnly, null);
     }
 }
