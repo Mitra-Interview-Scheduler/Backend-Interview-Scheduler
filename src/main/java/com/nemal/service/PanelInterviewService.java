@@ -39,6 +39,7 @@ public class PanelInterviewService {
     private final MasterStepService masterStepService;
     private final UserRepository userRepository;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
+    private final CalendarSyncService calendarSyncService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -53,7 +54,8 @@ public class PanelInterviewService {
             CandidateStepPipelineService candidateStepPipelineService,
             MasterStepService masterStepService,
             UserRepository userRepository,
-            CandidatePipelineAuditService candidatePipelineAuditService) {
+            CandidatePipelineAuditService candidatePipelineAuditService,
+            CalendarSyncService calendarSyncService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -67,6 +69,7 @@ public class PanelInterviewService {
         this.masterStepService = masterStepService;
         this.userRepository = userRepository;
         this.candidatePipelineAuditService = candidatePipelineAuditService;
+        this.calendarSyncService = calendarSyncService;
     }
 
     @Transactional
@@ -82,6 +85,7 @@ public class PanelInterviewService {
         if (dto.candidateId() != null) {
             candidate = candidateRepository.findById(dto.candidateId())
                     .orElseThrow(() -> new RuntimeException("Candidate not found"));
+            validateCandidateEmailForCalendar(candidate);
         }
         String candidateName = candidate != null ? candidate.getName() : dto.candidateName();
         if (candidateName == null || candidateName.trim().isEmpty()) {
@@ -137,6 +141,9 @@ public class PanelInterviewService {
         Set<Technology> finalTechnologies = technologies;
         InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
 
+        List<InterviewRequest> createdRequests = new java.util.ArrayList<>();
+        List<AvailabilitySlot> bookedSlots = new java.util.ArrayList<>();
+
         for (AvailabilitySlot slot : slots) {
             AvailabilitySlot bookedSlot = splitSlot(slot, dto.startDateTime(), dto.endDateTime(), finalCandidateName);
 
@@ -160,6 +167,7 @@ public class PanelInterviewService {
                     .build();
 
             request = requestRepository.save(request);
+            createdRequests.add(request);
 
             InterviewSchedule schedule = InterviewSchedule.builder()
                     .request(request)
@@ -173,6 +181,7 @@ public class PanelInterviewService {
 
             bookedSlot.setInterviewSchedule(schedule);
             slotRepository.save(bookedSlot);
+            bookedSlots.add(bookedSlot);
 
             try {
                 notificationService.sendInterviewScheduledNotification(request);
@@ -180,6 +189,8 @@ public class PanelInterviewService {
                 logger.warn("Failed to send scheduled notification to {}: {}", slot.getInterviewer().getFullName(), e.getMessage());
             }
         }
+
+        calendarSyncService.afterPanelInterviewBooked(panel, createdRequests, bookedSlots);
 
         if (candidate != null) {
             MasterStatus targetStatus = interviewType.toCandidateStatus();
@@ -226,6 +237,9 @@ public class PanelInterviewService {
             throw new RuntimeException("Unauthorized — you did not create this panel");
         }
 
+        List<InterviewRequest> cancelledRequests = new java.util.ArrayList<>();
+        List<AvailabilitySlot> restoredSlots = new java.util.ArrayList<>();
+
         for (InterviewRequest request : panel.getPanelRequests()) {
             if (request.getStatus() == RequestStatus.CANCELLED) continue;
 
@@ -241,6 +255,7 @@ public class PanelInterviewService {
                 slotRepository.save(slot);
 
                 mergeAdjacentSlots(slot);
+                restoredSlots.add(slot);
             }
 
             scheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
@@ -251,6 +266,7 @@ public class PanelInterviewService {
             request.setStatus(RequestStatus.CANCELLED);
             request.setAvailabilitySlot(null);
             requestRepository.save(request);
+            cancelledRequests.add(request);
 
             try {
                 notificationService.sendInterviewCancelledNotification(request);
@@ -258,6 +274,8 @@ public class PanelInterviewService {
                 logger.warn("Failed to send cancellation notification: {}", e.getMessage());
             }
         }
+
+        calendarSyncService.cancelPanelInterview(panel, cancelledRequests, restoredSlots);
 
         try {
             String candidateName = panel.getCandidate() != null
@@ -469,5 +487,16 @@ public class PanelInterviewService {
         }
 
         return user;
+    }
+
+    private void validateCandidateEmailForCalendar(Candidate candidate) {
+        if (candidate == null) {
+            return;
+        }
+        String email = candidate.getEmail();
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException(
+                    "Candidate email is required to schedule panel interviews with Google Calendar invites");
+        }
     }
 }

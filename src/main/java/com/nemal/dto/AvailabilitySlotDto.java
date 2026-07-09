@@ -17,7 +17,9 @@ public record AvailabilitySlotDto(
         Long interviewScheduleId,
         Double durationHours,   // new field for duration in hours
         String candidateName,   // populated for BOOKED slots via description or schedule chain
-        String interviewStatus  // SCHEDULED | COMPLETED | CANCELLED
+        String interviewStatus,  // SCHEDULED | COMPLETED | CANCELLED
+        String googleCalendarEventId,
+        boolean googleCalendarSynced
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
         return from(slot, null);
@@ -69,7 +71,9 @@ public record AvailabilitySlotDto(
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
                 duration,
                 candidateName,
-                interviewStatus
+                interviewStatus,
+                slot.getGoogleCalendarEventId(),
+                slot.getGoogleCalendarEventId() != null
         );
     }
 }

@@ -59,6 +59,12 @@ public class InterviewPanel {
     @Builder.Default
     private boolean isUrgent = false;
 
+    @Column(name = "google_calendar_event_id")
+    private String googleCalendarEventId;
+
+    @Column(name = "meeting_link", length = 500)
+    private String meetingLink;
+
     @OneToMany(mappedBy = "panel", fetch = FetchType.LAZY)
     @Builder.Default
     private Set<InterviewRequest> panelRequests = new HashSet<>();

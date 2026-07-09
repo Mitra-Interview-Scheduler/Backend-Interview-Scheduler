@@ -40,7 +40,8 @@ public record InterviewerAvailabilityDto(
         Long interviewScheduleId,
         String interviewStatus,        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
         String interviewCoordinatorName,
-        String coordinatedHrName
+        String coordinatedHrName,
+        String meetingLink
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
@@ -52,6 +53,7 @@ public record InterviewerAvailabilityDto(
         String interviewStatus = null;
         String interviewCoordinatorName = null;
         String coordinatedHrName = null;
+        String meetingLink = null;
 
         if (slot.getInterviewSchedule() != null) {
             interviewScheduleId = slot.getInterviewSchedule().getId();
@@ -61,6 +63,7 @@ public record InterviewerAvailabilityDto(
             if (slot.getInterviewSchedule().getInterviewType() != null) {
                 interviewType = slot.getInterviewSchedule().getInterviewType().name();
             }
+            meetingLink = slot.getInterviewSchedule().getMeetingLink();
             InterviewRequest req = slot.getInterviewSchedule().getRequest();
             if (req != null) {
                 candidateName = req.getCandidateName();
@@ -138,7 +141,8 @@ public record InterviewerAvailabilityDto(
                 interviewScheduleId,
                 interviewStatus,
                 interviewCoordinatorName,
-                coordinatedHrName
+                coordinatedHrName,
+                meetingLink
         );
     }
 }

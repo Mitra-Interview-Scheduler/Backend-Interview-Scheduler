@@ -44,6 +44,7 @@ public class InterviewRequestService {
     private final MasterStepService masterStepService;
     private final UserRepository userRepository;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
+    private final CalendarSyncService calendarSyncService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -69,6 +70,7 @@ public class InterviewRequestService {
         if (dto.candidateId() != null) {
             candidate = candidateRepository.findById(dto.candidateId())
                     .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
+            validateCandidateEmailForCalendar(candidate);
         }
         String candidateName = dto.candidateName() != null ? dto.candidateName()
                 : (candidate != null ? candidate.getName() : "Unknown");
@@ -83,6 +85,7 @@ public class InterviewRequestService {
                 ? technologyRepository.findAllById(dto.requiredTechnologyIds())
                 : List.of();
 
+        AvailabilitySlot originalSlot = slot;
         AvailabilitySlot bookedSlot = splitAndBookSlot(slot, bookingStart, bookingEnd, candidateName);
 
         User interviewCoordinator = resolveInterviewCoordinator(
@@ -124,6 +127,8 @@ public class InterviewRequestService {
         bookedSlot.setInterviewSchedule(schedule);
         availabilitySlotRepository.save(bookedSlot);
         saved.setInterviewSchedule(schedule);
+
+        calendarSyncService.afterSingleInterviewBooked(originalSlot, bookedSlot, saved, schedule);
 
         if (candidate != null) {
             applyCandidateStatusForScheduledInterview(candidate, interviewType, requestedBy);
@@ -356,12 +361,18 @@ public class InterviewRequestService {
             logger.warn("Request {} had no linked slot — nothing to restore", requestId);
         }
 
+        InterviewSchedule schedule = interviewScheduleRepository.findByRequestId(requestId).orElse(null);
+
         // ── Step 2: Cancel the InterviewSchedule ─────────────────────────────
-        interviewScheduleRepository.findByRequestId(requestId).ifPresent(schedule -> {
+        if (schedule != null) {
             logger.info("Cancelling InterviewSchedule {}", schedule.getId());
             schedule.setStatus(InterviewStatus.CANCELLED);
             interviewScheduleRepository.save(schedule);
-        });
+        }
+
+        if (slot != null) {
+            calendarSyncService.cancelSingleInterview(request, schedule, slot);
+        }
 
         // ── Step 3: Mark request CANCELLED ───────────────────────────────────
         request.setStatus(RequestStatus.CANCELLED);
@@ -630,5 +641,16 @@ public class InterviewRequestService {
         }
 
         return user;
+    }
+
+    private void validateCandidateEmailForCalendar(Candidate candidate) {
+        if (candidate == null) {
+            return;
+        }
+        String email = candidate.getEmail();
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException(
+                    "Candidate email is required to schedule interviews with Google Calendar invites");
+        }
     }
 }

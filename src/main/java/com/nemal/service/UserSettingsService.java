@@ -6,6 +6,8 @@ import com.nemal.entity.User;
 import com.nemal.entity.UserSettings;
 import com.nemal.repository.UserRepository;
 import com.nemal.repository.UserSettingsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +16,8 @@ import java.time.format.DateTimeFormatter;
 
 @Service
 public class UserSettingsService {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserSettingsService.class);
 
     private final UserRepository userRepository;
     private final UserSettingsRepository userSettingsRepository;
@@ -44,6 +48,16 @@ public class UserSettingsService {
         }
 
         return UserSettingsDto.from(userSettingsRepository.save(settings));
+    }
+
+    /**
+     * Resolves the timezone used for Google Calendar event times.
+     * Uses the user's saved preference; falls back to UTC when missing or invalid.
+     */
+    @Transactional(readOnly = true)
+    public String resolveTimezoneForCalendarSync(User user) {
+        UserSettings settings = getOrCreateSettings(user);
+        return sanitizeTimezoneForCalendar(user.getId(), settings.getTimezone());
     }
 
     @Transactional
@@ -120,6 +134,30 @@ public class UserSettingsService {
             return normalized;
         } catch (IllegalArgumentException ex) {
             throw new RuntimeException("Invalid preferred time format: " + format);
+        }
+    }
+
+    private String sanitizeTimezoneForCalendar(Long userId, String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            logger.warn(
+                    "User {} has no timezone configured for Google Calendar sync; using {}",
+                    userId,
+                    UserSettings.DEFAULT_TIMEZONE);
+            return UserSettings.DEFAULT_TIMEZONE;
+        }
+
+        String normalized = timezone.trim();
+        try {
+            ZoneId.of(normalized);
+            return normalized;
+        } catch (Exception ex) {
+            logger.warn(
+                    "User {} has invalid timezone '{}' for Google Calendar sync; using {} ({})",
+                    userId,
+                    timezone,
+                    UserSettings.DEFAULT_TIMEZONE,
+                    ex.getMessage());
+            return UserSettings.DEFAULT_TIMEZONE;
         }
     }
 }

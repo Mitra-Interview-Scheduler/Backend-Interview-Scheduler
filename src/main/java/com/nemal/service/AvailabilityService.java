@@ -41,12 +41,15 @@ public class AvailabilityService {
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewRequestService interviewRequestService;
+    private final CalendarSyncService calendarSyncService;
 
     public AvailabilityService(
             AvailabilitySlotRepository availabilitySlotRepository,
-            InterviewRequestService interviewRequestService) {
+            InterviewRequestService interviewRequestService,
+            CalendarSyncService calendarSyncService) {
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.interviewRequestService = interviewRequestService;
+        this.calendarSyncService = calendarSyncService;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -126,6 +129,7 @@ public class AvailabilityService {
 
     @Transactional
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
+        calendarSyncService.ensureInterviewerConnected(interviewer);
         validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
@@ -146,6 +150,7 @@ public class AvailabilityService {
                 .build();
 
         slot = availabilitySlotRepository.save(slot);
+        calendarSyncService.syncAvailabilitySlotCreated(slot);
         return AvailabilitySlotDto.from(slot);
     }
 
@@ -188,6 +193,7 @@ public class AvailabilityService {
         if (!isRecurringEdit) {
             applyUpdateToSlot(slot, dto.startDateTime(), dto.endDateTime(), dto.description());
             slot = availabilitySlotRepository.save(slot);
+            calendarSyncService.syncAvailabilitySlotUpdated(slot);
             return AvailabilitySlotDto.from(slot);
         }
 
@@ -216,6 +222,7 @@ public class AvailabilityService {
         }
 
         availabilitySlotRepository.saveAll(editableSlots);
+        editableSlots.forEach(calendarSyncService::syncAvailabilitySlotUpdated);
         return AvailabilitySlotDto.from(updatedAnchor != null ? updatedAnchor : slot);
     }
 
@@ -255,8 +262,7 @@ public class AvailabilityService {
         String recurrenceGroupId = slot.getRecurrenceGroupId();
 
         if (deleteScope == DeleteScope.SINGLE || recurrenceGroupId == null || recurrenceGroupId.isBlank()) {
-            slot.setActive(false);
-            availabilitySlotRepository.save(slot);
+            hardDeleteSlot(slot);
             return;
         }
 
@@ -279,8 +285,12 @@ public class AvailabilityService {
             throw new RuntimeException("No deletable recurring slots found for selected scope");
         }
 
-        deletableSlots.forEach(s -> s.setActive(false));
-        availabilitySlotRepository.saveAll(deletableSlots);
+        deletableSlots.forEach(this::hardDeleteSlot);
+    }
+
+    private void hardDeleteSlot(AvailabilitySlot slot) {
+        calendarSyncService.syncAvailabilitySlotDeleted(slot);
+        availabilitySlotRepository.delete(slot);
     }
 
     private String resolveRecurrenceGroupId(String recurrenceGroupId) {

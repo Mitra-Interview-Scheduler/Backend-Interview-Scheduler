@@ -45,7 +45,9 @@ public final class TimeZoneMapper {
                 dto.interviewScheduleId(),
                 dto.durationHours(),
                 dto.candidateName(),
-                dto.interviewStatus()
+                dto.interviewStatus(),
+                dto.googleCalendarEventId(),
+                dto.googleCalendarSynced()
         );
     }
 
@@ -74,7 +76,8 @@ public final class TimeZoneMapper {
                 dto.interviewScheduleId(),
                 dto.interviewStatus(),
                 dto.interviewCoordinatorName(),
-                dto.coordinatedHrName()
+                dto.coordinatedHrName(),
+                dto.meetingLink()
         );
     }
 
@@ -113,7 +116,9 @@ public final class TimeZoneMapper {
                 dto.interviewType(),
                 fromUtc(dto.scheduledStartDateTime(), targetZone),
                 fromUtc(dto.scheduledEndDateTime(), targetZone),
-                fromUtc(dto.interviewCompletedAt(), targetZone)
+                fromUtc(dto.interviewCompletedAt(), targetZone),
+                dto.meetingLink(),
+                dto.googleCalendarEventId()
         );
     }
 

@@ -39,7 +39,9 @@ public record InterviewRequestDto(
         String interviewType,
         LocalDateTime scheduledStartDateTime,
         LocalDateTime scheduledEndDateTime,
-        LocalDateTime interviewCompletedAt
+        LocalDateTime interviewCompletedAt,
+        String meetingLink,
+        String googleCalendarEventId
 ) {
     public static InterviewRequestDto from(InterviewRequest request) {
         InterviewSchedule schedule = request.getInterviewSchedule();
@@ -88,7 +90,9 @@ public record InterviewRequestDto(
                 schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null,
                 schedule != null ? schedule.getStartDateTime() : null,
                 schedule != null ? schedule.getEndDateTime() : null,
-                schedule != null ? schedule.getCompletedAt() : null
+                schedule != null ? schedule.getCompletedAt() : null,
+                schedule != null ? schedule.getMeetingLink() : null,
+                schedule != null ? schedule.getGoogleCalendarEventId() : null
         );
     }
 }
