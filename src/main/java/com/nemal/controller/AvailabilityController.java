@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/availability")
@@ -57,33 +58,44 @@ public class AvailabilityController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
+            @RequestParam(required = false, defaultValue = "true") boolean includeGoogleEvents,
             @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
         ZoneId zone = TimeZoneMapper.resolveZone(timezone);
         LocalDateTime utcStart = TimeZoneMapper.toUtc(start, zone);
         LocalDateTime utcEnd = TimeZoneMapper.toUtc(end, zone);
-        List<AvailabilitySlotDto> items = TimeZoneMapper.fromUtcAvailability(
-                availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
-                zone
+
+        CompletableFuture<List<AvailabilitySlotDto>> itemsFuture = CompletableFuture.supplyAsync(() ->
+                TimeZoneMapper.fromUtcAvailability(
+                        availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
+                        zone
+                )
         );
 
-        List<GoogleCalendarExternalEventDto> googleExternalEvents = List.of();
-        if (user.hasInterviewerRole() && tokenService.isConnected(user)) {
-            googleExternalEvents = calendarSyncService
-                    .listExternalGoogleCalendarEvents(user, utcStart, utcEnd)
-                    .stream()
-                    .map(event -> new GoogleCalendarExternalEventDto(
-                            event.googleEventId(),
-                            event.title(),
-                            TimeZoneMapper.fromUtc(event.startDateTime(), zone),
-                            TimeZoneMapper.fromUtc(event.endDateTime(), zone),
-                            event.allDay(),
-                            true,
-                            event.calendarName()))
-                    .toList();
+        boolean fetchGoogle = includeGoogleEvents
+                && user.hasInterviewerRole()
+                && tokenService.isConnected(user);
+
+        if (fetchGoogle) {
+            CompletableFuture<List<GoogleCalendarExternalEventDto>> googleFuture = CompletableFuture.supplyAsync(() ->
+                    calendarSyncService
+                            .listExternalGoogleCalendarEvents(user, utcStart, utcEnd)
+                            .stream()
+                            .map(event -> new GoogleCalendarExternalEventDto(
+                                    event.googleEventId(),
+                                    event.title(),
+                                    TimeZoneMapper.fromUtc(event.startDateTime(), zone),
+                                    TimeZoneMapper.fromUtc(event.endDateTime(), zone),
+                                    event.allDay(),
+                                    true,
+                                    event.calendarName()))
+                            .toList()
+            );
+            CompletableFuture.allOf(itemsFuture, googleFuture).join();
+            return ResponseEntity.ok(new AvailabilityRangeResponseDto(itemsFuture.join(), googleFuture.join()));
         }
 
-        return ResponseEntity.ok(new AvailabilityRangeResponseDto(items, googleExternalEvents));
+        return ResponseEntity.ok(new AvailabilityRangeResponseDto(itemsFuture.join(), List.of()));
     }
 
     @PostMapping

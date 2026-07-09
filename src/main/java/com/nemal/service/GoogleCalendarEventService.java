@@ -14,16 +14,20 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class GoogleCalendarEventService {
 
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarEventService.class);
     private static final DateTimeFormatter RFC3339 = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final int MAX_SELECTED_CALENDARS = 12;
 
     private final GoogleCalendarTokenService tokenService;
 
@@ -89,7 +93,7 @@ public class GoogleCalendarEventService {
         com.google.api.client.util.DateTime timeMax = toGoogleDateTime(endUtc);
 
         try {
-            return listEventsFromVisibleCalendars(calendar, timeMin, timeMax);
+            return listEventsFromVisibleCalendars(interviewer, calendar, timeMin, timeMax);
         } catch (Exception e) {
             logger.warn("Failed to list all Google calendars for user {}, falling back to primary: {}",
                     interviewer.getId(), e.getMessage());
@@ -98,6 +102,7 @@ public class GoogleCalendarEventService {
     }
 
     private List<ListedCalendarEvent> listEventsFromVisibleCalendars(
+            User interviewer,
             Calendar calendar,
             com.google.api.client.util.DateTime timeMin,
             com.google.api.client.util.DateTime timeMax) throws Exception {
@@ -111,32 +116,43 @@ public class GoogleCalendarEventService {
             return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
         }
 
-        Map<String, ListedCalendarEvent> deduped = new LinkedHashMap<>();
-        for (CalendarListEntry entry : calendarList.getItems()) {
-            if (entry == null || entry.getId() == null || entry.getId().isBlank()) {
-                continue;
-            }
-            if (Boolean.FALSE.equals(entry.getSelected())) {
-                continue;
-            }
+        List<CalendarListEntry> selectedCalendars = calendarList.getItems().stream()
+                .filter(entry -> entry != null && entry.getId() != null && !entry.getId().isBlank())
+                .filter(entry -> !Boolean.FALSE.equals(entry.getSelected()))
+                .limit(MAX_SELECTED_CALENDARS)
+                .toList();
 
-            String calendarName = entry.getSummaryOverride() != null && !entry.getSummaryOverride().isBlank()
-                    ? entry.getSummaryOverride()
-                    : entry.getSummary();
-            if (calendarName == null || calendarName.isBlank()) {
-                calendarName = entry.getId();
-            }
+        if (selectedCalendars.isEmpty()) {
+            return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+        }
 
-            try {
-                for (ListedCalendarEvent listedEvent : listEventsFromCalendar(
-                        calendar, entry.getId(), calendarName, timeMin, timeMax)) {
-                    String dedupeKey = dedupeKey(listedEvent.event(), entry.getId());
-                    deduped.putIfAbsent(dedupeKey, listedEvent);
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to list Google Calendar events for calendar {}: {}",
-                        entry.getId(), e.getMessage());
-            }
+        Map<String, ListedCalendarEvent> deduped = new ConcurrentHashMap<>();
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<CompletableFuture<Void>> futures = selectedCalendars.stream()
+                    .map(entry -> CompletableFuture.runAsync(() -> {
+                        String calendarName = entry.getSummaryOverride() != null && !entry.getSummaryOverride().isBlank()
+                                ? entry.getSummaryOverride()
+                                : entry.getSummary();
+                        if (calendarName == null || calendarName.isBlank()) {
+                            calendarName = entry.getId();
+                        }
+
+                        try {
+                            Calendar perCalendarClient = tokenService.buildCalendarClient(interviewer);
+                            for (ListedCalendarEvent listedEvent : listEventsFromCalendar(
+                                    perCalendarClient, entry.getId(), calendarName, timeMin, timeMax)) {
+                                String dedupeKey = dedupeKey(listedEvent.event(), entry.getId());
+                                deduped.putIfAbsent(dedupeKey, listedEvent);
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Failed to list Google Calendar events for calendar {}: {}",
+                                    entry.getId(), e.getMessage());
+                        }
+                    }, executor))
+                    .toList();
+
+            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
         }
 
         return new ArrayList<>(deduped.values());
