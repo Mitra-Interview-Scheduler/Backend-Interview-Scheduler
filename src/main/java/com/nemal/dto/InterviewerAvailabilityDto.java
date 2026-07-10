@@ -30,6 +30,7 @@ public record InterviewerAvailabilityDto(
         Integer yearsOfExperience,
         List<String> technologies,
         List<String> coreTechnologies,
+        List<String> domains,
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         String status,
@@ -112,6 +113,16 @@ public record InterviewerAvailabilityDto(
                     .collect(Collectors.toList());
         }
 
+        // ── Domains ──────────────────────────────────────────────────────────
+        List<String> domains = List.of();
+        if (slot.getInterviewer() != null
+                && slot.getInterviewer().getUserDomains() != null) {
+            domains = slot.getInterviewer().getUserDomains().stream()
+                    .filter(ud -> ud != null && ud.getDomain() != null)
+                    .map(ud -> ud.getDomain().getName())
+                    .collect(Collectors.toList());
+        }
+
         // ── Tier / level for privilege check ─────────────────────────────────
         Integer tierOrder  = null;
         Integer levelOrder = null;
@@ -138,6 +149,7 @@ public record InterviewerAvailabilityDto(
                 slot.getInterviewer() != null ? slot.getInterviewer().getYearsOfExperience() : null,
                 techs,
                 coreTechs,
+                domains,
                 slot.getStartDateTime(),
                 slot.getEndDateTime(),
                 slot.getStatus() != null ? slot.getStatus().name() : "AVAILABLE",

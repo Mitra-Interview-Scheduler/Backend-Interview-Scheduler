@@ -66,6 +66,7 @@ public final class TimeZoneMapper {
                 dto.yearsOfExperience(),
                 dto.technologies(),
                 dto.coreTechnologies(),
+                dto.domains(),
                 fromUtc(dto.startDateTime(), targetZone),
                 fromUtc(dto.endDateTime(), targetZone),
                 dto.status(),

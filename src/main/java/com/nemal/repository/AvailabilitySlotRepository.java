@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -217,6 +218,42 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
     List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
             Long interviewerId,
             String recurrenceGroupId);
+
+    @Query("""
+            SELECT DISTINCT s.interviewer.id FROM AvailabilitySlot s
+            WHERE s.isActive = true
+            AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+            AND s.startDateTime >= :from
+            AND s.startDateTime < :to
+            AND s.interviewer.id IN :interviewerIds
+            """)
+    List<Long> findInterviewerIdsWithAvailableSlotsBetween(
+            @Param("interviewerIds") Collection<Long> interviewerIds,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT s FROM AvailabilitySlot s
+            LEFT JOIN FETCH s.interviewer i
+            LEFT JOIN FETCH i.department
+            LEFT JOIN FETCH i.currentDesignation d
+            LEFT JOIN FETCH d.tier
+            LEFT JOIN FETCH i.interviewerTechnologies it
+            LEFT JOIN FETCH it.technology
+            LEFT JOIN FETCH s.interviewSchedule sch
+            LEFT JOIN FETCH sch.request req
+            LEFT JOIN FETCH req.panel
+            WHERE s.interviewer.id = :interviewerId
+            AND s.isActive = true
+            AND (s.status = com.nemal.enums.SlotStatus.AVAILABLE OR s.status = com.nemal.enums.SlotStatus.BOOKED)
+            AND s.startDateTime >= :start
+            AND s.startDateTime < :end
+            ORDER BY s.startDateTime
+            """)
+    List<AvailabilitySlot> findActiveSlotsForInterviewerBetween(
+            @Param("interviewerId") Long interviewerId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
     List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
             Long interviewerId,

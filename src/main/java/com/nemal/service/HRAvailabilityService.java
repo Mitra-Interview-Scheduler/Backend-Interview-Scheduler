@@ -2,8 +2,12 @@ package com.nemal.service;
 
 import com.nemal.dto.AvailabilityFilterDto;
 import com.nemal.dto.InterviewerAvailabilityDto;
+import com.nemal.dto.InterviewerMatchRequestDto;
+import com.nemal.dto.InterviewerMatchResponseDto;
+import com.nemal.dto.MatchingInterviewerDto;
 import com.nemal.dto.PagedResult;
 import com.nemal.entity.AvailabilitySlot;
+import com.nemal.entity.CandidateTechnology;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.entity.Domain;
@@ -12,7 +16,13 @@ import com.nemal.entity.Technology;
 import com.nemal.entity.Tier;
 import com.nemal.entity.User;
 import com.nemal.entity.UserDomain;
+import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import com.nemal.repository.CandidateRepository;
+import com.nemal.repository.CandidateTechnologyRepository;
+import com.nemal.repository.InterviewerTechnologyRepository;
+import com.nemal.repository.UserDomainRepository;
+import com.nemal.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.criteria.Expression;
@@ -26,10 +36,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import com.nemal.enums.SlotStatus;
-import java.util.Comparator;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,14 +57,32 @@ public class HRAvailabilityService {
      * 30 days keeps recent booked/completed interviews visible for audit.
      */
     private static final int HR_LOOKBACK_DAYS = 30;
+    private static final int DEFAULT_MATCH_LIMIT = 5;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final CandidateRepository candidateRepository;
+    private final CandidateTechnologyRepository candidateTechnologyRepository;
+    private final InterviewerTechnologyRepository interviewerTechnologyRepository;
+    private final UserDomainRepository userDomainRepository;
+    private final UserRepository userRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public HRAvailabilityService(AvailabilitySlotRepository availabilitySlotRepository) {
+    public HRAvailabilityService(
+            AvailabilitySlotRepository availabilitySlotRepository,
+            CandidateRepository candidateRepository,
+            CandidateTechnologyRepository candidateTechnologyRepository,
+            InterviewerTechnologyRepository interviewerTechnologyRepository,
+            UserDomainRepository userDomainRepository,
+            UserRepository userRepository
+    ) {
         this.availabilitySlotRepository = availabilitySlotRepository;
+        this.candidateRepository = candidateRepository;
+        this.candidateTechnologyRepository = candidateTechnologyRepository;
+        this.interviewerTechnologyRepository = interviewerTechnologyRepository;
+        this.userDomainRepository = userDomainRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -520,5 +553,258 @@ public class HRAvailabilityService {
                 .filter(technologyIds::contains)
                 .distinct()
                 .count();
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewerMatchResponseDto matchInterviewers(InterviewerMatchRequestDto request) {
+        if (request == null || request.candidateId() == null) {
+            throw new IllegalArgumentException("candidateId is required");
+        }
+
+        candidateRepository.findByIdAndIsActiveTrue(request.candidateId())
+                .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + request.candidateId()));
+
+        List<CandidateTechnology> candidateTechs =
+                candidateTechnologyRepository.findByCandidateIdAndIsActiveTrue(request.candidateId());
+
+        Map<Long, String> candidateCore = new HashMap<>();
+        Map<Long, String> candidateNonCore = new HashMap<>();
+        for (CandidateTechnology ct : candidateTechs) {
+            if (ct == null || ct.getTechnology() == null || ct.getTechnology().getId() == null) continue;
+            Long techId = ct.getTechnology().getId();
+            String name = ct.getTechnology().getName();
+            if (ct.isCore()) {
+                candidateCore.put(techId, name);
+            } else {
+                candidateNonCore.put(techId, name);
+            }
+        }
+
+        List<Object[]> candidateDomainRows = entityManager.createQuery(
+                "SELECT cd.domain.id, cd.domain.name FROM CandidateDomain cd " +
+                        "WHERE cd.candidate.id = :candidateId AND cd.domain.isActive = true",
+                Object[].class
+        ).setParameter("candidateId", request.candidateId()).getResultList();
+
+        Map<Long, String> candidateDomains = new HashMap<>();
+        for (Object[] row : candidateDomainRows) {
+            candidateDomains.put((Long) row[0], (String) row[1]);
+        }
+
+        if (candidateCore.isEmpty() && candidateNonCore.isEmpty() && candidateDomains.isEmpty()) {
+            return InterviewerMatchResponseDto.empty();
+        }
+
+        Set<Long> allCandidateTechIds = new LinkedHashSet<>();
+        allCandidateTechIds.addAll(candidateCore.keySet());
+        allCandidateTechIds.addAll(candidateNonCore.keySet());
+
+        Set<Long> interviewerIds = new LinkedHashSet<>();
+        if (!allCandidateTechIds.isEmpty()) {
+            interviewerIds.addAll(interviewerTechnologyRepository.findInterviewerIdsByTechnologyIds(allCandidateTechIds));
+        }
+        if (!candidateDomains.isEmpty()) {
+            interviewerIds.addAll(userDomainRepository.findUserIdsByDomainIds(candidateDomains.keySet()));
+        }
+        if (interviewerIds.isEmpty()) {
+            return InterviewerMatchResponseDto.empty();
+        }
+
+        List<User> interviewers = userRepository.findAllById(interviewerIds).stream()
+                .filter(u -> u != null && u.isActive() && u.hasInterviewerRole())
+                .filter(u -> matchesOptionalFilters(u, request))
+                .collect(Collectors.toList());
+
+        if (interviewers.isEmpty()) {
+            return InterviewerMatchResponseDto.empty();
+        }
+
+        List<Long> filteredIds = interviewers.stream().map(User::getId).collect(Collectors.toList());
+
+        Map<Long, List<InterviewerTechnology>> techsByUser = interviewerTechnologyRepository
+                .findActiveByInterviewerIdIn(filteredIds)
+                .stream()
+                .collect(Collectors.groupingBy(it -> it.getInterviewer().getId()));
+
+        Map<Long, List<UserDomain>> domainsByUser = userDomainRepository.findByUserIdIn(filteredIds)
+                .stream()
+                .collect(Collectors.groupingBy(ud -> ud.getUser().getId()));
+
+        LocalDateTime weekStart = LocalDateTime.now();
+        LocalDateTime weekEnd = weekStart.plusDays(7);
+        Set<Long> freeInWeek = new HashSet<>(
+                availabilitySlotRepository.findInterviewerIdsWithAvailableSlotsBetween(filteredIds, weekStart, weekEnd)
+        );
+
+        List<MatchingInterviewerDto> matches = new ArrayList<>();
+        for (User interviewer : interviewers) {
+            List<InterviewerTechnology> techs = techsByUser.getOrDefault(interviewer.getId(), List.of());
+            List<UserDomain> domains = domainsByUser.getOrDefault(interviewer.getId(), List.of());
+
+            Map<Long, String> interviewerCore = new HashMap<>();
+            Map<Long, String> interviewerNonCore = new HashMap<>();
+            for (InterviewerTechnology it : techs) {
+                if (it.getTechnology() == null || it.getTechnology().getId() == null) continue;
+                Long techId = it.getTechnology().getId();
+                String name = it.getTechnology().getName();
+                if (it.isCore()) {
+                    interviewerCore.put(techId, name);
+                } else {
+                    interviewerNonCore.put(techId, name);
+                }
+            }
+
+            List<String> matchedCore = candidateCore.entrySet().stream()
+                    .filter(e -> interviewerCore.containsKey(e.getKey()))
+                    .map(Map.Entry::getValue)
+                    .distinct()
+                    .collect(Collectors.toList());
+            List<String> matchedNonCore = candidateNonCore.entrySet().stream()
+                    .filter(e -> interviewerNonCore.containsKey(e.getKey()))
+                    .map(Map.Entry::getValue)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            Map<Long, String> interviewerDomainMap = new HashMap<>();
+            for (UserDomain ud : domains) {
+                if (ud.getDomain() == null || ud.getDomain().getId() == null) continue;
+                if (!ud.getDomain().isActive()) continue;
+                interviewerDomainMap.put(ud.getDomain().getId(), ud.getDomain().getName());
+            }
+            List<String> matchedDomains = candidateDomains.entrySet().stream()
+                    .filter(e -> interviewerDomainMap.containsKey(e.getKey()))
+                    .map(Map.Entry::getValue)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            int techMatchCount = matchedCore.size() + matchedNonCore.size();
+            int domainMatchCount = matchedDomains.size();
+            if (techMatchCount == 0 && domainMatchCount == 0) continue;
+
+            Integer tierOrder = null;
+            Integer levelOrder = null;
+            Designation desig = interviewer.getCurrentDesignation();
+            if (desig != null) {
+                levelOrder = desig.getLevelOrder();
+                if (desig.getTier() != null) {
+                    tierOrder = desig.getTier().getTierOrder();
+                }
+            }
+
+            matches.add(new MatchingInterviewerDto(
+                    interviewer.getId(),
+                    interviewer.getFullName(),
+                    interviewer.getDepartment() != null ? interviewer.getDepartment().getName() : null,
+                    desig != null ? desig.getName() : null,
+                    interviewer.getYearsOfExperience(),
+                    tierOrder,
+                    levelOrder,
+                    matchedCore,
+                    matchedNonCore,
+                    matchedDomains,
+                    matchedCore.size(),
+                    matchedNonCore.size(),
+                    techMatchCount,
+                    domainMatchCount,
+                    techMatchCount + domainMatchCount,
+                    freeInWeek.contains(interviewer.getId())
+            ));
+        }
+
+        int limit = request.limit() != null && request.limit() > 0 ? request.limit() : DEFAULT_MATCH_LIMIT;
+
+        Comparator<MatchingInterviewerDto> byTechThenDomain = Comparator
+                .comparingInt(MatchingInterviewerDto::coreMatchCount).reversed()
+                .thenComparing(Comparator.comparingInt(MatchingInterviewerDto::nonCoreMatchCount).reversed())
+                .thenComparing(Comparator.comparingInt(MatchingInterviewerDto::domainMatchCount).reversed())
+                .thenComparing(m -> m.interviewerName() == null ? "" : m.interviewerName());
+
+        Comparator<MatchingInterviewerDto> byDomainThenTech = Comparator
+                .comparingInt(MatchingInterviewerDto::domainMatchCount).reversed()
+                .thenComparing(Comparator.comparingInt(MatchingInterviewerDto::coreMatchCount).reversed())
+                .thenComparing(Comparator.comparingInt(MatchingInterviewerDto::nonCoreMatchCount).reversed())
+                .thenComparing(m -> m.interviewerName() == null ? "" : m.interviewerName());
+
+        List<MatchingInterviewerDto> both = matches.stream()
+                .filter(m -> m.techMatchCount() > 0 && m.domainMatchCount() > 0)
+                .sorted(byTechThenDomain)
+                .limit(limit)
+                .collect(Collectors.toList());
+        List<MatchingInterviewerDto> technologies = matches.stream()
+                .filter(m -> m.techMatchCount() > 0 && m.domainMatchCount() == 0)
+                .sorted(byTechThenDomain)
+                .limit(limit)
+                .collect(Collectors.toList());
+        List<MatchingInterviewerDto> domains = matches.stream()
+                .filter(m -> m.domainMatchCount() > 0 && m.techMatchCount() == 0)
+                .sorted(byDomainThenTech)
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        return new InterviewerMatchResponseDto(both, technologies, domains);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewerAvailabilityDto> getInterviewerSlots(
+            Long interviewerId,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    ) {
+        if (interviewerId == null) {
+            throw new IllegalArgumentException("interviewerId is required");
+        }
+        if (startDateTime == null || endDateTime == null) {
+            throw new IllegalArgumentException("startDateTime and endDateTime are required");
+        }
+        if (!endDateTime.isAfter(startDateTime)) {
+            throw new IllegalArgumentException("endDateTime must be after startDateTime");
+        }
+
+        userRepository.findById(interviewerId)
+                .orElseThrow(() -> new IllegalArgumentException("Interviewer not found: " + interviewerId));
+
+        return availabilitySlotRepository
+                .findActiveSlotsForInterviewerBetween(interviewerId, startDateTime, endDateTime)
+                .stream()
+                .map(InterviewerAvailabilityDto::from)
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchesOptionalFilters(User interviewer, InterviewerMatchRequestDto request) {
+        if (request.departmentIds() != null && !request.departmentIds().isEmpty()) {
+            if (interviewer.getDepartment() == null
+                    || !request.departmentIds().contains(interviewer.getDepartment().getId())) {
+                return false;
+            }
+        }
+
+        if (request.minYearsOfExperience() != null) {
+            Integer yoe = interviewer.getYearsOfExperience();
+            if (yoe == null || yoe < request.minYearsOfExperience()) {
+                return false;
+            }
+        }
+
+        if (request.minTierId() != null && request.departmentIdForDesignationFilter() != null) {
+            Designation desig = interviewer.getCurrentDesignation();
+            if (desig == null || desig.getTier() == null || desig.getDepartment() == null) {
+                return false;
+            }
+            if (!Objects.equals(desig.getDepartment().getId(), request.departmentIdForDesignationFilter())) {
+                return false;
+            }
+            int candidateTierOrder = request.minTierId().intValue();
+            int interviewerTier = desig.getTier().getTierOrder();
+            if (interviewerTier < candidateTierOrder) {
+                return false;
+            }
+            if (request.minDesignationLevelInDepartment() != null
+                    && interviewerTier == candidateTierOrder
+                    && desig.getLevelOrder() < request.minDesignationLevelInDepartment().intValue()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
