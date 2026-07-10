@@ -616,8 +616,22 @@ public class HRAvailabilityService {
                 .collect(Collectors.toList());
 
         if (interviewers.isEmpty()) {
+            logger.info(
+                    "Match for candidate {}: 0 interviewers after filters (candidatesWithSkills={}, dept={}, minTier={}, minLevel={})",
+                    request.candidateId(),
+                    interviewerIds.size(),
+                    request.departmentIds(),
+                    request.minTierId(),
+                    request.minDesignationLevelInDepartment()
+            );
             return InterviewerMatchResponseDto.empty();
         }
+
+        logger.info(
+                "Match for candidate {}: {} interviewers after filters",
+                request.candidateId(),
+                interviewers.size()
+        );
 
         List<Long> filteredIds = interviewers.stream().map(User::getId).collect(Collectors.toList());
 
@@ -641,26 +655,21 @@ public class HRAvailabilityService {
             List<InterviewerTechnology> techs = techsByUser.getOrDefault(interviewer.getId(), List.of());
             List<UserDomain> domains = domainsByUser.getOrDefault(interviewer.getId(), List.of());
 
-            Map<Long, String> interviewerCore = new HashMap<>();
-            Map<Long, String> interviewerNonCore = new HashMap<>();
+            Map<Long, String> interviewerAllTechs = new HashMap<>();
             for (InterviewerTechnology it : techs) {
                 if (it.getTechnology() == null || it.getTechnology().getId() == null) continue;
-                Long techId = it.getTechnology().getId();
-                String name = it.getTechnology().getName();
-                if (it.isCore()) {
-                    interviewerCore.put(techId, name);
-                } else {
-                    interviewerNonCore.put(techId, name);
-                }
+                interviewerAllTechs.put(it.getTechnology().getId(), it.getTechnology().getName());
             }
 
+            // Match by technology id regardless of interviewer core flag.
+            // Keep candidate core/non-core labels for display/ranking.
             List<String> matchedCore = candidateCore.entrySet().stream()
-                    .filter(e -> interviewerCore.containsKey(e.getKey()))
+                    .filter(e -> interviewerAllTechs.containsKey(e.getKey()))
                     .map(Map.Entry::getValue)
                     .distinct()
                     .collect(Collectors.toList());
             List<String> matchedNonCore = candidateNonCore.entrySet().stream()
-                    .filter(e -> interviewerNonCore.containsKey(e.getKey()))
+                    .filter(e -> interviewerAllTechs.containsKey(e.getKey()))
                     .map(Map.Entry::getValue)
                     .distinct()
                     .collect(Collectors.toList());
@@ -766,14 +775,19 @@ public class HRAvailabilityService {
         return availabilitySlotRepository
                 .findActiveSlotsForInterviewerBetween(interviewerId, startDateTime, endDateTime)
                 .stream()
+                .filter(slot -> slot.getEndDateTime() != null
+                        && slot.getEndDateTime().isAfter(LocalDateTime.now()))
                 .map(InterviewerAvailabilityDto::from)
                 .collect(Collectors.toList());
     }
 
     private boolean matchesOptionalFilters(User interviewer, InterviewerMatchRequestDto request) {
+        Long interviewerDeptId = interviewer.getDepartment() != null
+                ? interviewer.getDepartment().getId()
+                : null;
+
         if (request.departmentIds() != null && !request.departmentIds().isEmpty()) {
-            if (interviewer.getDepartment() == null
-                    || !request.departmentIds().contains(interviewer.getDepartment().getId())) {
+            if (interviewerDeptId == null || !request.departmentIds().contains(interviewerDeptId)) {
                 return false;
             }
         }
@@ -785,24 +799,40 @@ public class HRAvailabilityService {
             }
         }
 
-        if (request.minTierId() != null && request.departmentIdForDesignationFilter() != null) {
+        // Same hierarchy as calendar filters: lower tierOrder / levelOrder = more senior.
+        // Pass when interviewer is strictly more senior (lower tier), or same tier with
+        // equal/higher seniority (levelOrder <= candidate level).
+        if (request.minTierId() != null) {
             Designation desig = interviewer.getCurrentDesignation();
-            if (desig == null || desig.getTier() == null || desig.getDepartment() == null) {
+            if (desig == null || desig.getTier() == null || desig.getTier().getTierOrder() == null) {
                 return false;
             }
-            if (!Objects.equals(desig.getDepartment().getId(), request.departmentIdForDesignationFilter())) {
-                return false;
+
+            if (request.departmentIdForDesignationFilter() != null) {
+                Long designationDeptId = desig.getDepartment() != null
+                        ? desig.getDepartment().getId()
+                        : interviewerDeptId;
+                if (designationDeptId == null
+                        || !Objects.equals(designationDeptId, request.departmentIdForDesignationFilter())) {
+                    return false;
+                }
             }
+
             int candidateTierOrder = request.minTierId().intValue();
             int interviewerTier = desig.getTier().getTierOrder();
+
             if (interviewerTier < candidateTierOrder) {
+                return true;
+            }
+            if (interviewerTier > candidateTierOrder) {
                 return false;
             }
-            if (request.minDesignationLevelInDepartment() != null
-                    && interviewerTier == candidateTierOrder
-                    && desig.getLevelOrder() < request.minDesignationLevelInDepartment().intValue()) {
-                return false;
+            if (request.minDesignationLevelInDepartment() == null) {
+                return true;
             }
+            Integer interviewerLevel = desig.getLevelOrder();
+            return interviewerLevel != null
+                    && interviewerLevel <= request.minDesignationLevelInDepartment().intValue();
         }
 
         return true;
