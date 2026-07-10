@@ -197,7 +197,7 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "AND s.isActive = true " +
             "AND s.status = 'AVAILABLE' " +
             "AND s.endDateTime = :time")
-    Optional<AvailabilitySlot> findActiveAvailableSlotEndingAt(
+    List<AvailabilitySlot> findActiveAvailableSlotsEndingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
 
@@ -210,7 +210,7 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "AND s.isActive = true " +
             "AND s.status = 'AVAILABLE' " +
             "AND s.startDateTime = :time")
-    Optional<AvailabilitySlot> findActiveAvailableSlotStartingAt(
+    List<AvailabilitySlot> findActiveAvailableSlotsStartingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
 

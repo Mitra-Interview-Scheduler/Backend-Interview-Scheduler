@@ -62,15 +62,11 @@ public interface InterviewPanelRepository extends JpaRepository<InterviewPanel, 
             @Param("exactTierOrder") Integer exactTierOrder
     );
 
-    @Query("SELECT DISTINCT p FROM InterviewPanel p " +
+    @Query("SELECT p FROM InterviewPanel p " +
             "LEFT JOIN FETCH p.candidate c " +
             "LEFT JOIN FETCH c.coordinatedHr " +
             "LEFT JOIN FETCH p.interviewCoordinator " +
-            "LEFT JOIN FETCH p.panelRequests r " +
-            "LEFT JOIN FETCH r.assignedInterviewer ai " +
-            "LEFT JOIN FETCH ai.currentDesignation " +
-            "LEFT JOIN FETCH r.interviewSchedule " +
-            "LEFT JOIN FETCH r.requiredTechnologies " +
+            "LEFT JOIN FETCH p.requestedBy " +
             "WHERE p.id = :id")
     Optional<InterviewPanel> findByIdWithDetails(@Param("id") Long id);
 }

@@ -452,7 +452,7 @@ public class CalendarSyncService {
                 interviewPanelRepository.save(panel);
 
                 for (InterviewRequest request : requests) {
-                    interviewScheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
+                    interviewScheduleRepository.findActiveByRequestId(request.getId()).ifPresent(schedule -> {
                         schedule.setGoogleCalendarEventId(result.eventId());
                         schedule.setMeetingLink(result.meetingLink());
                         interviewScheduleRepository.save(schedule);
@@ -489,7 +489,7 @@ public class CalendarSyncService {
             interviewPanelRepository.save(panel);
 
             for (InterviewRequest request : requests) {
-                interviewScheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
+                interviewScheduleRepository.findActiveByRequestId(request.getId()).ifPresent(schedule -> {
                     schedule.setGoogleCalendarEventId(result.eventId());
                     schedule.setMeetingLink(result.meetingLink());
                     interviewScheduleRepository.save(schedule);
@@ -550,7 +550,7 @@ public class CalendarSyncService {
         }
 
         for (InterviewRequest request : requests) {
-            interviewScheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
+            interviewScheduleRepository.findActiveByRequestId(request.getId()).ifPresent(schedule -> {
                 schedule.setGoogleCalendarEventId(null);
                 schedule.setMeetingLink(null);
                 interviewScheduleRepository.save(schedule);

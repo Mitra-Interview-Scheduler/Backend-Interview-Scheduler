@@ -71,6 +71,7 @@ public final class TimeZoneMapper {
                 dto.status(),
                 dto.candidateName(),
                 dto.requestId(),
+                dto.panelId(),
                 dto.interviewerTierOrder(),
                 dto.interviewerLevelOrder(),
                 dto.interviewType(),

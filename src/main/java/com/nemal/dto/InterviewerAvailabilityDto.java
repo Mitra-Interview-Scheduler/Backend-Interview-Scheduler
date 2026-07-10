@@ -35,6 +35,7 @@ public record InterviewerAvailabilityDto(
         String status,
         String candidateName,
         Long requestId,              // ID of the InterviewRequest that booked this slot
+        Long panelId,                // Non-null when this booking belongs to a panel interview
         Integer interviewerTierOrder,  // NEW — Tier.tierOrder for the interviewer
         Integer interviewerLevelOrder,  // NEW — Designation.levelOrder for the interviewer
         String interviewType,         // TECHNICAL | HR — from the booked InterviewSchedule
@@ -49,6 +50,7 @@ public record InterviewerAvailabilityDto(
         // ── Resolve candidateName + requestId ────────────────────────────────
         String candidateName = null;
         Long requestId = null;
+        Long panelId = null;
         String interviewType = null;
         Long interviewScheduleId = null;
         String interviewStatus = null;
@@ -71,6 +73,9 @@ public record InterviewerAvailabilityDto(
             if (req != null) {
                 candidateName = req.getCandidateName();
                 requestId = req.getId();
+                if (req.getPanel() != null) {
+                    panelId = req.getPanel().getId();
+                }
                 if (req.getInterviewCoordinator() != null) {
                     interviewCoordinatorName = req.getInterviewCoordinator().getFullName().trim();
                 } else if (req.getPanel() != null && req.getPanel().getInterviewCoordinator() != null) {
@@ -138,6 +143,7 @@ public record InterviewerAvailabilityDto(
                 slot.getStatus() != null ? slot.getStatus().name() : "AVAILABLE",
                 candidateName,
                 requestId,
+                panelId,
                 tierOrder,    // interviewerTierOrder
                 levelOrder,   // interviewerLevelOrder
                 interviewType,

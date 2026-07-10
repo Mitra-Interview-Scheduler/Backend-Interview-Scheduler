@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -45,6 +46,7 @@ public class InterviewRequestService {
     private final UserRepository userRepository;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final CalendarSyncService calendarSyncService;
+    private final PanelInterviewService panelInterviewService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -345,6 +347,14 @@ public class InterviewRequestService {
             throw new RuntimeException("Request is already cancelled");
         }
 
+        // Panel bookings must be cancelled as a unit so every interviewer slot is restored.
+        if (request.getPanel() != null) {
+            Long panelId = request.getPanel().getId();
+            logger.info("Request {} belongs to panel {} — cancelling entire panel", requestId, panelId);
+            panelInterviewService.cancelPanelInterview(user, panelId);
+            return;
+        }
+
         // ── Step 1: Fix the AvailabilitySlot ─────────────────────────────────
         AvailabilitySlot slot = request.getAvailabilitySlot();
         if (slot != null) {
@@ -362,7 +372,7 @@ public class InterviewRequestService {
             logger.warn("Request {} had no linked slot — nothing to restore", requestId);
         }
 
-        InterviewSchedule schedule = interviewScheduleRepository.findByRequestId(requestId).orElse(null);
+        InterviewSchedule schedule = interviewScheduleRepository.findActiveByRequestId(requestId).orElse(null);
 
         // ── Step 2: Cancel the InterviewSchedule ─────────────────────────────
         if (schedule != null) {
@@ -402,7 +412,7 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                InterviewType interviewType = interviewScheduleRepository.findByRequestId(requestId)
+                InterviewType interviewType = interviewScheduleRepository.findActiveByRequestId(requestId)
                         .map(InterviewSchedule::getInterviewType)
                         .orElse(InterviewType.TECHNICAL);
                 MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
@@ -516,9 +526,7 @@ public class InterviewRequestService {
     }
 
     private Set<InterviewRequest> loadPanelRequests(Long panelId) {
-        return interviewPanelRepository.findByIdWithDetails(panelId)
-                .map(InterviewPanel::getPanelRequests)
-                .orElse(Set.of());
+        return new HashSet<>(interviewRequestRepository.findByPanelIdWithDetails(panelId));
     }
 
     private boolean hasPanelFeedback(Set<InterviewRequest> panelRequests, Long scheduleId) {
@@ -563,7 +571,7 @@ public class InterviewRequestService {
         if (request.getInterviewSchedule() != null) {
             return request.getInterviewSchedule();
         }
-        return interviewScheduleRepository.findByRequestId(request.getId()).orElse(null);
+        return interviewScheduleRepository.findActiveByRequestId(request.getId()).orElse(null);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -592,25 +600,29 @@ public class InterviewRequestService {
         LocalDateTime mergedEnd   = restoredSlot.getEndDateTime();
         boolean changed = false;
 
-        var before = availabilitySlotRepository
-                .findActiveAvailableSlotEndingAt(interviewerId, mergedStart);
-        if (before.isPresent()) {
+        List<AvailabilitySlot> beforeSlots = availabilitySlotRepository
+                .findActiveAvailableSlotsEndingAt(interviewerId, mergedStart);
+        if (!beforeSlots.isEmpty()) {
+            AvailabilitySlot before = beforeSlots.get(0);
             logger.info("Merging before-fragment slot {} into restored slot {}",
-                    before.get().getId(), restoredSlot.getId());
-            mergedStart = before.get().getStartDateTime();
-            before.get().setActive(false);
-            availabilitySlotRepository.save(before.get());
+                    before.getId(), restoredSlot.getId());
+            mergedStart = before.getStartDateTime();
+            before.setActive(false);
+            availabilitySlotRepository.save(before);
+            deactivateExtraSlots(beforeSlots, before);
             changed = true;
         }
 
-        var after = availabilitySlotRepository
-                .findActiveAvailableSlotStartingAt(interviewerId, mergedEnd);
-        if (after.isPresent()) {
+        List<AvailabilitySlot> afterSlots = availabilitySlotRepository
+                .findActiveAvailableSlotsStartingAt(interviewerId, mergedEnd);
+        if (!afterSlots.isEmpty()) {
+            AvailabilitySlot after = afterSlots.get(0);
             logger.info("Merging after-fragment slot {} into restored slot {}",
-                    after.get().getId(), restoredSlot.getId());
-            mergedEnd = after.get().getEndDateTime();
-            after.get().setActive(false);
-            availabilitySlotRepository.save(after.get());
+                    after.getId(), restoredSlot.getId());
+            mergedEnd = after.getEndDateTime();
+            after.setActive(false);
+            availabilitySlotRepository.save(after);
+            deactivateExtraSlots(afterSlots, after);
             changed = true;
         }
 
@@ -619,6 +631,15 @@ public class InterviewRequestService {
             restoredSlot.setEndDateTime(mergedEnd);
             availabilitySlotRepository.save(restoredSlot);
             logger.info("Slot {} merged to window {} – {}", restoredSlot.getId(), mergedStart, mergedEnd);
+        }
+    }
+
+    private void deactivateExtraSlots(List<AvailabilitySlot> slots, AvailabilitySlot keep) {
+        for (AvailabilitySlot slot : slots) {
+            if (!slot.getId().equals(keep.getId())) {
+                slot.setActive(false);
+                availabilitySlotRepository.save(slot);
+            }
         }
     }
 

@@ -8,6 +8,7 @@ import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.RequestStatus;
+import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
 import org.slf4j.Logger;
@@ -210,8 +211,7 @@ public class PanelInterviewService {
                     interviewType.name() + " panel interview scheduled");
         }
 
-        InterviewPanel savedPanel = panelRepository.findByIdWithDetails(panel.getId())
-                .orElseThrow(() -> new RuntimeException("Panel not found after save"));
+        InterviewPanel savedPanel = loadPanelWithRequests(panel.getId());
 
         if (interviewCoordinator != null) {
             try {
@@ -232,17 +232,21 @@ public class PanelInterviewService {
 
     @Transactional
     public void cancelPanelInterview(User hrUser, Long panelId) {
-        InterviewPanel panel = panelRepository.findByIdWithDetails(panelId)
-                .orElseThrow(() -> new RuntimeException("Panel not found"));
+        InterviewPanel panel = loadPanelWithRequests(panelId);
 
-        if (!panel.getRequestedBy().getId().equals(hrUser.getId())) {
-            throw new RuntimeException("Unauthorized — you did not create this panel");
+        boolean isHrOrAdmin = hrUser.getRoles().contains(Role.HR) || hrUser.getRoles().contains(Role.ADMIN);
+        boolean isCreator = panel.getRequestedBy() != null
+                && panel.getRequestedBy().getId().equals(hrUser.getId());
+        if (!isHrOrAdmin && !isCreator) {
+            throw new RuntimeException("Unauthorized — only HR or Admin can cancel panel interviews");
         }
+
+        List<InterviewRequest> panelRequests = new java.util.ArrayList<>(panel.getPanelRequests());
 
         List<InterviewRequest> cancelledRequests = new java.util.ArrayList<>();
         List<AvailabilitySlot> restoredSlots = new java.util.ArrayList<>();
 
-        for (InterviewRequest request : panel.getPanelRequests()) {
+        for (InterviewRequest request : panelRequests) {
             if (request.getStatus() == RequestStatus.CANCELLED) continue;
 
             AvailabilitySlot slot = request.getAvailabilitySlot();
@@ -260,7 +264,7 @@ public class PanelInterviewService {
                 restoredSlots.add(slot);
             }
 
-            scheduleRepository.findByRequestId(request.getId()).ifPresent(schedule -> {
+            scheduleRepository.findActiveByRequestId(request.getId()).ifPresent(schedule -> {
                 schedule.setStatus(InterviewStatus.CANCELLED);
                 scheduleRepository.save(schedule);
             });
@@ -295,8 +299,8 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                InterviewType interviewType = panel.getPanelRequests().stream()
-                        .map(request -> scheduleRepository.findByRequestId(request.getId()).orElse(null))
+                InterviewType interviewType = panelRequests.stream()
+                        .map(request -> scheduleRepository.findActiveByRequestId(request.getId()).orElse(null))
                         .filter(schedule -> schedule != null && schedule.getInterviewType() != null)
                         .map(InterviewSchedule::getInterviewType)
                         .findFirst()
@@ -391,29 +395,40 @@ public class PanelInterviewService {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    private InterviewPanel loadPanelWithRequests(Long panelId) {
+        InterviewPanel panel = panelRepository.findByIdWithDetails(panelId)
+                .orElseThrow(() -> new RuntimeException("Panel not found"));
+        panel.setPanelRequests(new HashSet<>(requestRepository.findByPanelIdWithDetails(panelId)));
+        return panel;
+    }
+
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {
         Long interviewerId = restoredSlot.getInterviewer().getId();
         LocalDateTime mergedStart = restoredSlot.getStartDateTime();
         LocalDateTime mergedEnd   = restoredSlot.getEndDateTime();
         boolean changed = false;
 
-        var before = slotRepository.findActiveAvailableSlotEndingAt(interviewerId, mergedStart);
-        if (before.isPresent()) {
+        List<AvailabilitySlot> beforeSlots = slotRepository.findActiveAvailableSlotsEndingAt(interviewerId, mergedStart);
+        if (!beforeSlots.isEmpty()) {
+            AvailabilitySlot before = beforeSlots.get(0);
             logger.info("Panel cancel: merging before-fragment slot {} → slot {}",
-                    before.get().getId(), restoredSlot.getId());
-            mergedStart = before.get().getStartDateTime();
-            before.get().setActive(false);
-            slotRepository.save(before.get());
+                    before.getId(), restoredSlot.getId());
+            mergedStart = before.getStartDateTime();
+            before.setActive(false);
+            slotRepository.save(before);
+            deactivateExtraSlots(beforeSlots, before);
             changed = true;
         }
 
-        var after = slotRepository.findActiveAvailableSlotStartingAt(interviewerId, mergedEnd);
-        if (after.isPresent()) {
+        List<AvailabilitySlot> afterSlots = slotRepository.findActiveAvailableSlotsStartingAt(interviewerId, mergedEnd);
+        if (!afterSlots.isEmpty()) {
+            AvailabilitySlot after = afterSlots.get(0);
             logger.info("Panel cancel: merging after-fragment slot {} → slot {}",
-                    after.get().getId(), restoredSlot.getId());
-            mergedEnd = after.get().getEndDateTime();
-            after.get().setActive(false);
-            slotRepository.save(after.get());
+                    after.getId(), restoredSlot.getId());
+            mergedEnd = after.getEndDateTime();
+            after.setActive(false);
+            slotRepository.save(after);
+            deactivateExtraSlots(afterSlots, after);
             changed = true;
         }
 
@@ -422,6 +437,15 @@ public class PanelInterviewService {
             restoredSlot.setEndDateTime(mergedEnd);
             slotRepository.save(restoredSlot);
             logger.info("Slot {} merged → {} – {}", restoredSlot.getId(), mergedStart, mergedEnd);
+        }
+    }
+
+    private void deactivateExtraSlots(List<AvailabilitySlot> slots, AvailabilitySlot keep) {
+        for (AvailabilitySlot slot : slots) {
+            if (!slot.getId().equals(keep.getId())) {
+                slot.setActive(false);
+                slotRepository.save(slot);
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.nemal.repository;
 
 import com.nemal.entity.InterviewSchedule;
+import com.nemal.enums.InterviewStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,11 +14,23 @@ import java.util.Optional;
 public interface InterviewScheduleRepository extends JpaRepository<InterviewSchedule, Long> {
 
     /**
-     * Find the schedule linked to a specific InterviewRequest.
-     * Used during cancellation so we can cancel the schedule even after
-     * the slot's interviewSchedule FK has been nulled out.
+     * Find schedules linked to a specific InterviewRequest.
+     * Multiple rows can exist historically; callers should prefer {@link #findActiveByRequestId(Long)}.
      */
-    Optional<InterviewSchedule> findByRequestId(Long requestId);
+    List<InterviewSchedule> findByRequestId(Long requestId);
+
+    Optional<InterviewSchedule> findTopByRequestIdAndStatusNotOrderByIdDesc(
+            Long requestId,
+            InterviewStatus status);
+
+    default Optional<InterviewSchedule> findActiveByRequestId(Long requestId) {
+        Optional<InterviewSchedule> active = findTopByRequestIdAndStatusNotOrderByIdDesc(
+                requestId, InterviewStatus.CANCELLED);
+        if (active.isPresent()) {
+            return active;
+        }
+        return findByRequestId(requestId).stream().findFirst();
+    }
 
     @Query("""
             SELECT s FROM InterviewSchedule s
