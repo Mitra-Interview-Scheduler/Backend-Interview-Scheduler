@@ -3,9 +3,13 @@ package com.nemal.controller;
 import com.nemal.dto.GoogleCalendarAvailabilitySyncDto;
 import com.nemal.dto.GoogleCalendarConnectDto;
 import com.nemal.dto.GoogleCalendarExternalEventDto;
+import com.nemal.dto.GoogleCalendarListItemDto;
+import com.nemal.dto.GoogleCalendarSelectionRequestDto;
+import com.nemal.dto.GoogleCalendarSelectionResponseDto;
 import com.nemal.dto.GoogleCalendarStatusDto;
 import com.nemal.entity.User;
 import com.nemal.service.CalendarSyncService;
+import com.nemal.service.GoogleCalendarEventService;
 import com.nemal.service.GoogleCalendarOAuthService;
 import com.nemal.service.GoogleCalendarTokenService;
 import com.nemal.util.TimeZoneMapper;
@@ -29,16 +33,19 @@ public class GoogleCalendarIntegrationController {
     private final GoogleCalendarOAuthService oauthService;
     private final GoogleCalendarTokenService tokenService;
     private final CalendarSyncService calendarSyncService;
+    private final GoogleCalendarEventService eventService;
     private final boolean calendarRequired;
 
     public GoogleCalendarIntegrationController(
             GoogleCalendarOAuthService oauthService,
             GoogleCalendarTokenService tokenService,
             CalendarSyncService calendarSyncService,
+            GoogleCalendarEventService eventService,
             @Value("${google.calendar.required:false}") boolean calendarRequired) {
         this.oauthService = oauthService;
         this.tokenService = tokenService;
         this.calendarSyncService = calendarSyncService;
+        this.eventService = eventService;
         this.calendarRequired = calendarRequired;
     }
 
@@ -125,10 +132,46 @@ public class GoogleCalendarIntegrationController {
         return ResponseEntity.ok(events);
     }
 
+    @GetMapping("/calendars")
+    public ResponseEntity<List<GoogleCalendarListItemDto>> listCalendars(@AuthenticationPrincipal User user) {
+        requireInterviewerWithCalendar(user);
+        try {
+            return ResponseEntity.ok(eventService.listCalendarsForUser(user));
+        } catch (Exception e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Failed to list Google calendars: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/calendars/selection")
+    public ResponseEntity<GoogleCalendarSelectionResponseDto> saveCalendarSelection(
+            @AuthenticationPrincipal User user,
+            @RequestBody GoogleCalendarSelectionRequestDto request) {
+        requireInterviewerWithCalendar(user);
+        List<String> saved = tokenService.saveSelectedCalendarIds(
+                user,
+                request != null ? request.calendarIds() : List.of());
+        return ResponseEntity.ok(new GoogleCalendarSelectionResponseDto(saved, true));
+    }
+
     @DeleteMapping
     public ResponseEntity<Void> disconnect(@AuthenticationPrincipal User user) {
         tokenService.revokeToken(user);
         tokenService.deleteCredentials(user);
         return ResponseEntity.noContent().build();
+    }
+
+    private void requireInterviewerWithCalendar(User user) {
+        if (!user.hasInterviewerRole()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only interviewer accounts can manage Google calendars.");
+        }
+        if (!tokenService.isConnected(user)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Google Calendar is not connected.");
+        }
     }
 }

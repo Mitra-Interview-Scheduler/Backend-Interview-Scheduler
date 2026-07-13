@@ -1,5 +1,7 @@
 package com.nemal.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.http.GenericUrl;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
@@ -22,6 +24,8 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +37,7 @@ public class GoogleCalendarTokenService {
 
     private final UserGoogleCalendarCredentialsRepository credentialsRepository;
     private final TokenEncryptionService tokenEncryptionService;
+    private final ObjectMapper objectMapper;
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
@@ -40,11 +45,13 @@ public class GoogleCalendarTokenService {
     public GoogleCalendarTokenService(
             UserGoogleCalendarCredentialsRepository credentialsRepository,
             TokenEncryptionService tokenEncryptionService,
+            ObjectMapper objectMapper,
             @Value("${google.client.id}") String clientId,
             @Value("${google.client.secret:}") String clientSecret,
             @Value("${google.calendar.redirect-uri:}") String redirectUri) {
         this.credentialsRepository = credentialsRepository;
         this.tokenEncryptionService = tokenEncryptionService;
+        this.objectMapper = objectMapper;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.redirectUri = redirectUri;
@@ -85,6 +92,66 @@ public class GoogleCalendarTokenService {
     @Transactional
     public void deleteCredentials(User user) {
         credentialsRepository.deleteByUserId(user.getId());
+    }
+
+    /**
+     * @return empty optional when the user has never saved a Mitra calendar selection
+     *         (legacy: follow Google's selected calendars).
+     */
+    public Optional<List<String>> findSelectedCalendarIds(User user) {
+        return findCredentials(user)
+                .map(UserGoogleCalendarCredentials::getSelectedCalendarIds)
+                .filter(json -> json != null && !json.isBlank())
+                .map(this::parseCalendarIds);
+    }
+
+    public boolean hasCustomCalendarSelection(User user) {
+        return findCredentials(user)
+                .map(UserGoogleCalendarCredentials::getSelectedCalendarIds)
+                .filter(json -> json != null && !json.isBlank())
+                .isPresent();
+    }
+
+    @Transactional
+    public List<String> saveSelectedCalendarIds(User user, List<String> calendarIds) {
+        UserGoogleCalendarCredentials credentials = credentialsRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new IllegalStateException("Google Calendar is not connected"));
+
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        if (calendarIds != null) {
+            for (String id : calendarIds) {
+                if (id != null && !id.isBlank()) {
+                    unique.add(id.trim());
+                }
+            }
+        }
+        if (unique.isEmpty()) {
+            unique.add("primary");
+        }
+
+        try {
+            credentials.setSelectedCalendarIds(objectMapper.writeValueAsString(new ArrayList<>(unique)));
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to persist calendar selection", e);
+        }
+        credentialsRepository.save(credentials);
+        return new ArrayList<>(unique);
+    }
+
+    private List<String> parseCalendarIds(String json) {
+        try {
+            List<String> ids = objectMapper.readValue(json, new TypeReference<List<String>>() {});
+            if (ids == null || ids.isEmpty()) {
+                return List.of("primary");
+            }
+            return ids.stream()
+                    .filter(id -> id != null && !id.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+        } catch (IOException e) {
+            return List.of("primary");
+        }
     }
 
     public Calendar buildCalendarClient(User user) throws IOException, GeneralSecurityException {

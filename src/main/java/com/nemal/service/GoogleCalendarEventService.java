@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.*;
+import com.nemal.dto.GoogleCalendarListItemDto;
 import com.nemal.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,20 +15,25 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Service
 public class GoogleCalendarEventService {
 
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarEventService.class);
     private static final DateTimeFormatter RFC3339 = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-    private static final int MAX_SELECTED_CALENDARS = 12;
+    private static final int MAX_SELECTED_CALENDARS = 25;
+    private static final int EVENT_PAGE_SIZE = 250;
 
     private final GoogleCalendarTokenService tokenService;
 
@@ -39,6 +45,49 @@ public class GoogleCalendarEventService {
 
     public record ListedCalendarEvent(Event event, String calendarName) {}
 
+    public List<GoogleCalendarListItemDto> listCalendarsForUser(User interviewer) throws Exception {
+        Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        List<CalendarListEntry> entries = listAllCalendarEntries(calendar, true);
+        Set<String> savedSelection = tokenService.findSelectedCalendarIds(interviewer)
+                .map(HashSet::new)
+                .orElse(null);
+
+        List<GoogleCalendarListItemDto> result = new ArrayList<>();
+        for (CalendarListEntry entry : entries) {
+            if (entry == null || entry.getId() == null || entry.getId().isBlank()) continue;
+            String name = entry.getSummaryOverride() != null && !entry.getSummaryOverride().isBlank()
+                    ? entry.getSummaryOverride()
+                    : entry.getSummary();
+            if (name == null || name.isBlank()) {
+                name = entry.getId();
+            }
+            boolean googleSelected = !Boolean.FALSE.equals(entry.getSelected());
+            boolean selected = savedSelection != null
+                    ? savedSelection.contains(entry.getId())
+                    : googleSelected;
+            result.add(new GoogleCalendarListItemDto(
+                    entry.getId(),
+                    name,
+                    entry.getAccessRole(),
+                    Boolean.TRUE.equals(entry.getPrimary()),
+                    googleSelected,
+                    selected
+            ));
+        }
+
+        // If custom selection references "primary", mark the primary calendar selected.
+        if (savedSelection != null && savedSelection.contains("primary")) {
+            result = result.stream()
+                    .map(item -> item.primary()
+                            ? new GoogleCalendarListItemDto(
+                                    item.id(), item.name(), item.accessRole(), true,
+                                    item.googleSelected(), true)
+                            : item)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        return result;
+    }
     public CalendarEventResult createAvailabilityEvent(
             User interviewer,
             String timeZone,
@@ -106,21 +155,42 @@ public class GoogleCalendarEventService {
             Calendar calendar,
             com.google.api.client.util.DateTime timeMin,
             com.google.api.client.util.DateTime timeMax) throws Exception {
-        CalendarList calendarList = calendar.calendarList()
-                .list()
-                .setMinAccessRole("reader")
-                .setShowHidden(false)
-                .execute();
-
-        if (calendarList.getItems() == null || calendarList.getItems().isEmpty()) {
+        List<CalendarListEntry> allEntries = listAllCalendarEntries(calendar, false);
+        if (allEntries.isEmpty()) {
             return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
         }
 
-        List<CalendarListEntry> selectedCalendars = calendarList.getItems().stream()
-                .filter(entry -> entry != null && entry.getId() != null && !entry.getId().isBlank())
-                .filter(entry -> !Boolean.FALSE.equals(entry.getSelected()))
-                .limit(MAX_SELECTED_CALENDARS)
-                .toList();
+        Optional<List<String>> customSelection = tokenService.findSelectedCalendarIds(interviewer);
+        List<CalendarListEntry> selectedCalendars;
+
+        if (customSelection.isPresent()) {
+            Set<String> wanted = new HashSet<>(customSelection.get());
+            selectedCalendars = allEntries.stream()
+                    .filter(entry -> entry != null && entry.getId() != null)
+                    .filter(entry -> wanted.contains(entry.getId())
+                            || (wanted.contains("primary") && Boolean.TRUE.equals(entry.getPrimary())))
+                    .limit(MAX_SELECTED_CALENDARS)
+                    .toList();
+
+            // If IDs don't resolve (renamed/deleted), still try listing them directly.
+            if (selectedCalendars.isEmpty()) {
+                selectedCalendars = customSelection.get().stream()
+                        .limit(MAX_SELECTED_CALENDARS)
+                        .map(id -> {
+                            CalendarListEntry stub = new CalendarListEntry();
+                            stub.setId(id);
+                            stub.setSummary(id);
+                            return stub;
+                        })
+                        .toList();
+            }
+        } else {
+            selectedCalendars = allEntries.stream()
+                    .filter(entry -> entry != null && entry.getId() != null && !entry.getId().isBlank())
+                    .filter(entry -> !Boolean.FALSE.equals(entry.getSelected()))
+                    .limit(MAX_SELECTED_CALENDARS)
+                    .toList();
+        }
 
         if (selectedCalendars.isEmpty()) {
             return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
@@ -158,27 +228,52 @@ public class GoogleCalendarEventService {
         return new ArrayList<>(deduped.values());
     }
 
+    private List<CalendarListEntry> listAllCalendarEntries(Calendar calendar, boolean includeHidden)
+            throws Exception {
+        List<CalendarListEntry> entries = new ArrayList<>();
+        String pageToken = null;
+        do {
+            CalendarList calendarList = calendar.calendarList()
+                    .list()
+                    .setMinAccessRole("reader")
+                    .setShowHidden(includeHidden)
+                    .setPageToken(pageToken)
+                    .setMaxResults(250)
+                    .execute();
+            if (calendarList.getItems() != null) {
+                entries.addAll(calendarList.getItems());
+            }
+            pageToken = calendarList.getNextPageToken();
+        } while (pageToken != null && !pageToken.isBlank());
+        return entries;
+    }
+
     private List<ListedCalendarEvent> listEventsFromCalendar(
             Calendar calendar,
             String calendarId,
             String calendarName,
             com.google.api.client.util.DateTime timeMin,
             com.google.api.client.util.DateTime timeMax) throws Exception {
-        Events result = calendar.events().list(calendarId)
-                .setTimeMin(timeMin)
-                .setTimeMax(timeMax)
-                .setSingleEvents(true)
-                .setOrderBy("startTime")
-                .setMaxResults(250)
-                .execute();
-
         List<ListedCalendarEvent> events = new ArrayList<>();
-        if (result.getItems() == null) {
-            return events;
-        }
-        for (Event event : result.getItems()) {
-            events.add(new ListedCalendarEvent(event, calendarName));
-        }
+        String pageToken = null;
+        do {
+            Events result = calendar.events().list(calendarId)
+                    .setTimeMin(timeMin)
+                    .setTimeMax(timeMax)
+                    .setSingleEvents(true)
+                    .setOrderBy("startTime")
+                    .setMaxResults(EVENT_PAGE_SIZE)
+                    .setPageToken(pageToken)
+                    .execute();
+
+            if (result.getItems() != null) {
+                for (Event event : result.getItems()) {
+                    events.add(new ListedCalendarEvent(event, calendarName));
+                }
+            }
+            pageToken = result.getNextPageToken();
+        } while (pageToken != null && !pageToken.isBlank());
+
         return events;
     }
 
@@ -189,10 +284,23 @@ public class GoogleCalendarEventService {
     }
 
     private String dedupeKey(Event event, String calendarId) {
-        if (event.getICalUID() != null && !event.getICalUID().isBlank()) {
-            return event.getICalUID();
+        // Expanded recurring instances share the same iCalUID. Using iCalUID alone
+        // drops every occurrence after the first. Prefer the unique instance event id.
+        if (event.getId() != null && !event.getId().isBlank()) {
+            return calendarId + ":" + event.getId();
         }
-        return calendarId + ":" + event.getId();
+        if (event.getICalUID() != null && !event.getICalUID().isBlank()) {
+            String startStamp = "";
+            if (event.getStart() != null) {
+                if (event.getStart().getDateTime() != null) {
+                    startStamp = String.valueOf(event.getStart().getDateTime().getValue());
+                } else if (event.getStart().getDate() != null) {
+                    startStamp = event.getStart().getDate().toString();
+                }
+            }
+            return event.getICalUID() + ":" + startStamp;
+        }
+        return calendarId + ":unknown";
     }
 
     public LocalDateTime parseEventStart(Event event, ZoneId fallbackZone) {
@@ -213,9 +321,10 @@ public class GoogleCalendarEventService {
             return null;
         }
         if (eventDateTime.getDateTime() != null) {
-            ZoneId zone = eventDateTime.getTimeZone() != null && !eventDateTime.getTimeZone().isBlank()
-                    ? ZoneId.of(eventDateTime.getTimeZone())
-                    : fallbackZone;
+            // DateTime value is an absolute instant (UTC millis). Convert into the
+            // interviewer's zone for LocalDateTime; do not re-interpret with the
+            // event's timezone string or recurring instances can shift/drop.
+            ZoneId zone = fallbackZone != null ? fallbackZone : ZoneOffset.UTC;
             return Instant.ofEpochMilli(eventDateTime.getDateTime().getValue())
                     .atZone(zone)
                     .toLocalDateTime();

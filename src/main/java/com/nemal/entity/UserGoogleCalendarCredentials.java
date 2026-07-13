@@ -41,6 +41,13 @@ public class UserGoogleCalendarCredentials {
     @Column(nullable = false, length = 500)
     private String scopes;
 
+    /**
+     * JSON array of Google calendar IDs the user wants Mitra to read.
+     * Null means "use Google's selected calendars" (legacy default).
+     */
+    @Column(name = "selected_calendar_ids", columnDefinition = "TEXT")
+    private String selectedCalendarIds;
+
     @CreatedDate
     @Column(name = "connected_at", nullable = false, updatable = false)
     private LocalDateTime connectedAt;

@@ -656,10 +656,21 @@ public class HRAvailabilityService {
             List<UserDomain> domains = domainsByUser.getOrDefault(interviewer.getId(), List.of());
 
             Map<Long, String> interviewerAllTechs = new HashMap<>();
+            List<String> coreTechnologies = new ArrayList<>();
+            List<String> nonCoreTechnologies = new ArrayList<>();
             for (InterviewerTechnology it : techs) {
                 if (it.getTechnology() == null || it.getTechnology().getId() == null) continue;
-                interviewerAllTechs.put(it.getTechnology().getId(), it.getTechnology().getName());
+                if (!it.isActive()) continue;
+                String techName = it.getTechnology().getName();
+                interviewerAllTechs.put(it.getTechnology().getId(), techName);
+                if (it.isCore()) {
+                    if (!coreTechnologies.contains(techName)) coreTechnologies.add(techName);
+                } else if (!nonCoreTechnologies.contains(techName)) {
+                    nonCoreTechnologies.add(techName);
+                }
             }
+            coreTechnologies.sort(String.CASE_INSENSITIVE_ORDER);
+            nonCoreTechnologies.sort(String.CASE_INSENSITIVE_ORDER);
 
             // Match by technology id regardless of interviewer core flag.
             // Keep candidate core/non-core labels for display/ranking.
@@ -680,6 +691,10 @@ public class HRAvailabilityService {
                 if (!ud.getDomain().isActive()) continue;
                 interviewerDomainMap.put(ud.getDomain().getId(), ud.getDomain().getName());
             }
+            List<String> allDomains = interviewerDomainMap.values().stream()
+                    .distinct()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .collect(Collectors.toList());
             List<String> matchedDomains = candidateDomains.entrySet().stream()
                     .filter(e -> interviewerDomainMap.containsKey(e.getKey()))
                     .map(Map.Entry::getValue)
@@ -703,6 +718,7 @@ public class HRAvailabilityService {
             matches.add(new MatchingInterviewerDto(
                     interviewer.getId(),
                     interviewer.getFullName(),
+                    interviewer.getEmail(),
                     interviewer.getDepartment() != null ? interviewer.getDepartment().getName() : null,
                     desig != null ? desig.getName() : null,
                     interviewer.getYearsOfExperience(),
@@ -711,6 +727,9 @@ public class HRAvailabilityService {
                     matchedCore,
                     matchedNonCore,
                     matchedDomains,
+                    coreTechnologies,
+                    nonCoreTechnologies,
+                    allDomains,
                     matchedCore.size(),
                     matchedNonCore.size(),
                     techMatchCount,
@@ -734,6 +753,7 @@ public class HRAvailabilityService {
                 .thenComparing(Comparator.comparingInt(MatchingInterviewerDto::nonCoreMatchCount).reversed())
                 .thenComparing(m -> m.interviewerName() == null ? "" : m.interviewerName());
 
+        // Mutually exclusive: dual matches only in "both", not also in tech/domain lists.
         List<MatchingInterviewerDto> both = matches.stream()
                 .filter(m -> m.techMatchCount() > 0 && m.domainMatchCount() > 0)
                 .sorted(byTechThenDomain)
@@ -749,6 +769,22 @@ public class HRAvailabilityService {
                 .sorted(byDomainThenTech)
                 .limit(limit)
                 .collect(Collectors.toList());
+
+        logger.info(
+                "Match groups for candidate {}: both={}, techOnly={}, domainOnly={} | {}",
+                request.candidateId(),
+                both.size(),
+                technologies.size(),
+                domains.size(),
+                matches.stream()
+                        .map(m -> String.format(
+                                "%s(#%d tech=%d domain=%d)",
+                                m.interviewerName(),
+                                m.interviewerId(),
+                                m.techMatchCount(),
+                                m.domainMatchCount()))
+                        .collect(Collectors.joining(", "))
+        );
 
         return new InterviewerMatchResponseDto(both, technologies, domains);
     }
