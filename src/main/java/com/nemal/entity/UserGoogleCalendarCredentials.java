@@ -44,6 +44,7 @@ public class UserGoogleCalendarCredentials {
     /**
      * JSON array of Google calendar IDs the user wants Mitra to read.
      * Null means "use Google's selected calendars" (legacy default).
+     * Empty JSON array "[]" means show no Google calendars on availability.
      */
     @Column(name = "selected_calendar_ids", columnDefinition = "TEXT")
     private String selectedCalendarIds;

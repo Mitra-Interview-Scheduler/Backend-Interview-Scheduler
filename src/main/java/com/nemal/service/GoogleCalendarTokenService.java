@@ -125,11 +125,8 @@ public class GoogleCalendarTokenService {
                 }
             }
         }
-        if (unique.isEmpty()) {
-            unique.add("primary");
-        }
-
         try {
+            // Empty list is intentional: show no Google calendars on My Availability.
             credentials.setSelectedCalendarIds(objectMapper.writeValueAsString(new ArrayList<>(unique)));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to persist calendar selection", e);
@@ -142,7 +139,7 @@ public class GoogleCalendarTokenService {
         try {
             List<String> ids = objectMapper.readValue(json, new TypeReference<List<String>>() {});
             if (ids == null || ids.isEmpty()) {
-                return List.of("primary");
+                return List.of();
             }
             return ids.stream()
                     .filter(id -> id != null && !id.isBlank())
@@ -150,7 +147,7 @@ public class GoogleCalendarTokenService {
                     .distinct()
                     .toList();
         } catch (IOException e) {
-            return List.of("primary");
+            return List.of();
         }
     }
 

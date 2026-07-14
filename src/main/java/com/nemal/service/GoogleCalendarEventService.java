@@ -164,7 +164,13 @@ public class GoogleCalendarEventService {
         List<CalendarListEntry> selectedCalendars;
 
         if (customSelection.isPresent()) {
-            Set<String> wanted = new HashSet<>(customSelection.get());
+            List<String> wantedIds = customSelection.get();
+            // Explicit empty selection → show no Google calendars on availability.
+            if (wantedIds.isEmpty()) {
+                return List.of();
+            }
+
+            Set<String> wanted = new HashSet<>(wantedIds);
             selectedCalendars = allEntries.stream()
                     .filter(entry -> entry != null && entry.getId() != null)
                     .filter(entry -> wanted.contains(entry.getId())
@@ -174,7 +180,7 @@ public class GoogleCalendarEventService {
 
             // If IDs don't resolve (renamed/deleted), still try listing them directly.
             if (selectedCalendars.isEmpty()) {
-                selectedCalendars = customSelection.get().stream()
+                selectedCalendars = wantedIds.stream()
                         .limit(MAX_SELECTED_CALENDARS)
                         .map(id -> {
                             CalendarListEntry stub = new CalendarListEntry();
@@ -193,6 +199,7 @@ public class GoogleCalendarEventService {
         }
 
         if (selectedCalendars.isEmpty()) {
+            // Legacy (no Mitra selection saved): fall back to primary.
             return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
         }
 
