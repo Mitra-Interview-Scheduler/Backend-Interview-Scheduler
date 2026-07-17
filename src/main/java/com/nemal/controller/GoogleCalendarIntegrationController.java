@@ -19,9 +19,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.view.RedirectView;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -29,6 +32,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/integrations/google-calendar")
 public class GoogleCalendarIntegrationController {
+
+    private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarIntegrationController.class);
 
     private final GoogleCalendarOAuthService oauthService;
     private final GoogleCalendarTokenService tokenService;
@@ -136,11 +141,18 @@ public class GoogleCalendarIntegrationController {
     public ResponseEntity<List<GoogleCalendarListItemDto>> listCalendars(@AuthenticationPrincipal User user) {
         requireInterviewerWithCalendar(user);
         try {
+            tokenService.validateStoredTokens(user);
             return ResponseEntity.ok(eventService.listCalendarsForUser(user));
+        } catch (IllegalStateException e) {
+            logger.warn("Invalid Google Calendar tokens for user {}: {}", user.getId(), e.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Google Calendar connection is invalid. Disconnect and reconnect from Settings.");
         } catch (Exception e) {
+            logger.error("Failed to list Google calendars for user {}", user.getId(), e);
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY,
-                    "Failed to list Google calendars: " + e.getMessage());
+                    mapCalendarListError(e));
         }
     }
 
@@ -163,6 +175,9 @@ public class GoogleCalendarIntegrationController {
     }
 
     private void requireInterviewerWithCalendar(User user) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required.");
+        }
         if (!user.hasInterviewerRole()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -173,5 +188,20 @@ public class GoogleCalendarIntegrationController {
                     HttpStatus.BAD_REQUEST,
                     "Google Calendar is not connected.");
         }
+    }
+
+    private String mapCalendarListError(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        String lower = message.toLowerCase();
+        if (lower.contains("invalid_grant") || lower.contains("token has been expired or revoked")) {
+            return "Google Calendar authorization expired. Disconnect and reconnect from Settings.";
+        }
+        if (lower.contains("insufficient") && lower.contains("permission")) {
+            return "Google Calendar permission is missing. Disconnect and reconnect to grant calendar access.";
+        }
+        if (e instanceof IOException || lower.contains("401") || lower.contains("403")) {
+            return "Google Calendar access was denied. Disconnect and reconnect from Settings.";
+        }
+        return "Failed to list Google calendars: " + message;
     }
 }

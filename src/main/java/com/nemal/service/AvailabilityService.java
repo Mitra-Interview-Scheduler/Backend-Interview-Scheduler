@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneOffset;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
 import java.util.List;
@@ -31,13 +31,7 @@ public class AvailabilityService {
      * can review their recent history without data appearing to vanish.
      */
     private static final int INTERVIEWER_LOOKBACK_DAYS = 14;
-
-    /**
-     * Minimum hours of lead time required for same-day availability slots.
-     * Prevents interviewers from accidentally accepting last-minute sessions
-     * without enough prep time.
-     */
-    private static final double SAME_DAY_MIN_LEAD_HOURS = 0.25;
+    private static final int SLOT_LOOKBACK_MINUTES = 15;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewRequestService interviewRequestService;
@@ -98,28 +92,19 @@ public class AvailabilityService {
 
     /**
      * Validates that a slot's time window is acceptable:
-     *  - Past days are rejected entirely.
-     *  - Same-day slots must start at least {@value SAME_DAY_MIN_LEAD_HOURS} hours from now.
-     *  - Future days are always allowed.
-     *  - End must be after start.
+     *  - Start may be up to {@value SLOT_LOOKBACK_MINUTES} minutes before now (UTC).
+     *  - End must be after now and after start.
      */
-    private void validateSlotTimes(LocalDateTime start, LocalDateTime end,LocalDateTime now) {
-        LocalDate currentTime = now.toLocalDate();
-        // Reject past dates
-        if (start.toLocalDate().isBefore(currentTime)) {
-            throw new RuntimeException("Cannot create availability slots for past dates");
+    private void validateSlotTimes(LocalDateTime start, LocalDateTime end) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime minAllowedStart = now.minusMinutes(SLOT_LOOKBACK_MINUTES);
+        if (start.isBefore(minAllowedStart)) {
+            throw new RuntimeException(
+                    "Start time cannot be more than " + SLOT_LOOKBACK_MINUTES + " minutes before now");
         }
-        // Same-day: require at least SAME_DAY_MIN_LEAD_HOURS hours of lead time
-        if (start.toLocalDate().equals(currentTime)) {
-            LocalDateTime minAllowed = now.plusHours((long) SAME_DAY_MIN_LEAD_HOURS);
-            if (start.isBefore(minAllowed)) {
-                String earliest = minAllowed.format(DateTimeFormatter.ofPattern("HH:mm"));
-                throw new RuntimeException(
-                        "Same-day slots must start at least " + SAME_DAY_MIN_LEAD_HOURS +
-                                " hours from now. Earliest allowed start today: " + earliest);
-            }
+        if (!end.isAfter(now)) {
+            throw new RuntimeException("End time must be after the current time");
         }
-
         if (!end.isAfter(start)) {
             throw new RuntimeException("End time must be after start time");
         }
@@ -130,7 +115,7 @@ public class AvailabilityService {
     @Transactional
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
         calendarSyncService.ensureInterviewerConnected(interviewer);
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
 
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
@@ -172,7 +157,7 @@ public class AvailabilityService {
             throw new RuntimeException("Cannot edit an inactive slot");
         }
 
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
 
         DeleteScope updateScope = DeleteScope.from(scope);
         boolean isRecurringEdit = updateScope != DeleteScope.SINGLE && slot.getRecurrenceGroupId() != null && !slot.getRecurrenceGroupId().isBlank();
