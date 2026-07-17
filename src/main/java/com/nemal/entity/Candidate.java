@@ -1,6 +1,7 @@
 package com.nemal.entity;
 
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
+import lombok.extern.slf4j.Slf4j;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -8,6 +9,8 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "candidates")
@@ -16,6 +19,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @EntityListeners(AuditingEntityListener.class)
+@Slf4j
 public class Candidate {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,6 +32,7 @@ public class Candidate {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column
     private String phone;
 
     @ManyToOne
@@ -38,15 +43,28 @@ public class Candidate {
     @JoinColumn(name = "target_designation_id")
     private Designation targetDesignation;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private CandidateStatus status = CandidateStatus.APPLIED;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "master_step_id", nullable = false)
+    private MasterStep masterStep;
+
+    public MasterStatus getStatus() {
+        if (masterStep == null) {
+            log.error("Candidate {} has no master step assigned", id);
+            return null;
+        }
+        try {
+            return MasterStatus.valueOf(masterStep.getStatusKey());
+        } catch (IllegalArgumentException ex) {
+            log.error("Candidate {} has unknown master step status key '{}'", id, masterStep.getStatusKey());
+            return null;
+        }
+    }
 
     @Column(length = 2000)
     private String resumeUrl;
 
-    /** Job Description URL (link to the role's JD page) */
-    @Column(name = "jd_url", length = 2000)
+    /** Job description text (multiline). */
+    @Column(name = "jd_url", columnDefinition = "TEXT")
     private String jdUrl;
 
     /** Internal requisition / job reference code, e.g. REQ-2024-001 */
@@ -74,7 +92,26 @@ public class Candidate {
     private LocalDateTime updatedAt;
 
     @Column(name = "is_active")
+    @Builder.Default
     private boolean isActive = true;
+
+    @Column(name = "resource_request_number")
+    private String resourceRequestNumber;
+
+    @Column(name = "resource_link", length = 2000)
+    private String resourceLink;
+
+    @ManyToOne
+    @JoinColumn(name = "coordinated_hr_id")
+    private User coordinatedHr;
+
+    @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<CandidateTechnology> candidateTechnologies = new HashSet<>();
+
+    @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<CandidateDomain> candidateDomains = new HashSet<>();
 
     @PrePersist
     protected void onCreate() {

@@ -28,6 +28,7 @@ public class Tier {
     private String description;
 
     @Column(name = "is_active")
+    @Builder.Default
     private boolean isActive = true;
 
     @Column(name = "created_at")

@@ -6,6 +6,7 @@ import com.nemal.dto.CreateAvailabilitySlotDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.User;
 import com.nemal.service.AvailabilityService;
+import com.nemal.util.TimeZoneMapper;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -29,38 +31,73 @@ public class AvailabilityController {
 
     @GetMapping
     public ResponseEntity<List<AvailabilitySlotDto>> getMyAvailability(
-            @AuthenticationPrincipal User user
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
-        return ResponseEntity.ok(availabilityService.getInterviewerAvailability(user));
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        List<AvailabilitySlotDto> slots = availabilityService.getInterviewerAvailability(user);
+        return ResponseEntity.ok(TimeZoneMapper.fromUtcAvailability(slots, zone));
     }
 
     @GetMapping("/range")
     public ResponseEntity<List<AvailabilitySlotDto>> getAvailabilityByDateRange(
             @AuthenticationPrincipal User user,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        LocalDateTime utcStart = TimeZoneMapper.toUtc(start, zone);
+        LocalDateTime utcEnd = TimeZoneMapper.toUtc(end, zone);
         return ResponseEntity.ok(
-                availabilityService.getInterviewerAvailabilityByDateRange(user, start, end)
+                TimeZoneMapper.fromUtcAvailability(
+                        availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
+                        zone
+                )
         );
     }
 
     @PostMapping
     public ResponseEntity<AvailabilitySlotDto> createAvailabilitySlot(
             @AuthenticationPrincipal User user,
-            @RequestBody CreateAvailabilitySlotDto dto
+            @RequestBody CreateAvailabilitySlotDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        CreateAvailabilitySlotDto utcDto = new CreateAvailabilitySlotDto(
+                TimeZoneMapper.toUtc(dto.startDateTime(), zone),
+                TimeZoneMapper.toUtc(dto.endDateTime(), zone),
+                TimeZoneMapper.toUtc(dto.currentTime(), zone),
+                dto.description(),
+                dto.recurrenceGroupId()
+        );
+
+        System.out.println(  "StartTime = "+ utcDto.startDateTime() +"EndTime = "+ " - " + utcDto.endDateTime() +"NowTime = "+ " - " + utcDto.currentTime() );
+
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(availabilityService.createAvailabilitySlot(user, dto));
+                .body(TimeZoneMapper.fromUtc(availabilityService.createAvailabilitySlot(user, utcDto), zone));
     }
 
     @PostMapping("/bulk")
     public ResponseEntity<List<AvailabilitySlotDto>> createBulkAvailabilitySlots(
             @AuthenticationPrincipal User user,
-            @RequestBody BulkAvailabilitySlotDto dto
+            @RequestBody BulkAvailabilitySlotDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        BulkAvailabilitySlotDto utcDto = new BulkAvailabilitySlotDto(
+                dto.slots().stream().map(slot -> new CreateAvailabilitySlotDto(
+                        TimeZoneMapper.toUtc(slot.startDateTime(), zone),
+                        TimeZoneMapper.toUtc(slot.endDateTime(), zone),
+                        TimeZoneMapper.toUtc(slot.currentTime(), zone),
+                        slot.description(),
+                        slot.recurrenceGroupId()
+                )).toList()
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(availabilityService.createBulkAvailabilitySlots(user, dto));
+                .body(TimeZoneMapper.fromUtcAvailability(availabilityService.createBulkAvailabilitySlots(user, utcDto), zone));
     }
 
     /**
@@ -71,11 +108,20 @@ public class AvailabilityController {
     public ResponseEntity<?> updateAvailabilitySlot(
             @AuthenticationPrincipal User user,
             @PathVariable Long slotId,
-            @RequestBody UpdateAvailabilitySlotDto dto
+            @RequestBody UpdateAvailabilitySlotDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone,
+            @RequestParam(value = "scope", defaultValue = "SINGLE") String scope
     ) {
         try {
-            AvailabilitySlotDto result = availabilityService.updateAvailabilitySlot(user, slotId, dto);
-            return ResponseEntity.ok(result);
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            UpdateAvailabilitySlotDto utcDto = new UpdateAvailabilitySlotDto(
+                    TimeZoneMapper.toUtc(dto.startDateTime(), zone),
+                    TimeZoneMapper.toUtc(dto.endDateTime(), zone),
+                    TimeZoneMapper.toUtc(dto.currentTime(), zone),
+                    dto.description()
+            );
+            AvailabilitySlotDto result = availabilityService.updateAvailabilitySlot(user, slotId, utcDto, scope);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
@@ -85,19 +131,23 @@ public class AvailabilityController {
     @DeleteMapping("/{slotId}")
     public ResponseEntity<Void> deleteAvailabilitySlot(
             @AuthenticationPrincipal User user,
-            @PathVariable Long slotId
+                        @PathVariable Long slotId,
+                        @RequestParam(value = "scope", defaultValue = "SINGLE") String scope
     ) {
-        availabilityService.deleteAvailabilitySlot(user, slotId);
+                availabilityService.deleteAvailabilitySlot(user, slotId, scope);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Long>> getAvailabilityStats(
-            @AuthenticationPrincipal User user
+            @AuthenticationPrincipal User user,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
+        ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+        LocalDateTime utcStart = TimeZoneMapper.toUtc(LocalDateTime.now(), zone);        
         return ResponseEntity.ok(Map.of(
-                "availableSlots", availabilityService.getAvailableSlotCount(user.getId()),
-                "bookedSlots", availabilityService.getBookedSlotCount(user.getId())
+                "availableSlots", availabilityService.getAvailableSlotCount(user.getId(), utcStart),
+                "bookedSlots", availabilityService.getBookedSlotCount(user.getId(), utcStart)
         ));
     }
 }

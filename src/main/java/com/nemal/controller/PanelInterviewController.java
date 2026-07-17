@@ -4,6 +4,7 @@ import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.User;
 import com.nemal.service.PanelInterviewService;
+import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -29,9 +31,11 @@ public class PanelInterviewController {
     @PostMapping
     public ResponseEntity<?> createPanelInterview(
             @AuthenticationPrincipal User user,
-            @RequestBody CreatePanelInterviewDto dto) {
+            @RequestBody CreatePanelInterviewDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
-            InterviewPanelDto result = panelInterviewService.createPanelInterview(user, dto);
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewPanelDto result = panelInterviewService.createPanelInterview(user, TimeZoneMapper.toUtc(dto, zone));
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         } catch (Exception e) {
             logger.error("Failed to create panel interview: {}", e.getMessage(), e);
@@ -67,9 +71,16 @@ public class PanelInterviewController {
     }
 
     @GetMapping("/my-panels")
-    public ResponseEntity<?> getMyPanels(@AuthenticationPrincipal User user) {
+    public ResponseEntity<?> getMyPanels(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Integer minTierId,
+            @RequestParam(required = false) Integer exactTierId) {
         try {
-            List<InterviewPanelDto> result = panelInterviewService.getPanelsByRequestedBy(user.getId());
+            List<InterviewPanelDto> result = size != null
+                    ? panelInterviewService.getPanelsByRequestedBy(user.getId(), size, departmentId, minTierId, exactTierId)
+                    : panelInterviewService.getPanelsByRequestedBy(user.getId(), departmentId, minTierId, exactTierId);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Failed to get panels for user {}: {}", user.getId(), e.getMessage(), e);

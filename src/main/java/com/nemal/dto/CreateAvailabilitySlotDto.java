@@ -5,5 +5,6 @@ import java.time.LocalDateTime;
 public record CreateAvailabilitySlotDto(
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
-        String description
-) {}
+        LocalDateTime currentTime,
+        String description,
+        String recurrenceGroupId) {}

@@ -1,5 +1,6 @@
 package com.nemal.entity;
 
+import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -13,8 +14,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "users")
@@ -33,7 +34,7 @@ import java.util.Set;
 // Solution: only use `id` for equals/hashCode. Safe, stable, correct for JPA.
 // ────────────────────────────────────────────────────────────────────────────
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@ToString(exclude = {"interviewerTechnologies", "currentDesignation", "department"})
+@ToString(exclude = {"interviewerTechnologies", "userDomains", "currentDesignation", "department", "settings"})
 @EntityListeners(AuditingEntityListener.class)
 public class User implements UserDetails {
 
@@ -45,7 +46,7 @@ public class User implements UserDetails {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    @Column()
     private String passwordHash;
 
     private String firstName;
@@ -58,23 +59,38 @@ public class User implements UserDetails {
 
     private Integer yearsOfExperience;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Role role;
+    @Column(name = "role")
+    @Builder.Default
+    private Set<Role> roles = new HashSet<>();
 
     @ManyToOne
     @JoinColumn(name = "department_id")
     private Department department;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AuthProvider authProvider;
+
     @ManyToOne
     @JoinColumn(name = "current_designation_id")
     private Designation currentDesignation;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private UserSettings settings;
 
     // NO @Where CLAUSE - Let the code filter active technologies manually
     @OneToMany(mappedBy = "interviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private Set<InterviewerTechnology> interviewerTechnologies = new HashSet<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private Set<UserDomain> userDomains = new HashSet<>();
+
+    @Builder.Default
     private boolean isActive = true;
 
     @CreatedDate
@@ -89,7 +105,9 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+        return roles.stream()
+                .map(r -> new SimpleGrantedAuthority("ROLE_" + r.name()))
+                .collect(Collectors.toList());
     }
 
     @Override

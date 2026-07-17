@@ -6,15 +6,20 @@ import com.nemal.dto.CreateAvailabilitySlotDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.User;
+import java.util.Locale;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,12 +37,16 @@ public class AvailabilityService {
      * Prevents interviewers from accidentally accepting last-minute sessions
      * without enough prep time.
      */
-    private static final int SAME_DAY_MIN_LEAD_HOURS = 2;
+    private static final double SAME_DAY_MIN_LEAD_HOURS = 0.25;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final InterviewRequestService interviewRequestService;
 
-    public AvailabilityService(AvailabilitySlotRepository availabilitySlotRepository) {
+    public AvailabilityService(
+            AvailabilitySlotRepository availabilitySlotRepository,
+            InterviewRequestService interviewRequestService) {
         this.availabilitySlotRepository = availabilitySlotRepository;
+        this.interviewRequestService = interviewRequestService;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -47,7 +56,7 @@ public class AvailabilityService {
         return availabilitySlotRepository
                 .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from)
                 .stream()
-                .map(AvailabilitySlotDto::from)
+                .map(this::toAvailabilitySlotDto)
                 .collect(Collectors.toList());
     }
 
@@ -57,8 +66,29 @@ public class AvailabilityService {
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
                         interviewer.getId(), start, end)
                 .stream()
-                .map(AvailabilitySlotDto::from)
+                .map(this::toAvailabilitySlotDto)
                 .collect(Collectors.toList());
+    }
+
+    public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
+            User interviewer, LocalDateTime start, LocalDateTime end, Integer page, Integer size) {
+        int safePage = page != null ? Math.max(0, page) : 0;
+        int safeSize = size != null ? Math.max(1, size) : 200;
+        return availabilitySlotRepository
+                .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTruePaged(
+                        interviewer.getId(),
+                        start,
+                        end,
+                        PageRequest.of(safePage, safeSize))
+                .stream()
+                .map(this::toAvailabilitySlotDto)
+                .collect(Collectors.toList());
+    }
+
+    private AvailabilitySlotDto toAvailabilitySlotDto(AvailabilitySlot slot) {
+        return AvailabilitySlotDto.from(
+                slot,
+                interviewRequestService.resolveEffectiveInterviewStatus(slot.getInterviewSchedule()));
     }
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -70,18 +100,15 @@ public class AvailabilityService {
      *  - Future days are always allowed.
      *  - End must be after start.
      */
-    private void validateSlotTimes(LocalDateTime start, LocalDateTime end) {
-        LocalDateTime now  = LocalDateTime.now();
-        LocalDate     today = LocalDate.now();
-
+    private void validateSlotTimes(LocalDateTime start, LocalDateTime end,LocalDateTime now) {
+        LocalDate currentTime = now.toLocalDate();
         // Reject past dates
-        if (start.toLocalDate().isBefore(today)) {
+        if (start.toLocalDate().isBefore(currentTime)) {
             throw new RuntimeException("Cannot create availability slots for past dates");
         }
-
         // Same-day: require at least SAME_DAY_MIN_LEAD_HOURS hours of lead time
-        if (start.toLocalDate().equals(today)) {
-            LocalDateTime minAllowed = now.plusHours(SAME_DAY_MIN_LEAD_HOURS);
+        if (start.toLocalDate().equals(currentTime)) {
+            LocalDateTime minAllowed = now.plusHours((long) SAME_DAY_MIN_LEAD_HOURS);
             if (start.isBefore(minAllowed)) {
                 String earliest = minAllowed.format(DateTimeFormatter.ofPattern("HH:mm"));
                 throw new RuntimeException(
@@ -99,7 +126,7 @@ public class AvailabilityService {
 
     @Transactional
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
@@ -113,6 +140,7 @@ public class AvailabilityService {
                 .startDateTime(dto.startDateTime())
                 .endDateTime(dto.endDateTime())
                 .description(dto.description())
+            .recurrenceGroupId(resolveRecurrenceGroupId(dto.recurrenceGroupId()))
                 .status(SlotStatus.AVAILABLE)
                 .isActive(true)
                 .build();
@@ -122,8 +150,8 @@ public class AvailabilityService {
     }
 
     @Transactional
-    public AvailabilitySlotDto updateAvailabilitySlot(
-            User interviewer, Long slotId, UpdateAvailabilitySlotDto dto) {
+        public AvailabilitySlotDto updateAvailabilitySlot(
+            User interviewer, Long slotId, UpdateAvailabilitySlotDto dto, String scope) {
 
         AvailabilitySlot slot = availabilitySlotRepository.findById(slotId)
                 .orElseThrow(() -> new RuntimeException("Slot not found: " + slotId));
@@ -138,39 +166,81 @@ public class AvailabilityService {
             throw new RuntimeException("Cannot edit an inactive slot");
         }
 
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
 
-        // Conflict check — exclude the slot being edited
+        DeleteScope updateScope = DeleteScope.from(scope);
+        boolean isRecurringEdit = updateScope != DeleteScope.SINGLE && slot.getRecurrenceGroupId() != null && !slot.getRecurrenceGroupId().isBlank();
+        // capture the recurrence group id in a final local variable so it can be referenced from lambdas
+        final String slotRecurrenceGroupId = slot.getRecurrenceGroupId();
+
+        // Conflict check — exclude the slot being edited and all slots in its recurrence group (for recurring edits)
         List<AvailabilitySlot> conflicts = availabilitySlotRepository
                 .findConflictingSlots(interviewer.getId(), dto.startDateTime(), dto.endDateTime())
                 .stream()
                 .filter(s -> !s.getId().equals(slotId))
+                .filter(s -> !isRecurringEdit || !slotRecurrenceGroupId.equals(s.getRecurrenceGroupId()))
                 .collect(Collectors.toList());
 
         if (!conflicts.isEmpty()) {
             throw new RuntimeException("The updated time conflicts with another existing availability slot");
         }
 
-        slot.setStartDateTime(dto.startDateTime());
-        slot.setEndDateTime(dto.endDateTime());
-        if (dto.description() != null) {
-            slot.setDescription(dto.description());
+        if (!isRecurringEdit) {
+            applyUpdateToSlot(slot, dto.startDateTime(), dto.endDateTime(), dto.description());
+            slot = availabilitySlotRepository.save(slot);
+            return AvailabilitySlotDto.from(slot);
         }
 
-        slot = availabilitySlotRepository.save(slot);
-        return AvailabilitySlotDto.from(slot);
+        List<AvailabilitySlot> seriesSlots = updateScope == DeleteScope.FUTURE
+                ? availabilitySlotRepository.findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
+                        interviewer.getId(), slot.getRecurrenceGroupId(), slot.getStartDateTime())
+                : availabilitySlotRepository.findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
+                        interviewer.getId(), slot.getRecurrenceGroupId());
+
+        DayOfWeek selectedDayOfWeek = slot.getStartDateTime().getDayOfWeek();
+        boolean isAllScope = updateScope == DeleteScope.ALL;
+
+        List<AvailabilitySlot> editableSlots = seriesSlots.stream()
+            .filter(s -> !isAllScope || s.getStartDateTime().getDayOfWeek() == selectedDayOfWeek)
+                .filter(s -> s.getStatus() != SlotStatus.BOOKED)
+                .collect(Collectors.toList());
+
+        if (editableSlots.isEmpty()) {
+            throw new RuntimeException("No editable recurring slots found for selected scope");
+        }
+
+        AvailabilitySlot updatedAnchor = null;
+        for (AvailabilitySlot recurringSlot : editableSlots) {
+            applyUpdateToSlot(recurringSlot, dto.startDateTime(), dto.endDateTime(), dto.description());
+            updatedAnchor = recurringSlot;
+        }
+
+        availabilitySlotRepository.saveAll(editableSlots);
+        return AvailabilitySlotDto.from(updatedAnchor != null ? updatedAnchor : slot);
     }
 
     @Transactional
     public List<AvailabilitySlotDto> createBulkAvailabilitySlots(
             User interviewer, BulkAvailabilitySlotDto bulkDto) {
+        if (bulkDto.slots() == null || bulkDto.slots().isEmpty()) {
+            throw new RuntimeException("At least one slot is required");
+        }
+
+        String sharedGroupId = resolveBulkGroupId(bulkDto);
+
         return bulkDto.slots().stream()
-                .map(dto -> createAvailabilitySlot(interviewer, dto))
+                .map(dto -> createAvailabilitySlot(interviewer, new CreateAvailabilitySlotDto(
+                        dto.startDateTime(),
+                        dto.endDateTime(),
+                        dto.currentTime(),
+                        dto.description(),
+                        sharedGroupId
+                )))
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public void deleteAvailabilitySlot(User interviewer, Long slotId) {
+        public void deleteAvailabilitySlot(User interviewer, Long slotId, String scope) {
         AvailabilitySlot slot = availabilitySlotRepository.findById(slotId)
                 .orElseThrow(() -> new RuntimeException("Slot not found"));
 
@@ -181,20 +251,100 @@ public class AvailabilityService {
             throw new RuntimeException("Cannot delete booked slots");
         }
 
-        slot.setActive(false);
-        availabilitySlotRepository.save(slot);
+        DeleteScope deleteScope = DeleteScope.from(scope);
+        String recurrenceGroupId = slot.getRecurrenceGroupId();
+
+        if (deleteScope == DeleteScope.SINGLE || recurrenceGroupId == null || recurrenceGroupId.isBlank()) {
+            slot.setActive(false);
+            availabilitySlotRepository.save(slot);
+            return;
+        }
+
+        List<AvailabilitySlot> seriesSlots = deleteScope == DeleteScope.FUTURE
+                ? availabilitySlotRepository
+                .findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
+                        interviewer.getId(), recurrenceGroupId, slot.getStartDateTime())
+                : availabilitySlotRepository
+                .findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(interviewer.getId(), recurrenceGroupId);
+
+        DayOfWeek selectedDayOfWeek = slot.getStartDateTime().getDayOfWeek();
+        boolean isAllScope = deleteScope == DeleteScope.ALL;
+
+        List<AvailabilitySlot> deletableSlots = seriesSlots.stream()
+            .filter(s -> !isAllScope || s.getStartDateTime().getDayOfWeek() == selectedDayOfWeek)
+                .filter(s -> s.getStatus() != SlotStatus.BOOKED)
+                .collect(Collectors.toList());
+
+        if (deletableSlots.isEmpty()) {
+            throw new RuntimeException("No deletable recurring slots found for selected scope");
+        }
+
+        deletableSlots.forEach(s -> s.setActive(false));
+        availabilitySlotRepository.saveAll(deletableSlots);
     }
+
+    private String resolveRecurrenceGroupId(String recurrenceGroupId) {
+        if (recurrenceGroupId == null || recurrenceGroupId.isBlank()) {
+            return null;
+        }
+        return recurrenceGroupId;
+    }
+
+    private String resolveBulkGroupId(BulkAvailabilitySlotDto bulkDto) {
+        String existingGroupId = bulkDto.slots().stream()
+                .map(CreateAvailabilitySlotDto::recurrenceGroupId)
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse(null);
+
+        if (existingGroupId != null) {
+            return existingGroupId;
+        }
+
+        return bulkDto.slots().size() > 1 ? UUID.randomUUID().toString() : null;
+    }
+
+    private void applyUpdateToSlot(AvailabilitySlot slot, LocalDateTime templateStart, LocalDateTime templateEnd, String description) {
+        LocalDate slotDate = slot.getStartDateTime().toLocalDate();
+        LocalTime startTime = templateStart.toLocalTime();
+        LocalTime endTime = templateEnd.toLocalTime();
+
+        slot.setStartDateTime(LocalDateTime.of(slotDate, startTime));
+        slot.setEndDateTime(LocalDateTime.of(slotDate, endTime));
+        if (description != null) {
+            slot.setDescription(description);
+        }
+    }
+
+    private enum DeleteScope {
+        SINGLE,
+        ALL,
+        FUTURE;
+
+        private static DeleteScope from(String rawScope) {
+            if (rawScope == null || rawScope.isBlank()) {
+                return SINGLE;
+            }
+
+            try {
+                return DeleteScope.valueOf(rawScope.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                throw new RuntimeException("Invalid delete scope: " + rawScope);
+            }
+        }
+    }
+
 
     // ── Stats ─────────────────────────────────────────────────────────────────
 
-    public long getAvailableSlotCount(Long interviewerId) {
+    public long getAvailableSlotCount(Long interviewerId ,LocalDateTime now) {
         return availabilitySlotRepository.countAvailableSlotsFrom(
-                interviewerId, LocalDateTime.now());
+                interviewerId, now);
     }
 
-    public long getBookedSlotCount(Long interviewerId) {
+    public long getBookedSlotCount(Long interviewerId, LocalDateTime now) {
         return availabilitySlotRepository.countBookedSlotsFrom(
-                interviewerId, LocalDateTime.now());
+                interviewerId, now);
     }
 
     public long getRecentBookedSlotCount(Long interviewerId, int lookbackDays) {

@@ -2,6 +2,8 @@ package com.nemal.dto;
 
 import com.nemal.entity.User;
 
+import java.util.List;
+
 public record ProfileDto(
         Long id,
         String email,
@@ -9,11 +11,12 @@ public record ProfileDto(
         String lastName,
         String phone,
         String profilePictureUrl,
-        String role,
+        List<String> roles,
         DepartmentSimpleDto department,
         DesignationSimpleDto currentDesignation,
         Integer yearsOfExperience,
-        String bio
+        String bio,
+        UserSettingsDto settings
 ) {
     public static ProfileDto from(User user) {
         return new ProfileDto(
@@ -23,11 +26,12 @@ public record ProfileDto(
                 user.getLastName(),
                 user.getPhone(),
                 user.getProfilePictureUrl(),
-                user.getRole().name(),
+                user.getRoles().stream().map(Enum::name).toList(),
                 user.getDepartment() != null ? DepartmentSimpleDto.from(user.getDepartment()) : null,
                 user.getCurrentDesignation() != null ? DesignationSimpleDto.from(user.getCurrentDesignation()) : null,
                 user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0,
-                user.getBio()
+                user.getBio(),
+                UserSettingsDto.from(user.getSettings())
         );
     }
 }

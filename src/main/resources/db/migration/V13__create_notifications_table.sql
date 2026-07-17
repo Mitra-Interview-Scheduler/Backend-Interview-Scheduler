@@ -1,5 +1,10 @@
 -- V13__create_notifications_table.sql
-CREATE TABLE IF NOT EXISTS notifications (
+-- V1 created notifications with legacy is_read column naming.
+-- Drop and recreate so the entity-matching schema is applied on fresh installs.
+
+DROP TABLE IF EXISTS notifications CASCADE;
+
+CREATE TABLE notifications (
     id BIGSERIAL PRIMARY KEY,
     recipient_id BIGINT NOT NULL,
     subject VARCHAR(500) NOT NULL,

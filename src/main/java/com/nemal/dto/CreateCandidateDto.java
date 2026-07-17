@@ -8,8 +8,12 @@ public record CreateCandidateDto(
         Long targetDesignationId,
         String resumeUrl,
         String jdUrl,
+        String resourceLink,
         String jobReferenceCode,
+        String resourceRequestNumber,
         String location,
         String notes,
-        Integer yearsOfExperience
+        Integer yearsOfExperience,
+        Long coordinatedHrId,
+        java.util.List<Long> domainIds
 ) {}

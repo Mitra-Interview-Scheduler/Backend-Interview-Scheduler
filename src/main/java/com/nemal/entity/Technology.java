@@ -14,10 +14,16 @@ public class Technology {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, unique = true, length = 50)
+    private String code;
+
     @Column(unique = true, nullable = false)
     private String name;
 
-    private String category;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "category_id", nullable = false)
+    private TechnologyCategory category;
 
+    @Builder.Default
     private boolean isActive = true;
 }

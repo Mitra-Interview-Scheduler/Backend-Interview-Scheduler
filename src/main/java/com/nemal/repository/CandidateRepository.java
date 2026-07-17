@@ -1,7 +1,9 @@
 package com.nemal.repository;
 
 import com.nemal.entity.Candidate;
-import com.nemal.enums.CandidateStatus;
+import com.nemal.enums.MasterStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,10 +21,23 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     List<Candidate> findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(Long departmentId);
 
-    List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(CandidateStatus status);
+    List<Candidate> findByMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(String statusKey);
 
-    List<Candidate> findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(
-            Long departmentId, CandidateStatus status);
+    default List<Candidate> findByStatusAndIsActiveTrueOrderByAppliedAtDesc(MasterStatus status) {
+        return findByMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(status.name());
+    }
+
+    List<Candidate> findByDepartmentIdAndMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(
+            Long departmentId, String statusKey);
+
+    default List<Candidate> findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(
+            Long departmentId, MasterStatus status) {
+        return findByDepartmentIdAndMasterStepStatusKeyAndIsActiveTrueOrderByAppliedAtDesc(
+                departmentId, status.name());
+    }
+
+    // Legacy method signatures kept for repository callers — implemented via master step key.
+    // findByStatusAndIsActiveTrueOrderByAppliedAtDesc uses default above.
 
     // ── Email uniqueness — GLOBAL (active + soft-deleted) ───────────────────
 
@@ -52,9 +67,28 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     @Query("SELECT c FROM Candidate c WHERE c.isActive = true AND " +
             "(LOWER(c.name)  LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-            " LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
+            " LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+            " LOWER(COALESCE(c.resourceRequestNumber, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +
             "ORDER BY c.appliedAt DESC")
     List<Candidate> searchCandidates(@Param("searchTerm") String searchTerm);
+
+    @Query("""
+            SELECT c FROM Candidate c
+            LEFT JOIN c.masterStep ms
+            WHERE c.isActive = true
+            AND (:departmentId IS NULL OR c.department.id = :departmentId)
+            AND (:statusKey IS NULL OR ms.statusKey = :statusKey)
+            AND (:searchTerm IS NULL OR :searchTerm = '' OR
+                 LOWER(c.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
+                 LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
+                 LOWER(COALESCE(c.resourceRequestNumber, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%')))
+            ORDER BY c.appliedAt DESC
+            """)
+    Page<Candidate> findWithFiltersPaged(
+            @Param("departmentId") Long departmentId,
+            @Param("statusKey") String statusKey,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable);
 
     Optional<Candidate> findByIdAndIsActiveTrue(Long id);
 }

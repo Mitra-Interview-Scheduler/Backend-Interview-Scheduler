@@ -76,6 +76,10 @@ public class InterviewRequest {
     private User assignedInterviewer;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "interview_coordinator_id")
+    private User interviewCoordinator;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "availability_slot_id")
     private AvailabilitySlot availabilitySlot;
 
@@ -86,6 +90,7 @@ public class InterviewRequest {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private RequestStatus status = RequestStatus.PENDING;
 
     private LocalDateTime respondedAt;
@@ -94,6 +99,7 @@ public class InterviewRequest {
     private String responseNotes;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean isUrgent = false;
 
     @Column(length = 2000)

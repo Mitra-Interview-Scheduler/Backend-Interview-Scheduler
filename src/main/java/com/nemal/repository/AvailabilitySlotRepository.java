@@ -1,6 +1,8 @@
 package com.nemal.repository;
 
 import com.nemal.entity.AvailabilitySlot;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -40,6 +42,25 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             Long interviewerId,
             LocalDateTime start,
             LocalDateTime end);
+
+    @Query(
+            value = "SELECT s FROM AvailabilitySlot s " +
+                    "LEFT JOIN FETCH s.interviewSchedule sch " +
+                    "LEFT JOIN FETCH sch.request " +
+                    "WHERE s.interviewer.id = :interviewerId " +
+                    "AND s.startDateTime BETWEEN :start AND :end " +
+                    "AND s.isActive = true " +
+                    "ORDER BY s.startDateTime",
+            countQuery = "SELECT COUNT(s) FROM AvailabilitySlot s " +
+                    "WHERE s.interviewer.id = :interviewerId " +
+                    "AND s.startDateTime BETWEEN :start AND :end " +
+                    "AND s.isActive = true"
+    )
+    Page<AvailabilitySlot> findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTruePaged(
+            @Param("interviewerId") Long interviewerId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            Pageable pageable);
 
     // ── AVAILABLE only (conflict checks, interviewer request matching) ────────
 
@@ -88,7 +109,12 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "LEFT JOIN FETCH i.interviewerTechnologies it " +
             "LEFT JOIN FETCH it.technology " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.interviewCoordinator " +
+            "LEFT JOIN FETCH req.candidate cand " +
+            "LEFT JOIN FETCH cand.coordinatedHr " +
+            "LEFT JOIN FETCH req.panel panel " +
+            "LEFT JOIN FETCH panel.interviewCoordinator " +
             "WHERE s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.status = 'BOOKED') " +
             "AND s.startDateTime >= :from " +
@@ -106,7 +132,12 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "LEFT JOIN FETCH i.interviewerTechnologies it " +
             "LEFT JOIN FETCH it.technology " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.interviewCoordinator " +
+            "LEFT JOIN FETCH req.candidate cand " +
+            "LEFT JOIN FETCH cand.coordinatedHr " +
+            "LEFT JOIN FETCH req.panel panel " +
+            "LEFT JOIN FETCH panel.interviewCoordinator " +
             "WHERE s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.status = 'BOOKED') " +
             "AND s.startDateTime >= :start " +
@@ -180,4 +211,13 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
     Optional<AvailabilitySlot> findActiveAvailableSlotStartingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
+
+    List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
+            Long interviewerId,
+            String recurrenceGroupId);
+
+    List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
+            Long interviewerId,
+            String recurrenceGroupId,
+            LocalDateTime startDateTime);
 }

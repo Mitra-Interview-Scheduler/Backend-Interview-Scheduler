@@ -4,6 +4,7 @@ import com.nemal.dto.CreateInterviewRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.entity.User;
 import com.nemal.service.InterviewRequestService;
+import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -33,10 +35,12 @@ public class InterviewRequestController {
     @PostMapping
     public ResponseEntity<?> createInterviewRequest(
             @AuthenticationPrincipal User user,
-            @RequestBody CreateInterviewRequestDto dto) {
+            @RequestBody CreateInterviewRequestDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
-            InterviewRequestDto result = interviewRequestService.createInterviewRequest(user, dto);
-            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewRequestDto result = interviewRequestService.createInterviewRequest(user, TimeZoneMapper.toUtc(dto, zone));
+            return ResponseEntity.status(HttpStatus.CREATED).body(TimeZoneMapper.fromUtc(result, zone));
         } catch (Exception e) {
             logger.error("Failed to create interview request: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -45,10 +49,19 @@ public class InterviewRequestController {
     }
 
     @GetMapping("/my-requests")
-    public ResponseEntity<?> getMyRequests(@AuthenticationPrincipal User user) {
+    public ResponseEntity<?> getMyRequests(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Integer minTierId,
+            @RequestParam(required = false) Integer exactTierId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
-            List<InterviewRequestDto> result = interviewRequestService.getRequestsByUser(user.getId());
-            return ResponseEntity.ok(result);
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            List<InterviewRequestDto> result = size != null
+                    ? interviewRequestService.getRequestsByUser(user.getId(), size, departmentId, minTierId, exactTierId)
+                    : interviewRequestService.getRequestsByUser(user.getId(), departmentId, minTierId, exactTierId);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewRequests(result, zone));
         } catch (Exception e) {
             logger.error("Failed to get requests for user {}: {}", user.getId(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -57,10 +70,13 @@ public class InterviewRequestController {
     }
 
     @GetMapping("/candidate/{candidateId}")
-    public ResponseEntity<?> getRequestsByCandidate(@PathVariable Long candidateId) {
+    public ResponseEntity<?> getRequestsByCandidate(
+            @PathVariable Long candidateId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
         try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
             List<InterviewRequestDto> result = interviewRequestService.getRequestsByCandidate(candidateId);
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewRequests(result, zone));
         } catch (Exception e) {
             logger.error("Failed to get requests for candidate {}: {}", candidateId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -77,6 +93,22 @@ public class InterviewRequestController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             logger.error("Failed to cancel request {}: {}", requestId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PatchMapping("/schedules/{scheduleId}/complete")
+    public ResponseEntity<?> completeInterview(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewRequestDto result = interviewRequestService.completeInterview(user, scheduleId);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
+        } catch (Exception e) {
+            logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         }

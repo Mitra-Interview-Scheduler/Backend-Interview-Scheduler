@@ -35,7 +35,12 @@ public class InterviewerTechnology {
     private Integer yearsOfExperience;
 
     @Column(name = "is_active", nullable = false)
+    @Builder.Default
     private boolean isActive = true;
+
+    @Column(name = "is_core", nullable = false)
+    @Builder.Default
+    private boolean isCore = false;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)

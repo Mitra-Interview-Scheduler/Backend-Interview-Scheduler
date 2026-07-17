@@ -28,25 +28,51 @@ public record InterviewerAvailabilityDto(
         String designation,
         Integer yearsOfExperience,
         List<String> technologies,
+        List<String> coreTechnologies,
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         String status,
         String candidateName,
         Long requestId,              // ID of the InterviewRequest that booked this slot
         Integer interviewerTierOrder,  // NEW — Tier.tierOrder for the interviewer
-        Integer interviewerLevelOrder  // NEW — Designation.levelOrder for the interviewer
+        Integer interviewerLevelOrder,  // NEW — Designation.levelOrder for the interviewer
+        String interviewType,         // TECHNICAL | HR — from the booked InterviewSchedule
+        Long interviewScheduleId,
+        String interviewStatus,        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
+        String interviewCoordinatorName,
+        String coordinatedHrName
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
         // ── Resolve candidateName + requestId ────────────────────────────────
         String candidateName = null;
         Long requestId = null;
+        String interviewType = null;
+        Long interviewScheduleId = null;
+        String interviewStatus = null;
+        String interviewCoordinatorName = null;
+        String coordinatedHrName = null;
 
         if (slot.getInterviewSchedule() != null) {
+            interviewScheduleId = slot.getInterviewSchedule().getId();
+            if (slot.getInterviewSchedule().getStatus() != null) {
+                interviewStatus = slot.getInterviewSchedule().getStatus().name();
+            }
+            if (slot.getInterviewSchedule().getInterviewType() != null) {
+                interviewType = slot.getInterviewSchedule().getInterviewType().name();
+            }
             InterviewRequest req = slot.getInterviewSchedule().getRequest();
             if (req != null) {
                 candidateName = req.getCandidateName();
                 requestId = req.getId();
+                if (req.getInterviewCoordinator() != null) {
+                    interviewCoordinatorName = req.getInterviewCoordinator().getFullName().trim();
+                } else if (req.getPanel() != null && req.getPanel().getInterviewCoordinator() != null) {
+                    interviewCoordinatorName = req.getPanel().getInterviewCoordinator().getFullName().trim();
+                }
+                if (req.getCandidate() != null && req.getCandidate().getCoordinatedHr() != null) {
+                    coordinatedHrName = req.getCandidate().getCoordinatedHr().getFullName().trim();
+                }
             }
         }
 
@@ -62,10 +88,15 @@ public record InterviewerAvailabilityDto(
 
         // ── Technologies ─────────────────────────────────────────────────────
         List<String> techs = List.of();
+        List<String> coreTechs = List.of();
         if (slot.getInterviewer() != null
                 && slot.getInterviewer().getInterviewerTechnologies() != null) {
             techs = slot.getInterviewer().getInterviewerTechnologies().stream()
                     .filter(it -> it != null && it.isActive() && it.getTechnology() != null)
+                    .map(it -> it.getTechnology().getName())
+                    .collect(Collectors.toList());
+            coreTechs = slot.getInterviewer().getInterviewerTechnologies().stream()
+                    .filter(it -> it != null && it.isActive() && it.isCore() && it.getTechnology() != null)
                     .map(it -> it.getTechnology().getName())
                     .collect(Collectors.toList());
         }
@@ -95,13 +126,19 @@ public record InterviewerAvailabilityDto(
                         ? slot.getInterviewer().getCurrentDesignation().getName() : null,
                 slot.getInterviewer() != null ? slot.getInterviewer().getYearsOfExperience() : null,
                 techs,
+                coreTechs,
                 slot.getStartDateTime(),
                 slot.getEndDateTime(),
                 slot.getStatus() != null ? slot.getStatus().name() : "AVAILABLE",
                 candidateName,
                 requestId,
                 tierOrder,    // interviewerTierOrder
-                levelOrder    // interviewerLevelOrder
+                levelOrder,   // interviewerLevelOrder
+                interviewType,
+                interviewScheduleId,
+                interviewStatus,
+                interviewCoordinatorName,
+                coordinatedHrName
         );
     }
 }

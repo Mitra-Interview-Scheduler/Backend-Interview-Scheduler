@@ -1,6 +1,7 @@
 package com.nemal.controller;
 
 import com.nemal.dto.CreateTechnologyDto;
+import com.nemal.dto.TechnologyCategoryDto;
 import com.nemal.dto.TechnologyDto;
 import com.nemal.dto.UpdateTechnologyDto;
 import com.nemal.service.TechnologyService;
@@ -31,14 +32,14 @@ public class TechnologyController {
         return ResponseEntity.ok(technologyService.getTechnologyById(id));
     }
 
-    @GetMapping("/category/{category}")
+    @GetMapping("/category/{categoryCode}")
     public ResponseEntity<List<TechnologyDto>> getTechnologiesByCategory(
-            @PathVariable String category) {
-        return ResponseEntity.ok(technologyService.getTechnologiesByCategory(category));
+            @PathVariable String categoryCode) {
+        return ResponseEntity.ok(technologyService.getTechnologiesByCategoryCode(categoryCode));
     }
 
     @GetMapping("/categories")
-    public ResponseEntity<List<String>> getAllCategories() {
+    public ResponseEntity<List<TechnologyCategoryDto>> getAllCategories() {
         return ResponseEntity.ok(technologyService.getAllCategories());
     }
 

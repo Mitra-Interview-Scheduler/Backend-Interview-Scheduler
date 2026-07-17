@@ -3,8 +3,10 @@ package com.nemal.service;
 import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.*;
-import com.nemal.enums.CandidateStatus;
 import com.nemal.enums.InterviewStatus;
+import com.nemal.enums.InterviewType;
+import com.nemal.enums.MasterStatus;
+import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
@@ -31,7 +33,12 @@ public class PanelInterviewService {
     private final CandidateRepository candidateRepository;
     private final DesignationRepository designationRepository;
     private final TechnologyRepository technologyRepository;
+    private final TierRepository tierRepository;
     private final NotificationService notificationService;
+    private final CandidateStepPipelineService candidateStepPipelineService;
+    private final MasterStepService masterStepService;
+    private final UserRepository userRepository;
+    private final CandidatePipelineAuditService candidatePipelineAuditService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -41,7 +48,12 @@ public class PanelInterviewService {
             CandidateRepository candidateRepository,
             DesignationRepository designationRepository,
             TechnologyRepository technologyRepository,
-            NotificationService notificationService) {
+            TierRepository tierRepository,
+            NotificationService notificationService,
+            CandidateStepPipelineService candidateStepPipelineService,
+            MasterStepService masterStepService,
+            UserRepository userRepository,
+            CandidatePipelineAuditService candidatePipelineAuditService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -49,7 +61,12 @@ public class PanelInterviewService {
         this.candidateRepository = candidateRepository;
         this.designationRepository = designationRepository;
         this.technologyRepository = technologyRepository;
+        this.tierRepository = tierRepository;
         this.notificationService = notificationService;
+        this.candidateStepPipelineService = candidateStepPipelineService;
+        this.masterStepService = masterStepService;
+        this.userRepository = userRepository;
+        this.candidatePipelineAuditService = candidatePipelineAuditService;
     }
 
     @Transactional
@@ -99,12 +116,17 @@ public class PanelInterviewService {
                 })
                 .collect(Collectors.toList());
 
+        User interviewCoordinator = resolveInterviewCoordinator(
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId());
+
         InterviewPanel panel = InterviewPanel.builder()
                 .candidate(candidate)
                 .candidateName(candidateName)
                 .startDateTime(dto.startDateTime())
                 .endDateTime(dto.endDateTime())
                 .requestedBy(requestedBy)
+                .interviewCoordinator(interviewCoordinator)
                 .isUrgent(dto.isUrgent())
                 .notes(dto.notes())
                 .build();
@@ -113,6 +135,7 @@ public class PanelInterviewService {
         Designation finalDesignation = designation;
         String finalCandidateName = candidateName;
         Set<Technology> finalTechnologies = technologies;
+        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
 
         for (AvailabilitySlot slot : slots) {
             AvailabilitySlot bookedSlot = splitSlot(slot, dto.startDateTime(), dto.endDateTime(), finalCandidateName);
@@ -126,6 +149,7 @@ public class PanelInterviewService {
                     .preferredEndDateTime(dto.endDateTime())
                     .requestedBy(requestedBy)
                     .assignedInterviewer(slot.getInterviewer())
+                    .interviewCoordinator(interviewCoordinator)
                     .availabilitySlot(bookedSlot)
                     .panel(panel)
                     .status(RequestStatus.ACCEPTED)
@@ -143,6 +167,7 @@ public class PanelInterviewService {
                     .startDateTime(dto.startDateTime())
                     .endDateTime(dto.endDateTime())
                     .status(InterviewStatus.SCHEDULED)
+                    .interviewType(interviewType)
                     .build();
             schedule = scheduleRepository.save(schedule);
 
@@ -157,12 +182,38 @@ public class PanelInterviewService {
         }
 
         if (candidate != null) {
-            candidate.setStatus(CandidateStatus.SCHEDULED);
+            MasterStatus targetStatus = interviewType.toCandidateStatus();
+            MasterStatus oldStatus = candidate.getStatus();
+            masterStepService.assignStatus(candidate, targetStatus);
             candidateRepository.save(candidate);
+            candidateStepPipelineService.updatePipelineOnStatusChange(
+                    candidate.getId(), targetStatus, oldStatus, true);
+            candidatePipelineAuditService.recordStatusChange(
+                    candidate.getId(),
+                    targetStatus,
+                    oldStatus,
+                    PipelineAuditActionType.INTERVIEW_SCHEDULED,
+                    requestedBy,
+                    interviewType.name() + " panel interview scheduled");
         }
 
         InterviewPanel savedPanel = panelRepository.findByIdWithDetails(panel.getId())
                 .orElseThrow(() -> new RuntimeException("Panel not found after save"));
+
+        if (interviewCoordinator != null) {
+            try {
+                notificationService.sendInterviewCoordinatorPanelScheduledNotification(savedPanel, candidateName);
+            } catch (Exception e) {
+                logger.warn("Failed to send coordinator panel notification: {}", e.getMessage());
+            }
+        }
+
+        try {
+            notificationService.sendCoordinatedHrPanelInterviewScheduledNotification(savedPanel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel schedule notification: {}", e.getMessage());
+        }
+
         return InterviewPanelDto.from(savedPanel);
     }
 
@@ -208,6 +259,15 @@ public class PanelInterviewService {
             }
         }
 
+        try {
+            String candidateName = panel.getCandidate() != null
+                    ? panel.getCandidate().getName()
+                    : "the candidate";
+            notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
+        } catch (Exception e) {
+            logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+        }
+
         if (panel.getCandidate() != null) {
             Candidate candidate = panel.getCandidate();
             long activeCount = requestRepository.findByCandidateId(candidate.getId())
@@ -215,8 +275,27 @@ public class PanelInterviewService {
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                candidate.setStatus(CandidateStatus.SCREENING);
+                InterviewType interviewType = panel.getPanelRequests().stream()
+                        .map(request -> scheduleRepository.findByRequestId(request.getId()).orElse(null))
+                        .filter(schedule -> schedule != null && schedule.getInterviewType() != null)
+                        .map(InterviewSchedule::getInterviewType)
+                        .findFirst()
+                        .orElse(InterviewType.TECHNICAL);
+                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+                MasterStatus previousStatus = candidate.getStatus();
+                masterStepService.assignStatus(candidate, resetStatus);
                 candidateRepository.save(candidate);
+                candidateStepPipelineService.restorePipelineAfterInterviewCancel(
+                        candidate.getId(), interviewType);
+                candidatePipelineAuditService.recordStatusChange(
+                        candidate.getId(),
+                        resetStatus,
+                        previousStatus,
+                        PipelineAuditActionType.INTERVIEW_CANCELLED,
+                        hrUser,
+                        "Panel interview cancelled");
+                logger.info("Candidate {} reset to {} after panel {} cancel",
+                        candidate.getId(), resetStatus, panelId);
             }
         }
 
@@ -235,6 +314,59 @@ public class PanelInterviewService {
     public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId) {
         return panelRepository.findByRequestedById(userId)
                 .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, Long departmentId, Integer minTierId, Integer exactTierId) {
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return panelRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
+                .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, int limit) {
+        int safeLimit = Math.max(1, limit);
+        return panelRepository.findByRequestedById(userId)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewPanelDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewPanelDto> getPanelsByRequestedBy(Long userId, int limit, Long departmentId, Integer minTierId, Integer exactTierId) {
+        int safeLimit = Math.max(1, limit);
+        Integer minTierOrder = null;
+        Integer exactTierOrder = null;
+        try {
+            if (minTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(minTierId)).orElse(null);
+                if (t != null) minTierOrder = t.getTierOrder();
+            }
+            if (exactTierId != null) {
+                var t = tierRepository.findById(Long.valueOf(exactTierId)).orElse(null);
+                if (t != null) exactTierOrder = t.getTierOrder();
+            }
+        } catch (Exception e) {
+        }
+        return panelRepository.findByRequestedByIdWithFilters(userId, departmentId, minTierOrder, exactTierOrder)
+                .stream()
+                .limit(safeLimit)
+                .map(InterviewPanelDto::from)
+                .collect(Collectors.toList());
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -314,5 +446,28 @@ public class PanelInterviewService {
         }
 
         return booked;
+    }
+
+    private User resolveInterviewCoordinator(Long coordinatorId, Long expectedDepartmentId) {
+        if (coordinatorId == null) {
+            return null;
+        }
+
+        User user = userRepository.findById(coordinatorId)
+                .orElseThrow(() -> new IllegalArgumentException("Interview coordinator not found"));
+
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Interview coordinator is inactive");
+        }
+
+        if (expectedDepartmentId != null) {
+            if (user.getDepartment() == null
+                    || !user.getDepartment().getId().equals(expectedDepartmentId)) {
+                throw new IllegalArgumentException(
+                        "Interview coordinator must belong to the selected department");
+            }
+        }
+
+        return user;
     }
 }

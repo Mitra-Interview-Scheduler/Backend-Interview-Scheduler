@@ -8,21 +8,22 @@ import com.nemal.dto.UserRegistrationDto;
 import com.nemal.entity.Department;
 import com.nemal.entity.Designation;
 import com.nemal.entity.User;
+import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 @Service
-public class UserService implements UserDetailsService {
+public class UserService {
 
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
@@ -30,46 +31,63 @@ public class UserService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final UserSettingsService userSettingsService;
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,
-                       JwtService jwtService, AuthenticationManager authenticationManager) {
+                       JwtService jwtService, AuthenticationManager authenticationManager,
+                       UserSettingsService userSettingsService) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
+        this.userSettingsService = userSettingsService;
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
+        if (userRepository.findByEmail(dto.email()).isPresent()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
         User user = User.builder()
                 .email(dto.email())
                 .passwordHash(passwordEncoder.encode(dto.password()))
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
-                .role(dto.role())
+                .roles(Set.of(Role.INTERVIEWER))
+                .authProvider(AuthProvider.LOCAL)
                 .build();
         userRepository.save(user);
-        String token = jwtService.generateToken((UserDetails) user);
+        String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }
 
-    public LoginResponse authenticate(LoginDto dto) {
+    public LoginResponse authenticate(LoginDto dto, String browserTimezone) {
+        userRepository.findByEmail(dto.email()).ifPresent(user -> {
+            if (user.getAuthProvider() != AuthProvider.LOCAL) {
+                throw new BadCredentialsException("This account uses Google sign-in. Please use Google to log in.");
+            }
+        });
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(dto.email(), dto.password())
         );
         User user = userRepository.findByEmail(dto.email()).orElseThrow();
-        String token = jwtService.generateToken((UserDetails) user);
+        userSettingsService.ensureSettingsOnFirstLogin(user, browserTimezone);
+        String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }
+
 
     public UserDto createUser(UserDto dto, Role role) {
         User user = User.builder()
                 .email(dto.email())
                 .firstName(dto.firstName())
                 .lastName(dto.lastName())
-                .role(role)
+                .roles(Set.of(role))
+                .authProvider(AuthProvider.LOCAL)
+                .passwordHash(passwordEncoder.encode("ChangeMe123!"))
                 .build();
         userRepository.save(user);
         return UserDto.from(user);
@@ -93,11 +111,5 @@ public class UserService implements UserDetailsService {
             user.setCurrentDesignation(des);
         }
         return userRepository.save(user);
-    }
-
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return userRepository.findByEmail(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
 }

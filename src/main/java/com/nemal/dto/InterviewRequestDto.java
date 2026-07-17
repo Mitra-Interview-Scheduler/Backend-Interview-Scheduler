@@ -1,6 +1,8 @@
 package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
+import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 
 import java.time.LocalDateTime;
@@ -20,6 +22,10 @@ public record InterviewRequestDto(
         String requestedByName,
         Long assignedInterviewerId,
         String assignedInterviewerName,
+        String assignedInterviewerDesignationName,
+        Long interviewCoordinatorId,
+        String interviewCoordinatorName,
+        String coordinatedHrName,
         Long availabilitySlotId,
         Long panelId,
         RequestStatus status,
@@ -27,9 +33,16 @@ public record InterviewRequestDto(
         String responseNotes,
         boolean isUrgent,
         String notes,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Long interviewScheduleId,
+        InterviewStatus interviewStatus,
+        String interviewType,
+        LocalDateTime scheduledStartDateTime,
+        LocalDateTime scheduledEndDateTime,
+        LocalDateTime interviewCompletedAt
 ) {
     public static InterviewRequestDto from(InterviewRequest request) {
+        InterviewSchedule schedule = request.getInterviewSchedule();
         return new InterviewRequestDto(
                 request.getId(),
                 request.getCandidateName(),
@@ -38,7 +51,13 @@ public record InterviewRequestDto(
                 request.getCandidateDesignation() != null ? request.getCandidateDesignation().getName() : null,
                 request.getRequiredTechnologies() != null
                         ? request.getRequiredTechnologies().stream()
-                        .map(t -> new TechnologySimpleDto(t.getId(), t.getName(), t.getCategory()))
+                        .map(t -> new TechnologySimpleDto(
+                                t.getId(),
+                                t.getCode(),
+                                t.getName(),
+                                t.getCategory().getCode(),
+                                t.getCategory().getLabel()
+                        ))
                         .collect(Collectors.toList())
                         : List.of(),
                 request.getPreferredStartDateTime(),
@@ -47,6 +66,15 @@ public record InterviewRequestDto(
                 request.getRequestedBy() != null ? request.getRequestedBy().getFullName() : null,
                 request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getId() : null,
                 request.getAssignedInterviewer() != null ? request.getAssignedInterviewer().getFullName() : null,
+                request.getAssignedInterviewer() != null
+                        && request.getAssignedInterviewer().getCurrentDesignation() != null
+                        ? request.getAssignedInterviewer().getCurrentDesignation().getName()
+                        : null,
+                request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getId() : null,
+                request.getInterviewCoordinator() != null ? request.getInterviewCoordinator().getFullName().trim() : null,
+                request.getCandidate() != null && request.getCandidate().getCoordinatedHr() != null
+                        ? request.getCandidate().getCoordinatedHr().getFullName().trim()
+                        : null,
                 request.getAvailabilitySlot() != null ? request.getAvailabilitySlot().getId() : null,
                 request.getPanel() != null ? request.getPanel().getId() : null,
                 request.getStatus(),
@@ -54,7 +82,13 @@ public record InterviewRequestDto(
                 request.getResponseNotes(),
                 request.isUrgent(),
                 request.getNotes(),
-                request.getCreatedAt()
+                request.getCreatedAt(),
+                schedule != null ? schedule.getId() : null,
+                schedule != null ? schedule.getStatus() : null,
+                schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null,
+                schedule != null ? schedule.getStartDateTime() : null,
+                schedule != null ? schedule.getEndDateTime() : null,
+                schedule != null ? schedule.getCompletedAt() : null
         );
     }
 }

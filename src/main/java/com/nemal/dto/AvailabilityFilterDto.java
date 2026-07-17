@@ -7,10 +7,13 @@ import java.util.List;
 public record AvailabilityFilterDto(
         List<Long> departmentIds,
         List<Long> technologyIds,
+        List<Long> domainIds,
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         Integer minYearsOfExperience,
-        Long minDesignationLevelInDepartment,  // NEW: Filter by minimum designation level
-        Long departmentIdForDesignationFilter, // NEW: Department for designation filtering
-        Long minTierId                         // NEW: Filter by minimum tier
+        Long minDesignationLevelInDepartment,
+        Long departmentIdForDesignationFilter,
+        Long minTierId,
+        Integer page,
+        Integer size
 ) {}

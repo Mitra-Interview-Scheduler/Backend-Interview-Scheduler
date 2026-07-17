@@ -33,15 +33,23 @@ public class AvailabilitySlot {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Builder.Default
     private SlotStatus status = SlotStatus.AVAILABLE;
 
     private String description;
+
+    @Column(name = "recurrence_group_id")
+    private String recurrenceGroupId;
+
+    @Column(name = "duration_hours", insertable = false, updatable = false)
+    private Double durationHours;
 
     @ManyToOne
     @JoinColumn(name = "interview_schedule_id")
     private InterviewSchedule interviewSchedule;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean isActive = true;
 
     @CreatedDate
@@ -56,5 +64,9 @@ public class AvailabilitySlot {
 
     public boolean isActive() {
         return isActive;
+    }
+
+    public Double getDurationHours() {
+        return durationHours;
     }
 }

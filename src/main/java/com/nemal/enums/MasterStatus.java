@@ -1,13 +1,14 @@
 
 package com.nemal.enums;
 
-public enum CandidateStatus {
-    APPLIED,
+public enum MasterStatus {
+    NEW,
     SCREENING,
-    SCHEDULED,
-    INTERVIEWED,
+    INTERVIEW_SCHEDULES,
     TECHNICAL_ROUND,
+    DISPOSITION,
     HR_ROUND,
+    OFFER_PENDING,
     SELECTED,
     REJECTED,
     WITHDRAWN,
