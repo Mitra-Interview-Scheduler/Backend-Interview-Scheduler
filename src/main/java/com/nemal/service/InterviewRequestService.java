@@ -1,7 +1,9 @@
 package com.nemal.service;
 
 import com.nemal.dto.CreateInterviewRequestDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.dto.InterviewRequestDto;
+import com.nemal.dto.InterviewerConflictsDto;
 import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.InterviewType;
@@ -67,6 +69,11 @@ public class InterviewRequestService {
                 || bookingEnd.isAfter(slot.getEndDateTime().plusSeconds(1))) {
             throw new RuntimeException("Booking time must be within the slot's available time");
         }
+
+        assertNoSchedulingConflicts(
+                List.of(slot.getInterviewer().getId()),
+                bookingStart,
+                bookingEnd);
 
         Candidate candidate = null;
         if (dto.candidateId() != null) {
@@ -204,6 +211,84 @@ public class InterviewRequestService {
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Checks each selected interviewer's connected Google Calendar for events that
+     * overlap the proposed interview window. Interviewers without Google Calendar
+     * connected (or with no overlap) simply return no conflicts. All-day events are
+     * ignored since they don't block a specific meeting time. Times are UTC.
+     *
+     * <p>Used by HR scheduling to block booking when an overlapping event exists.
+     */
+    @Transactional(readOnly = true)
+    public List<InterviewerConflictsDto> findSchedulingConflicts(
+            List<Long> interviewerIds,
+            LocalDateTime utcStart,
+            LocalDateTime utcEnd) {
+        if (interviewerIds == null || interviewerIds.isEmpty()
+                || utcStart == null || utcEnd == null || !utcEnd.isAfter(utcStart)) {
+            return List.of();
+        }
+
+        List<InterviewerConflictsDto> result = new java.util.ArrayList<>();
+        for (Long interviewerId : interviewerIds.stream().filter(Objects::nonNull).distinct().toList()) {
+            User interviewer = userRepository.findById(interviewerId).orElse(null);
+            if (interviewer == null) {
+                continue;
+            }
+
+            List<GoogleCalendarExternalEventDto> conflicts = calendarSyncService
+                    .listExternalGoogleCalendarEvents(interviewer, utcStart, utcEnd)
+                    .stream()
+                    .filter(event -> !event.allDay())
+                    .filter(event -> event.startDateTime() != null && event.endDateTime() != null)
+                    // strict overlap: event starts before window ends AND ends after window starts
+                    .filter(event -> event.startDateTime().isBefore(utcEnd)
+                            && event.endDateTime().isAfter(utcStart))
+                    .toList();
+
+            if (!conflicts.isEmpty()) {
+                result.add(new InterviewerConflictsDto(
+                        interviewer.getId(),
+                        interviewer.getFullName(),
+                        conflicts));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Throws if any selected interviewer has a timed Google Calendar event overlapping
+     * the proposed interview window on their configured calendars.
+     */
+    public void assertNoSchedulingConflicts(
+            List<Long> interviewerIds,
+            LocalDateTime utcStart,
+            LocalDateTime utcEnd) {
+        List<InterviewerConflictsDto> conflicts = findSchedulingConflicts(interviewerIds, utcStart, utcEnd);
+        if (conflicts.isEmpty()) {
+            return;
+        }
+
+        String detail = conflicts.stream()
+                .map(ic -> {
+                    String events = ic.conflicts().stream()
+                            .map(event -> {
+                                String title = event.title() != null && !event.title().isBlank()
+                                        ? event.title()
+                                        : "Untitled event";
+                                String calendar = event.calendarName() != null && !event.calendarName().isBlank()
+                                        ? " (" + event.calendarName() + ")"
+                                        : "";
+                                return "\"" + title + "\"" + calendar;
+                            })
+                            .collect(Collectors.joining(", "));
+                    return ic.interviewerName() + ": " + events;
+                })
+                .collect(Collectors.joining("; "));
+
+        throw new RuntimeException("Cannot schedule: Google Calendar conflict — " + detail);
+    }
 
     @Transactional(readOnly = true)
     public List<InterviewRequest> getBookedInterviewSchedule(Long interviewScheduleId) {

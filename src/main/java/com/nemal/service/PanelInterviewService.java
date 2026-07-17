@@ -13,6 +13,7 @@ import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,7 @@ public class PanelInterviewService {
     private final UserRepository userRepository;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final CalendarSyncService calendarSyncService;
+    private final InterviewRequestService interviewRequestService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -56,7 +58,8 @@ public class PanelInterviewService {
             MasterStepService masterStepService,
             UserRepository userRepository,
             CandidatePipelineAuditService candidatePipelineAuditService,
-            CalendarSyncService calendarSyncService) {
+            CalendarSyncService calendarSyncService,
+            @Lazy InterviewRequestService interviewRequestService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -71,6 +74,7 @@ public class PanelInterviewService {
         this.userRepository = userRepository;
         this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.calendarSyncService = calendarSyncService;
+        this.interviewRequestService = interviewRequestService;
     }
 
     @Transactional
@@ -120,6 +124,15 @@ public class PanelInterviewService {
                     return slot;
                 })
                 .collect(Collectors.toList());
+
+        List<Long> panelInterviewerIds = slots.stream()
+                .map(slot -> slot.getInterviewer().getId())
+                .distinct()
+                .collect(Collectors.toList());
+        interviewRequestService.assertNoSchedulingConflicts(
+                panelInterviewerIds,
+                dto.startDateTime(),
+                dto.endDateTime());
 
         User interviewCoordinator = resolveInterviewCoordinator(
                 dto.interviewCoordinatorId(),

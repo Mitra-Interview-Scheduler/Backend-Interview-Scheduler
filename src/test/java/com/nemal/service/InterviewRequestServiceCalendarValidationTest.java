@@ -1,6 +1,7 @@
 package com.nemal.service;
 
 import com.nemal.dto.CreateInterviewRequestDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.InterviewRequest;
@@ -20,7 +21,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,5 +126,55 @@ class InterviewRequestServiceCalendarValidationTest {
         ArgumentCaptor<InterviewRequest> captor = ArgumentCaptor.forClass(InterviewRequest.class);
         verify(interviewRequestRepository).save(captor.capture());
         assertEquals("guest@gmail.com", captor.getValue().getCandidateInviteEmail());
+    }
+
+    @Test
+    void createInterviewRequest_blocksWhenGoogleCalendarConflictExists() {
+        LocalDateTime start = LocalDateTime.of(2026, 7, 10, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 7, 10, 11, 0);
+
+        User interviewer = User.builder().id(5L).firstName("Alex").lastName("Interviewer").email("interviewer@company.com").build();
+        AvailabilitySlot slot = AvailabilitySlot.builder()
+                .id(10L)
+                .status(SlotStatus.AVAILABLE)
+                .startDateTime(start)
+                .endDateTime(end)
+                .interviewer(interviewer)
+                .isActive(true)
+                .build();
+
+        when(availabilitySlotRepository.findById(10L)).thenReturn(Optional.of(slot));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(interviewer));
+        when(calendarSyncService.listExternalGoogleCalendarEvents(eq(interviewer), eq(start), eq(end)))
+                .thenReturn(List.of(new GoogleCalendarExternalEventDto(
+                        "evt-1",
+                        "Team standup",
+                        start.plusMinutes(15),
+                        end.minusMinutes(15),
+                        false,
+                        true,
+                        "Work Calendar"
+                )));
+
+        CreateInterviewRequestDto dto = new CreateInterviewRequestDto(
+                null,
+                "Jane Doe",
+                null,
+                null,
+                List.of(),
+                10L,
+                start,
+                end,
+                false,
+                null,
+                "TECHNICAL",
+                null,
+                null
+        );
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> interviewRequestService.createInterviewRequest(User.builder().id(99L).build(), dto));
+        assertEquals(true, ex.getMessage().contains("Google Calendar conflict"));
+        assertEquals(true, ex.getMessage().contains("Team standup"));
     }
 }
