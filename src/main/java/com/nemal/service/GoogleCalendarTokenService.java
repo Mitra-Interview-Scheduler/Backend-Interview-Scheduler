@@ -13,6 +13,8 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.MemoryDataStoreFactory;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.CalendarScopes;
+import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.DriveScopes;
 import com.nemal.entity.User;
 import com.nemal.entity.UserGoogleCalendarCredentials;
 import com.nemal.repository.UserGoogleCalendarCredentialsRepository;
@@ -32,8 +34,15 @@ import java.util.Optional;
 @Service
 public class GoogleCalendarTokenService {
 
-    /** Full calendar access: list subscribed calendars and read/write events on all of them. */
-    public static final List<String> CALENDAR_SCOPES = List.of(CalendarScopes.CALENDAR);
+    /**
+     * Full calendar access (list subscribed calendars, read/write events) plus
+     * {@code drive.file} so the app can upload candidate CVs to the organizer's
+     * Drive and attach them to interview events. {@code drive.file} is limited to
+     * files this app creates — it cannot see the user's other Drive content.
+     */
+    public static final List<String> CALENDAR_SCOPES = List.of(
+            CalendarScopes.CALENDAR,
+            DriveScopes.DRIVE_FILE);
 
     private final UserGoogleCalendarCredentialsRepository credentialsRepository;
     private final TokenEncryptionService tokenEncryptionService;
@@ -59,6 +68,24 @@ public class GoogleCalendarTokenService {
 
     public boolean isConnected(User user) {
         return credentialsRepository.findByUserId(user.getId()).isPresent();
+    }
+
+    /**
+     * Verifies stored tokens can be decrypted and that a refresh token exists.
+     * Status checks only confirm a credentials row exists; listing calendars needs usable tokens.
+     */
+    public void validateStoredTokens(User user) {
+        UserGoogleCalendarCredentials credentials = credentialsRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new IllegalStateException("Google Calendar is not connected"));
+
+        String accessToken = tokenEncryptionService.decrypt(credentials.getEncryptedAccessToken());
+        String refreshToken = tokenEncryptionService.decrypt(credentials.getEncryptedRefreshToken());
+        if (accessToken == null || accessToken.isBlank()) {
+            throw new IllegalStateException("Stored Google access token is missing");
+        }
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new IllegalStateException("Stored Google refresh token is missing");
+        }
     }
 
     public Optional<UserGoogleCalendarCredentials> findCredentials(User user) {
@@ -160,6 +187,29 @@ public class GoogleCalendarTokenService {
         return new Calendar.Builder(transport, GsonFactory.getDefaultInstance(), credential)
                 .setApplicationName("Mitra Interview Scheduler")
                 .build();
+    }
+
+    public Drive buildDriveClient(User user) throws IOException, GeneralSecurityException {
+        UserGoogleCalendarCredentials credentials = credentialsRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new IllegalStateException("Google Calendar is not connected for user " + user.getId()));
+
+        Credential credential = buildCredential(credentials);
+        NetHttpTransport transport = GoogleNetHttpTransport.newTrustedTransport();
+        return new Drive.Builder(transport, GsonFactory.getDefaultInstance(), credential)
+                .setApplicationName("Mitra Interview Scheduler")
+                .build();
+    }
+
+    /**
+     * Whether the user's stored Google grant includes the Drive scope. Users who
+     * connected before Drive support was added won't have it until they reconnect,
+     * so callers can skip a doomed upload attempt and fall back to a description link.
+     */
+    public boolean hasDriveAccess(User user) {
+        return findCredentials(user)
+                .map(UserGoogleCalendarCredentials::getScopes)
+                .filter(scopes -> scopes != null && scopes.contains(DriveScopes.DRIVE_FILE))
+                .isPresent();
     }
 
     public GoogleAuthorizationCodeFlow buildAuthorizationFlow() throws IOException, GeneralSecurityException {

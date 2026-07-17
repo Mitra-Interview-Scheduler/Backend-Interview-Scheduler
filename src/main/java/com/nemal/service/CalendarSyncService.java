@@ -6,6 +6,7 @@ import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.entity.*;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.InterviewPanelRepository;
 import com.nemal.repository.InterviewScheduleRepository;
@@ -38,6 +39,7 @@ public class CalendarSyncService {
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final InterviewPanelRepository interviewPanelRepository;
     private final CandidateRepository candidateRepository;
+    private final CalendarAttachmentSyncService calendarAttachmentSyncService;
     private final boolean calendarRequired;
 
     public CalendarSyncService(
@@ -48,6 +50,10 @@ public class CalendarSyncService {
             InterviewScheduleRepository interviewScheduleRepository,
             InterviewPanelRepository interviewPanelRepository,
             CandidateRepository candidateRepository,
+            CandidateDocumentRepository candidateDocumentRepository,
+            GoogleDriveService driveService,
+            CalendarAttachmentSyncService calendarAttachmentSyncService,
+            @Value("${app.frontend.url:}") String frontendUrl,
             @Value("${google.calendar.required:false}") boolean calendarRequired) {
         this.eventService = eventService;
         this.tokenService = tokenService;
@@ -56,6 +62,7 @@ public class CalendarSyncService {
         this.interviewScheduleRepository = interviewScheduleRepository;
         this.interviewPanelRepository = interviewPanelRepository;
         this.candidateRepository = candidateRepository;
+        this.calendarAttachmentSyncService = calendarAttachmentSyncService;
         this.calendarRequired = calendarRequired;
     }
 
@@ -251,6 +258,129 @@ public class CalendarSyncService {
         }
     }
 
+    /** Links + Drive-backed attachments used to enrich an interview event for a candidate. */
+    private record EventEnrichment(
+            List<GoogleCalendarEventService.ResourceLink> links,
+            List<com.google.api.services.calendar.model.EventAttachment> attachments) {}
+
+    /**
+     * Fast path for event creation: JD / resume / resource links (and existing Drive URLs
+     * as attachments). Candidate document files are uploaded to Drive in the background
+     * after the Meet event exists — see {@link CalendarAttachmentSyncService}.
+     */
+    private EventEnrichment buildCandidateEnrichment(Candidate candidate, User organizer) {
+        List<GoogleCalendarEventService.ResourceLink> links = new ArrayList<>();
+        List<com.google.api.services.calendar.model.EventAttachment> attachments = new ArrayList<>();
+        if (candidate == null) {
+            return new EventEnrichment(links, attachments);
+        }
+
+        addLink(links, "Job description", candidate.getJdUrl());
+        addLink(links, "Resume", candidate.getResumeUrl());
+        addCandidateResourceLinks(links, attachments, candidate.getResourceLink());
+        return new EventEnrichment(links, attachments);
+    }
+
+    private void queueDocumentAttachmentSync(User organizer, Candidate candidate, String eventId) {
+        if (organizer == null || organizer.getId() == null
+                || candidate == null || candidate.getId() == null
+                || eventId == null || eventId.isBlank()) {
+            return;
+        }
+        try {
+            calendarAttachmentSyncService.syncCandidateDocumentsToEvent(
+                    organizer.getId(), candidate.getId(), eventId);
+        } catch (Exception e) {
+            logger.warn("Failed to queue Drive attachment sync for event {}: {}", eventId, e.getMessage());
+        }
+    }
+
+    /**
+     * resourceLink may be a plain URL or a JSON array:
+     * [{"url":"https://...","tag":"CV"}, ...]
+     */
+    private void addCandidateResourceLinks(
+            List<GoogleCalendarEventService.ResourceLink> links,
+            List<com.google.api.services.calendar.model.EventAttachment> attachments,
+            String resourceLinkRaw) {
+        if (resourceLinkRaw == null || resourceLinkRaw.isBlank()) {
+            return;
+        }
+        String trimmed = resourceLinkRaw.trim();
+        if (trimmed.startsWith("[")) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode arr =
+                        new com.fasterxml.jackson.databind.ObjectMapper().readTree(trimmed);
+                if (!arr.isArray()) {
+                    return;
+                }
+                for (com.fasterxml.jackson.databind.JsonNode item : arr) {
+                    if (item == null || !item.isObject()) {
+                        continue;
+                    }
+                    String url = item.path("url").asText(null);
+                    String tag = item.path("tag").asText("Resource");
+                    if (tag == null || tag.isBlank()) {
+                        tag = "Resource";
+                    }
+                    addLink(links, tag, url);
+                    tryAttachDriveUrl(attachments, tag, url);
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to parse candidate resourceLink JSON: {}", e.getMessage());
+            }
+            return;
+        }
+        addLink(links, "Resource link", trimmed);
+        tryAttachDriveUrl(attachments, "Resource link", trimmed);
+    }
+
+    private void tryAttachDriveUrl(
+            List<com.google.api.services.calendar.model.EventAttachment> attachments,
+            String title,
+            String url) {
+        String fileId = extractGoogleDriveFileId(url);
+        if (fileId == null) {
+            return;
+        }
+        attachments.add(eventService.buildDriveAttachment(
+                fileId,
+                url.trim(),
+                "application/vnd.google-apps.file",
+                title));
+    }
+
+    private String extractGoogleDriveFileId(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        java.util.regex.Matcher fileMatcher = java.util.regex.Pattern
+                .compile("/(?:file|document|spreadsheets|presentation)/d/([a-zA-Z0-9_-]+)")
+                .matcher(trimmed);
+        if (fileMatcher.find()) {
+            return fileMatcher.group(1);
+        }
+        java.util.regex.Matcher openMatcher = java.util.regex.Pattern
+                .compile("[?&]id=([a-zA-Z0-9_-]+)")
+                .matcher(trimmed);
+        if (openMatcher.find() && trimmed.contains("drive.google.com")) {
+            return openMatcher.group(1);
+        }
+        return null;
+    }
+
+    private void addLink(List<GoogleCalendarEventService.ResourceLink> links, String label, String url) {
+        if (url == null) {
+            return;
+        }
+        String trimmed = url.trim();
+        // Only linkify real URLs — some fields (e.g. jdUrl) may hold free text.
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            links.add(new GoogleCalendarEventService.ResourceLink(label, trimmed));
+        }
+    }
+
     @Transactional
     public void afterSingleInterviewBooked(
             AvailabilitySlot originalSlot,
@@ -271,7 +401,9 @@ public class CalendarSyncService {
         try {
             boolean partialBooking = !originalSlot.getId().equals(bookedSlot.getId());
             List<String> attendees = buildInterviewAttendees(request, organizer);
-            String title = "Interview: " + request.getCandidateName();
+            String title = buildInterviewEventTitle("Interview", request.getCandidateName(), request, candidate);
+            String targetDesignation = resolveCandidatePosition(request, candidate);
+            EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
             logger.info("Booking Google Calendar interview for request {} with organizer {} and {} guest(s)",
                     request.getId(), organizer.getId(), attendees.size());
 
@@ -294,13 +426,17 @@ public class CalendarSyncService {
                         bookedSlot.getEndDateTime(),
                         title,
                         attendees,
-                        true);
+                        true,
+                        enrichment.links(),
+                        enrichment.attachments(),
+                        targetDesignation);
 
                 bookedSlot.setGoogleCalendarEventId(result.eventId());
                 availabilitySlotRepository.save(bookedSlot);
                 schedule.setGoogleCalendarEventId(result.eventId());
                 schedule.setMeetingLink(result.meetingLink());
                 interviewScheduleRepository.save(schedule);
+                queueDocumentAttachmentSync(organizer, candidate, result.eventId());
                 return;
             }
 
@@ -314,11 +450,15 @@ public class CalendarSyncService {
                     bookedSlot.getEndDateTime(),
                     title,
                     attendees,
-                    true);
+                    true,
+                    enrichment.links(),
+                    enrichment.attachments(),
+                    targetDesignation);
 
             schedule.setGoogleCalendarEventId(result.eventId());
             schedule.setMeetingLink(result.meetingLink());
             interviewScheduleRepository.save(schedule);
+            queueDocumentAttachmentSync(organizer, candidate, result.eventId());
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar interview for request {}: {}", request.getId(), e.getMessage());
         }
@@ -420,8 +560,16 @@ public class CalendarSyncService {
         }
 
         try {
-            String title = "Panel Interview: " + panelForSync.getCandidateName();
+            String title = buildInterviewEventTitle(
+                    "Panel Interview",
+                    panelForSync.getCandidateName(),
+                    requests != null && !requests.isEmpty() ? requests.get(0) : null,
+                    candidate);
+            String targetDesignation = resolveCandidatePosition(
+                    requests != null && !requests.isEmpty() ? requests.get(0) : null,
+                    candidate);
             List<String> attendees = buildPanelAttendees(requests, panelForSync, organizer);
+            EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
             logger.info(
                     "Creating panel Google Calendar event for panel {} with organizer {} and {} guest(s)",
                     panel.getId(),
@@ -445,7 +593,10 @@ public class CalendarSyncService {
                         panelForSync.getStartDateTime(),
                         panelForSync.getEndDateTime(),
                         title,
-                        attendees);
+                        attendees,
+                        enrichment.links(),
+                        enrichment.attachments(),
+                        targetDesignation);
 
                 panel.setGoogleCalendarEventId(result.eventId());
                 panel.setMeetingLink(result.meetingLink());
@@ -464,6 +615,7 @@ public class CalendarSyncService {
                         }
                     });
                 }
+                queueDocumentAttachmentSync(organizer, candidate, result.eventId());
                 return;
             }
 
@@ -482,7 +634,10 @@ public class CalendarSyncService {
                     panelForSync.getStartDateTime(),
                     panelForSync.getEndDateTime(),
                     title,
-                    attendees);
+                    attendees,
+                    enrichment.links(),
+                    enrichment.attachments(),
+                    targetDesignation);
 
             panel.setGoogleCalendarEventId(result.eventId());
             panel.setMeetingLink(result.meetingLink());
@@ -495,6 +650,7 @@ public class CalendarSyncService {
                     interviewScheduleRepository.save(schedule);
                 });
             }
+            queueDocumentAttachmentSync(organizer, candidate, result.eventId());
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar panel {}: {}", panel.getId(), e.getMessage());
         }
@@ -665,6 +821,39 @@ public class CalendarSyncService {
             return null;
         }
         return candidateRepository.findByIdWithCoordinatedHr(candidate.getId()).orElse(candidate);
+    }
+
+    /**
+     * Google Calendar subject, e.g. "Interview - Senior Software Engineer - Jane Doe".
+     * Prefers the designation chosen on the interview request, then the candidate's target role.
+     */
+    private String buildInterviewEventTitle(
+            String prefix,
+            String candidateName,
+            InterviewRequest request,
+            Candidate candidate) {
+        String name = candidateName != null && !candidateName.isBlank()
+                ? candidateName.trim()
+                : "Candidate";
+        String position = resolveCandidatePosition(request, candidate);
+        if (position == null || position.isBlank()) {
+            return prefix + " - " + name;
+        }
+        return prefix + " - " + position + " - " + name;
+    }
+
+    private String resolveCandidatePosition(InterviewRequest request, Candidate candidate) {
+        if (request != null && request.getCandidateDesignation() != null
+                && request.getCandidateDesignation().getName() != null
+                && !request.getCandidateDesignation().getName().isBlank()) {
+            return request.getCandidateDesignation().getName().trim();
+        }
+        if (candidate != null && candidate.getTargetDesignation() != null
+                && candidate.getTargetDesignation().getName() != null
+                && !candidate.getTargetDesignation().getName().isBlank()) {
+            return candidate.getTargetDesignation().getName().trim();
+        }
+        return null;
     }
 
     private void syncInterviewerBusyBlock(

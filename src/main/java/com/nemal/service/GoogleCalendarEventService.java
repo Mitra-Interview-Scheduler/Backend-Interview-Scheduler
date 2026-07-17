@@ -45,9 +45,22 @@ public class GoogleCalendarEventService {
 
     public record ListedCalendarEvent(Event event, String calendarName) {}
 
+    /** A labelled URL rendered into the interview event description (JD, resume, resource link, CV fallback). */
+    public record ResourceLink(String label, String url) {}
+
+    /** Builds a Google Calendar attachment from a Drive file (the only attachment type Calendar supports). */
+    public EventAttachment buildDriveAttachment(String fileId, String fileUrl, String mimeType, String title) {
+        EventAttachment attachment = new EventAttachment();
+        attachment.setFileId(fileId);
+        attachment.setFileUrl(fileUrl);
+        attachment.setMimeType(mimeType);
+        attachment.setTitle(title);
+        return attachment;
+    }
+
     public List<GoogleCalendarListItemDto> listCalendarsForUser(User interviewer) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        List<CalendarListEntry> entries = listAllCalendarEntries(calendar, true);
+        List<CalendarListEntry> entries = listAllCalendarEntries(calendar, false);
         Set<String> savedSelection = tokenService.findSelectedCalendarIds(interviewer)
                 .map(HashSet::new)
                 .orElse(null);
@@ -351,9 +364,29 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String title,
             List<String> attendeeEmails,
-            boolean createNewIfMissing) throws Exception {
+            boolean createNewIfMissing,
+            List<ResourceLink> links,
+            List<EventAttachment> attachments) throws Exception {
+        return bookInterviewEvent(
+                interviewer, eventId, timeZone, start, end, title, attendeeEmails,
+                createNewIfMissing, links, attachments, null);
+    }
+
+    public CalendarEventResult bookInterviewEvent(
+            User interviewer,
+            String eventId,
+            String timeZone,
+            LocalDateTime start,
+            LocalDateTime end,
+            String title,
+            List<String> attendeeEmails,
+            boolean createNewIfMissing,
+            List<ResourceLink> links,
+            List<EventAttachment> attachments,
+            String targetDesignation) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        Event interviewEvent = buildInterviewEvent(timeZone, start, end, title, attendeeEmails);
+        Event interviewEvent = buildInterviewEvent(
+                timeZone, start, end, title, attendeeEmails, links, attachments, targetDesignation);
 
         Event result;
         if (eventId != null && !eventId.isBlank()) {
@@ -364,6 +397,7 @@ public class GoogleCalendarEventService {
                 result = calendar.events()
                         .update("primary", eventId, interviewEvent)
                         .setConferenceDataVersion(1)
+                        .setSupportsAttachments(true)
                         .setSendUpdates("all")
                         .execute();
             } catch (Exception e) {
@@ -375,6 +409,7 @@ public class GoogleCalendarEventService {
                 result = calendar.events()
                         .insert("primary", interviewEvent)
                         .setConferenceDataVersion(1)
+                        .setSupportsAttachments(true)
                         .setSendUpdates("all")
                         .execute();
             }
@@ -382,6 +417,7 @@ public class GoogleCalendarEventService {
             result = calendar.events()
                     .insert("primary", interviewEvent)
                     .setConferenceDataVersion(1)
+                    .setSupportsAttachments(true)
                     .setSendUpdates("all")
                     .execute();
         }
@@ -407,15 +443,115 @@ public class GoogleCalendarEventService {
             LocalDateTime start,
             LocalDateTime end,
             String title,
-            List<String> attendeeEmails) throws Exception {
+            List<String> attendeeEmails,
+            List<ResourceLink> links,
+            List<EventAttachment> attachments) throws Exception {
+        return createPanelInterviewEvent(
+                organizer, timeZone, start, end, title, attendeeEmails, links, attachments, null);
+    }
+
+    public CalendarEventResult createPanelInterviewEvent(
+            User organizer,
+            String timeZone,
+            LocalDateTime start,
+            LocalDateTime end,
+            String title,
+            List<String> attendeeEmails,
+            List<ResourceLink> links,
+            List<EventAttachment> attachments,
+            String targetDesignation) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(organizer);
-        Event event = buildInterviewEvent(timeZone, start, end, title, attendeeEmails);
+        Event event = buildInterviewEvent(
+                timeZone, start, end, title, attendeeEmails, links, attachments, targetDesignation);
         Event created = calendar.events()
                 .insert("primary", event)
                 .setConferenceDataVersion(1)
+                .setSupportsAttachments(true)
                 .setSendUpdates("all")
                 .execute();
         return new CalendarEventResult(created.getId(), extractMeetLink(created));
+    }
+
+    /**
+     * Background enrichment: attach Drive files and append resource links to an existing
+     * interview event without re-notifying guests.
+     */
+    public void enrichEventWithAttachments(
+            User organizer,
+            String eventId,
+            List<ResourceLink> additionalLinks,
+            List<EventAttachment> additionalAttachments) throws Exception {
+        if (organizer == null || eventId == null || eventId.isBlank()) {
+            return;
+        }
+        boolean hasLinks = additionalLinks != null && !additionalLinks.isEmpty();
+        boolean hasAttachments = additionalAttachments != null && !additionalAttachments.isEmpty();
+        if (!hasLinks && !hasAttachments) {
+            return;
+        }
+
+        Calendar calendar = tokenService.buildCalendarClient(organizer);
+        Event existing = calendar.events()
+                .get("primary", eventId)
+                .setFields("id,description,attachments")
+                .execute();
+
+        Event patch = new Event();
+
+        if (hasAttachments) {
+            List<EventAttachment> merged = new ArrayList<>();
+            if (existing.getAttachments() != null) {
+                merged.addAll(existing.getAttachments());
+            }
+            Set<String> existingFileIds = merged.stream()
+                    .map(EventAttachment::getFileId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .collect(Collectors.toSet());
+            for (EventAttachment attachment : additionalAttachments) {
+                if (attachment == null) {
+                    continue;
+                }
+                String fileId = attachment.getFileId();
+                if (fileId != null && !fileId.isBlank() && existingFileIds.contains(fileId)) {
+                    continue;
+                }
+                merged.add(attachment);
+                if (fileId != null && !fileId.isBlank()) {
+                    existingFileIds.add(fileId);
+                }
+            }
+            patch.setAttachments(merged);
+        }
+
+        if (hasLinks) {
+            String description = existing.getDescription() != null && !existing.getDescription().isBlank()
+                    ? existing.getDescription()
+                    : "Interview scheduled via Mitra Interview Scheduler";
+            StringBuilder sb = new StringBuilder(description);
+            boolean hasResourcesHeader = description.contains("Candidate resources:");
+            for (ResourceLink link : additionalLinks) {
+                if (link == null || link.url() == null || link.url().isBlank()) {
+                    continue;
+                }
+                String url = link.url().trim();
+                if (description.contains(url) || sb.toString().contains(url)) {
+                    continue;
+                }
+                if (!hasResourcesHeader) {
+                    sb.append("\n\nCandidate resources:");
+                    hasResourcesHeader = true;
+                }
+                String label = (link.label() != null && !link.label().isBlank()) ? link.label() : "Link";
+                sb.append("\n• ").append(label).append(": ").append(url);
+            }
+            patch.setDescription(sb.toString());
+        }
+
+        calendar.events()
+                .patch("primary", eventId, patch)
+                .setSupportsAttachments(true)
+                .setSendUpdates("none")
+                .execute();
     }
 
     public CalendarEventResult revertToAvailabilityEvent(
@@ -519,15 +655,22 @@ public class GoogleCalendarEventService {
             LocalDateTime start,
             LocalDateTime end,
             String title,
-            List<String> attendeeEmails) {
+            List<String> attendeeEmails,
+            List<ResourceLink> links,
+            List<EventAttachment> attachments,
+            String targetDesignation) {
         Event event = new Event();
         event.setSummary(title);
-        event.setDescription("Interview scheduled via Mitra Interview Scheduler");
+        event.setDescription(buildInterviewDescription(links, targetDesignation));
         event.setTransparency("opaque");
         event.setVisibility("private");
         event.setGuestsCanSeeOtherGuests(false);
         event.setStart(toEventDateTime(start, timeZone));
         event.setEnd(toEventDateTime(end, timeZone));
+
+        if (attachments != null && !attachments.isEmpty()) {
+            event.setAttachments(attachments);
+        }
 
         List<EventAttendee> attendees = new ArrayList<>();
         for (String email : attendeeEmails) {
@@ -548,6 +691,26 @@ public class GoogleCalendarEventService {
         conferenceData.setCreateRequest(createConferenceRequest);
         event.setConferenceData(conferenceData);
         return event;
+    }
+
+    private String buildInterviewDescription(List<ResourceLink> links, String targetDesignation) {
+        StringBuilder sb = new StringBuilder("Interview scheduled via Mitra Interview Scheduler");
+        if (targetDesignation != null && !targetDesignation.isBlank()) {
+            sb.append("\n\nTarget designation: ").append(targetDesignation.trim());
+        }
+        if (links != null) {
+            List<ResourceLink> valid = links.stream()
+                    .filter(l -> l != null && l.url() != null && !l.url().isBlank())
+                    .toList();
+            if (!valid.isEmpty()) {
+                sb.append("\n\nCandidate resources:");
+                for (ResourceLink link : valid) {
+                    String label = (link.label() != null && !link.label().isBlank()) ? link.label() : "Link";
+                    sb.append("\n• ").append(label).append(": ").append(link.url().trim());
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private EventDateTime toEventDateTime(LocalDateTime dateTime, String timeZone) {
