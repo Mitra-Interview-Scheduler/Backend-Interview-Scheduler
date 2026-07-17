@@ -23,16 +23,19 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final EmailNotificationService emailNotificationService;
     private final int retentionDays;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM dd, yyyy 'at' h:mm a");
 
     public NotificationService(
             NotificationRepository notificationRepository,
             SimpMessagingTemplate messagingTemplate,
+            EmailNotificationService emailNotificationService,
             @Value("${notification.retention.days:15}") int retentionDays
     ) {
         this.notificationRepository = notificationRepository;
         this.messagingTemplate = messagingTemplate;
+        this.emailNotificationService = emailNotificationService;
         this.retentionDays = Math.max(1, retentionDays);
     }
 
@@ -406,6 +409,13 @@ public class NotificationService {
                 saved.getRecipient().getEmail(),
                 "/queue/notifications",
                 dto
+        );
+        emailNotificationService.notifyAsync(
+                saved.getRecipient().getId(),
+                saved.getRecipient().getEmail(),
+                saved.getRecipient().getFullName(),
+                saved.getSubject(),
+                saved.getMessage()
         );
     }
 }

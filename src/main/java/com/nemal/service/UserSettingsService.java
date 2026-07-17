@@ -46,6 +46,9 @@ public class UserSettingsService {
         if (dto.preferredTimeFormat() != null && !dto.preferredTimeFormat().isBlank()) {
             settings.setPreferredTimeFormat(validateTimeFormat(dto.preferredTimeFormat()));
         }
+        if (dto.emailNotificationsEnabled() != null) {
+            settings.setEmailNotificationsEnabled(dto.emailNotificationsEnabled());
+        }
 
         return UserSettingsDto.from(userSettingsRepository.save(settings));
     }
@@ -93,6 +96,7 @@ public class UserSettingsService {
                 .preferredDateFormat(UserSettings.DEFAULT_DATE_FORMAT)
                 .preferredTimeFormat(UserSettings.DEFAULT_TIME_FORMAT)
                 .timezoneCaptured(browserTimezone != null && !browserTimezone.isBlank())
+                .emailNotificationsEnabled(true)
                 .build();
 
         settings = userSettingsRepository.save(settings);

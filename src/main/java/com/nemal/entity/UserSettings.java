@@ -42,6 +42,10 @@ public class UserSettings {
     @Column(name = "timezone_captured", nullable = false)
     @Builder.Default
     private boolean timezoneCaptured = false;
+
+    @Column(name = "email_notifications_enabled", nullable = false)
+    @Builder.Default
+    private boolean emailNotificationsEnabled = true;
 }
 
 
