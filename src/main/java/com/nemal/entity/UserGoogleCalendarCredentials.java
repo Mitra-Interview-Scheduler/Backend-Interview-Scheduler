@@ -49,6 +49,14 @@ public class UserGoogleCalendarCredentials {
     @Column(name = "selected_calendar_ids", columnDefinition = "TEXT")
     private String selectedCalendarIds;
 
+    /**
+     * ID of the dedicated "Interview Scheduler" secondary calendar in the user's
+     * Google account where Mitra writes its events. Null until first resolved
+     * (created or found by name) lazily.
+     */
+    @Column(name = "app_calendar_id", length = 255)
+    private String appCalendarId;
+
     @CreatedDate
     @Column(name = "connected_at", nullable = false, updatable = false)
     private LocalDateTime connectedAt;

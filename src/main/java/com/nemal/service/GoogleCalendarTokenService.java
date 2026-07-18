@@ -13,9 +13,12 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.MemoryDataStoreFactory;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.CalendarScopes;
+import com.google.api.services.calendar.model.CalendarListEntry;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.nemal.entity.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.nemal.entity.UserGoogleCalendarCredentials;
 import com.nemal.repository.UserGoogleCalendarCredentialsRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +36,11 @@ import java.util.Optional;
 
 @Service
 public class GoogleCalendarTokenService {
+
+    private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarTokenService.class);
+
+    /** Name of the dedicated secondary calendar Mitra creates in each user's Google account. */
+    public static final String APP_CALENDAR_NAME = "Interview Scheduler";
 
     /**
      * Full calendar access (list subscribed calendars, read/write events) plus
@@ -210,6 +218,78 @@ public class GoogleCalendarTokenService {
                 .map(UserGoogleCalendarCredentials::getScopes)
                 .filter(scopes -> scopes != null && scopes.contains(DriveScopes.DRIVE_FILE))
                 .isPresent();
+    }
+
+    /**
+     * Resolves the ID of the user's dedicated "Interview Scheduler" calendar, where
+     * Mitra writes all its events. Uses the stored ID if present; otherwise finds an
+     * existing calendar by name (e.g. after a reconnect) or creates a new secondary
+     * calendar, persisting the result. Falls back to {@code "primary"} on any failure
+     * so scheduling always succeeds.
+     */
+    @Transactional
+    public String resolveAppCalendarId(User user) {
+        UserGoogleCalendarCredentials credentials = credentialsRepository.findByUserId(user.getId())
+                .orElse(null);
+        if (credentials == null) {
+            return "primary";
+        }
+        if (credentials.getAppCalendarId() != null && !credentials.getAppCalendarId().isBlank()) {
+            return credentials.getAppCalendarId();
+        }
+
+        try {
+            Calendar client = buildCalendarClient(user);
+            String calendarId = findAppCalendarBySummary(client);
+            if (calendarId == null) {
+                calendarId = createAppCalendar(client);
+            }
+            credentials.setAppCalendarId(calendarId);
+            credentialsRepository.save(credentials);
+            return calendarId;
+        } catch (Exception e) {
+            logger.warn("Failed to resolve dedicated Interview Scheduler calendar for user {}; using primary: {}",
+                    user.getId(), e.getMessage());
+            return "primary";
+        }
+    }
+
+    /**
+     * Clears the stored app-calendar ID so the next {@link #resolveAppCalendarId} re-creates
+     * or re-discovers it. Called when an operation finds the stored calendar was deleted.
+     */
+    @Transactional
+    public void resetAppCalendarId(User user) {
+        credentialsRepository.findByUserId(user.getId()).ifPresent(credentials -> {
+            credentials.setAppCalendarId(null);
+            credentialsRepository.save(credentials);
+        });
+    }
+
+    private String findAppCalendarBySummary(Calendar client) throws IOException {
+        List<CalendarListEntry> entries = client.calendarList().list().execute().getItems();
+        if (entries == null) {
+            return null;
+        }
+        return entries.stream()
+                .filter(entry -> APP_CALENDAR_NAME.equals(entry.getSummary())
+                        || APP_CALENDAR_NAME.equals(entry.getSummaryOverride()))
+                .filter(entry -> entry.getAccessRole() == null || "owner".equals(entry.getAccessRole()))
+                .map(CalendarListEntry::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String createAppCalendar(Calendar client) throws IOException {
+        com.google.api.services.calendar.model.Calendar newCalendar =
+                new com.google.api.services.calendar.model.Calendar();
+        newCalendar.setSummary(APP_CALENDAR_NAME);
+        newCalendar.setDescription("Interview events created by Mitra Interview Scheduler.");
+        com.google.api.services.calendar.model.Calendar created =
+                client.calendars().insert(newCalendar).execute();
+        logger.info("Created dedicated '{}' Google Calendar {}", APP_CALENDAR_NAME, created.getId());
+        return created.getId();
     }
 
     public GoogleAuthorizationCodeFlow buildAuthorizationFlow() throws IOException, GeneralSecurityException {

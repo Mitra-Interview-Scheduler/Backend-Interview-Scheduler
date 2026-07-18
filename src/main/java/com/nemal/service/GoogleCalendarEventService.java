@@ -108,9 +108,10 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String description) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        String calendarId = tokenService.resolveAppCalendarId(interviewer);
         Event event = baseAvailabilityEvent(timeZone, start, end, description);
         Event created = calendar.events()
-                .insert("primary", event)
+                .insert(calendarId, event)
                 .execute();
         return new CalendarEventResult(created.getId(), extractMeetLink(created));
     }
@@ -123,9 +124,10 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String description) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        String calendarId = tokenService.resolveAppCalendarId(interviewer);
         Event event = baseAvailabilityEvent(timeZone, start, end, description);
         Event updated = calendar.events()
-                .patch("primary", eventId, event)
+                .patch(calendarId, eventId, event)
                 .execute();
         return new CalendarEventResult(updated.getId(), extractMeetLink(updated));
     }
@@ -139,7 +141,8 @@ public class GoogleCalendarEventService {
             return;
         }
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
-        var deleteRequest = calendar.events().delete("primary", eventId);
+        String calendarId = tokenService.resolveAppCalendarId(interviewer);
+        var deleteRequest = calendar.events().delete(calendarId, eventId);
         if (notifyGuests) {
             deleteRequest.setSendUpdates("all");
         }
@@ -385,17 +388,18 @@ public class GoogleCalendarEventService {
             List<EventAttachment> attachments,
             String targetDesignation) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        String calendarId = tokenService.resolveAppCalendarId(interviewer);
         Event interviewEvent = buildInterviewEvent(
                 timeZone, start, end, title, attendeeEmails, links, attachments, targetDesignation);
 
         Event result;
         if (eventId != null && !eventId.isBlank()) {
             try {
-                Event existing = calendar.events().get("primary", eventId).execute();
+                Event existing = calendar.events().get(calendarId, eventId).execute();
                 interviewEvent.setId(eventId);
                 interviewEvent.setSequence(existing.getSequence());
                 result = calendar.events()
-                        .update("primary", eventId, interviewEvent)
+                        .update(calendarId, eventId, interviewEvent)
                         .setConferenceDataVersion(1)
                         .setSupportsAttachments(true)
                         .setSendUpdates("all")
@@ -407,7 +411,7 @@ public class GoogleCalendarEventService {
                 logger.warn("Failed to update event {} with interview guests, creating new event: {}",
                         eventId, e.getMessage());
                 result = calendar.events()
-                        .insert("primary", interviewEvent)
+                        .insert(calendarId, interviewEvent)
                         .setConferenceDataVersion(1)
                         .setSupportsAttachments(true)
                         .setSendUpdates("all")
@@ -415,7 +419,7 @@ public class GoogleCalendarEventService {
             }
         } else {
             result = calendar.events()
-                    .insert("primary", interviewEvent)
+                    .insert(calendarId, interviewEvent)
                     .setConferenceDataVersion(1)
                     .setSupportsAttachments(true)
                     .setSendUpdates("all")
@@ -432,8 +436,9 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String description) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(calendarOwner);
+        String calendarId = tokenService.resolveAppCalendarId(calendarOwner);
         Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
-        Event created = calendar.events().insert("primary", busyEvent).execute();
+        Event created = calendar.events().insert(calendarId, busyEvent).execute();
         return new CalendarEventResult(created.getId(), null);
     }
 
@@ -461,10 +466,11 @@ public class GoogleCalendarEventService {
             List<EventAttachment> attachments,
             String targetDesignation) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(organizer);
+        String calendarId = tokenService.resolveAppCalendarId(organizer);
         Event event = buildInterviewEvent(
                 timeZone, start, end, title, attendeeEmails, links, attachments, targetDesignation);
         Event created = calendar.events()
-                .insert("primary", event)
+                .insert(calendarId, event)
                 .setConferenceDataVersion(1)
                 .setSupportsAttachments(true)
                 .setSendUpdates("all")
@@ -491,8 +497,9 @@ public class GoogleCalendarEventService {
         }
 
         Calendar calendar = tokenService.buildCalendarClient(organizer);
+        String calendarId = tokenService.resolveAppCalendarId(organizer);
         Event existing = calendar.events()
-                .get("primary", eventId)
+                .get(calendarId, eventId)
                 .setFields("id,description,attachments")
                 .execute();
 
@@ -548,7 +555,7 @@ public class GoogleCalendarEventService {
         }
 
         calendar.events()
-                .patch("primary", eventId, patch)
+                .patch(calendarId, eventId, patch)
                 .setSupportsAttachments(true)
                 .setSendUpdates("none")
                 .execute();
@@ -562,10 +569,11 @@ public class GoogleCalendarEventService {
             LocalDateTime end,
             String description) throws Exception {
         Calendar calendar = tokenService.buildCalendarClient(interviewer);
+        String calendarId = tokenService.resolveAppCalendarId(interviewer);
 
         try {
             calendar.events()
-                    .delete("primary", eventId)
+                    .delete(calendarId, eventId)
                     .setSendUpdates("all")
                     .execute();
             logger.info("Deleted Google Calendar interview event {} and notified guests", eventId);
@@ -574,23 +582,24 @@ public class GoogleCalendarEventService {
                 logger.warn("Failed to delete Google Calendar event {}, falling back to update: {}",
                         eventId, e.getMessage());
                 return revertToBusyBlockViaUpdate(
-                        calendar, eventId, timeZone, start, end, description);
+                        calendar, calendarId, eventId, timeZone, start, end, description);
             }
         }
 
         Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
-        Event created = calendar.events().insert("primary", busyEvent).execute();
+        Event created = calendar.events().insert(calendarId, busyEvent).execute();
         return new CalendarEventResult(created.getId(), null);
     }
 
     private CalendarEventResult revertToBusyBlockViaUpdate(
             Calendar calendar,
+            String calendarId,
             String eventId,
             String timeZone,
             LocalDateTime start,
             LocalDateTime end,
             String description) throws Exception {
-        Event existing = calendar.events().get("primary", eventId).execute();
+        Event existing = calendar.events().get(calendarId, eventId).execute();
 
         Event busyEvent = baseBusyBlockEvent(timeZone, start, end, description);
         busyEvent.setId(eventId);
@@ -601,7 +610,7 @@ public class GoogleCalendarEventService {
         busyEvent.setGuestsCanSeeOtherGuests(null);
 
         Event updated = calendar.events()
-                .update("primary", eventId, busyEvent)
+                .update(calendarId, eventId, busyEvent)
                 .setConferenceDataVersion(1)
                 .setSendUpdates("all")
                 .execute();
