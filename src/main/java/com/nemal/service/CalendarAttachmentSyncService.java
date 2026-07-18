@@ -62,7 +62,6 @@ public class CalendarAttachmentSyncService {
 
             List<GoogleCalendarEventService.ResourceLink> links = new ArrayList<>();
             List<EventAttachment> attachments = new ArrayList<>();
-            boolean anyFallback = false;
 
             List<CandidateDocument> docs = candidateDocumentRepository
                     .findByCandidateIdOrderByCreatedAtDesc(candidateId);
@@ -80,15 +79,14 @@ public class CalendarAttachmentSyncService {
                             uploaded.mimeType(),
                             title));
                     links.add(new GoogleCalendarEventService.ResourceLink(title, uploaded.webViewLink()));
-                } else {
-                    anyFallback = true;
+                } else if (!frontendUrl.isBlank()) {
+                    // Drive attachment unavailable (e.g. organizer hasn't granted the Drive scope yet):
+                    // list the document as a "CV: filename" link so it stays visible in the event / Meet.
+                    // The unique ?documentId keeps each document's link distinct in the description.
+                    links.add(new GoogleCalendarEventService.ResourceLink(
+                            buildDocumentLinkLabel(doc),
+                            frontendUrl + "/hr/candidates/" + candidateId + "/details?documentId=" + doc.getId()));
                 }
-            }
-
-            if (anyFallback && !frontendUrl.isBlank()) {
-                links.add(new GoogleCalendarEventService.ResourceLink(
-                        "Candidate documents (open in Mitra)",
-                        frontendUrl + "/hr/candidates/" + candidateId + "/details"));
             }
 
             if (attachments.isEmpty() && links.isEmpty()) {
@@ -120,5 +118,16 @@ public class CalendarAttachmentSyncService {
                 ? doc.getFileName().trim()
                 : "attachment";
         return type + " - " + name;
+    }
+
+    /** Label for the description fallback link, e.g. "CV: resume.pdf". */
+    private String buildDocumentLinkLabel(CandidateDocument doc) {
+        String type = doc.getDocumentType() != null && !doc.getDocumentType().isBlank()
+                ? doc.getDocumentType().trim()
+                : "CV";
+        String name = doc.getFileName() != null && !doc.getFileName().isBlank()
+                ? doc.getFileName().trim()
+                : "document";
+        return type + ": " + name;
     }
 }
