@@ -118,6 +118,7 @@ class InterviewRequestServiceCalendarValidationTest {
                 null,
                 "TECHNICAL",
                 null,
+                null,
                 null
         );
 
@@ -168,6 +169,7 @@ class InterviewRequestServiceCalendarValidationTest {
                 false,
                 null,
                 "TECHNICAL",
+                null,
                 null,
                 null
         );

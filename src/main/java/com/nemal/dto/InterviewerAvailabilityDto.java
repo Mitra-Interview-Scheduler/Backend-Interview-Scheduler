@@ -44,7 +44,13 @@ public record InterviewerAvailabilityDto(
         String interviewStatus,        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
         String interviewCoordinatorName,
         String coordinatedHrName,
-        String meetingLink
+        String meetingLink,
+        boolean hasPendingPostponeRequest,
+        Long pendingPostponeRequestId,
+        String pendingPostponeReason,
+        LocalDateTime pendingPostponeRequestedAt,
+        LocalDateTime pendingPostponePreferredStart,
+        LocalDateTime pendingPostponePreferredEnd
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
@@ -163,8 +169,61 @@ public record InterviewerAvailabilityDto(
                 interviewStatus,
                 interviewCoordinatorName,
                 coordinatedHrName,
-                meetingLink
+                meetingLink,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null
         );
+    }
+
+    public InterviewerAvailabilityDto withPendingPostpone(
+            Long postponeRequestId,
+            String reason,
+            LocalDateTime requestedAt,
+            LocalDateTime preferredStart,
+            LocalDateTime preferredEnd) {
+        return new InterviewerAvailabilityDto(
+                slotId,
+                interviewerId,
+                interviewerName,
+                department,
+                designation,
+                yearsOfExperience,
+                technologies,
+                coreTechnologies,
+                domains,
+                startDateTime,
+                endDateTime,
+                status,
+                candidateName,
+                requestId,
+                panelId,
+                interviewerTierOrder,
+                interviewerLevelOrder,
+                interviewType,
+                interviewScheduleId,
+                interviewStatus,
+                interviewCoordinatorName,
+                coordinatedHrName,
+                meetingLink,
+                postponeRequestId != null,
+                postponeRequestId,
+                truncateReason(reason),
+                requestedAt,
+                preferredStart,
+                preferredEnd
+        );
+    }
+
+    private static String truncateReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 117) + "...";
     }
 
     private static String resolveMeetingLink(AvailabilitySlot slot) {

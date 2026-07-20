@@ -70,10 +70,12 @@ public class InterviewRequestService {
             throw new RuntimeException("Booking time must be within the slot's available time");
         }
 
-        assertNoSchedulingConflicts(
-                List.of(slot.getInterviewer().getId()),
-                bookingStart,
-                bookingEnd);
+        if (!Boolean.TRUE.equals(dto.acknowledgeCalendarConflict())) {
+            assertNoSchedulingConflicts(
+                    List.of(slot.getInterviewer().getId()),
+                    bookingStart,
+                    bookingEnd);
+        }
 
         Candidate candidate = null;
         if (dto.candidateId() != null) {
@@ -418,12 +420,22 @@ public class InterviewRequestService {
 
     @Transactional
     public void cancelRequest(User user, Long requestId) {
+        cancelRequest(user, requestId, false);
+    }
+
+    /**
+     * Cancels a single-interviewer interview. When {@code forReschedule} is true,
+     * skip cancel notifications and candidate pipeline reset — the caller will
+     * immediately book a replacement interview.
+     */
+    @Transactional
+    public void cancelRequest(User user, Long requestId, boolean forReschedule) {
         boolean isHrOrAdmin = user.getRoles().contains(Role.HR) || user.getRoles().contains(Role.ADMIN);
         if (!isHrOrAdmin) {
             throw new RuntimeException("Only HR or Admin users can cancel interview requests");
         }
 
-        logger.info("HR user {} cancelling request {}", user.getId(), requestId);
+        logger.info("HR user {} cancelling request {} (forReschedule={})", user.getId(), requestId, forReschedule);
 
         InterviewRequest request = interviewRequestRepository.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Request not found: " + requestId));
@@ -434,6 +446,9 @@ public class InterviewRequestService {
 
         // Panel bookings must be cancelled as a unit so every interviewer slot is restored.
         if (request.getPanel() != null) {
+            if (forReschedule) {
+                throw new RuntimeException("Panel interviews cannot be rescheduled via postpone approval");
+            }
             Long panelId = request.getPanel().getId();
             logger.info("Request {} belongs to panel {} — cancelling entire panel", requestId, panelId);
             panelInterviewService.cancelPanelInterview(user, panelId);
@@ -476,6 +491,10 @@ public class InterviewRequestService {
         request.setAvailabilitySlot(null);
         interviewRequestRepository.save(request);
         logger.info("Request {} marked CANCELLED", requestId);
+
+        if (forReschedule) {
+            return;
+        }
 
         // ── Step 4: Notify interviewer ────────────────────────────────────────
         try {

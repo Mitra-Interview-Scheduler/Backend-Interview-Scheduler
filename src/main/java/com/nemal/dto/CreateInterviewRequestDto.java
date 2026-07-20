@@ -23,5 +23,6 @@ public record CreateInterviewRequestDto(
         String notes,
         String interviewType,
         Long interviewCoordinatorId,
-        Long interviewCoordinatorDepartmentId
+        Long interviewCoordinatorDepartmentId,
+        Boolean acknowledgeCalendarConflict
 ) {}

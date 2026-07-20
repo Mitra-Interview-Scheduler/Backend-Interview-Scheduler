@@ -80,7 +80,13 @@ public final class TimeZoneMapper {
                 dto.interviewStatus(),
                 dto.interviewCoordinatorName(),
                 dto.coordinatedHrName(),
-                dto.meetingLink()
+                dto.meetingLink(),
+                dto.hasPendingPostponeRequest(),
+                dto.pendingPostponeRequestId(),
+                dto.pendingPostponeReason(),
+                fromUtc(dto.pendingPostponeRequestedAt(), targetZone),
+                fromUtc(dto.pendingPostponePreferredStart(), targetZone),
+                fromUtc(dto.pendingPostponePreferredEnd(), targetZone)
         );
     }
 
@@ -143,7 +149,40 @@ public final class TimeZoneMapper {
                 dto.notes(),
                 dto.interviewType(),
                 dto.interviewCoordinatorId(),
-                dto.interviewCoordinatorDepartmentId()
+                dto.interviewCoordinatorDepartmentId(),
+                dto.acknowledgeCalendarConflict()
+        );
+    }
+
+    public static CreateInterviewPostponeRequestDto toUtc(CreateInterviewPostponeRequestDto dto, ZoneId sourceZone) {
+        return new CreateInterviewPostponeRequestDto(
+                dto.reason(),
+                toUtc(dto.preferredStartDateTime(), sourceZone),
+                toUtc(dto.preferredEndDateTime(), sourceZone)
+        );
+    }
+
+    public static InterviewPostponeRequestDto fromUtc(InterviewPostponeRequestDto dto, ZoneId targetZone) {
+        return new InterviewPostponeRequestDto(
+                dto.id(),
+                dto.interviewScheduleId(),
+                dto.interviewRequestId(),
+                dto.requestedById(),
+                dto.requestedByName(),
+                dto.reason(),
+                fromUtc(dto.preferredStartDateTime(), targetZone),
+                fromUtc(dto.preferredEndDateTime(), targetZone),
+                dto.status(),
+                dto.reviewedById(),
+                dto.reviewedByName(),
+                dto.reviewNotes(),
+                fromUtc(dto.createdAt(), targetZone),
+                fromUtc(dto.resolvedAt(), targetZone),
+                dto.candidateName(),
+                fromUtc(dto.interviewStartDateTime(), targetZone),
+                fromUtc(dto.interviewEndDateTime(), targetZone),
+                dto.position(),
+                dto.interviewerName()
         );
     }
 
@@ -161,7 +200,8 @@ public final class TimeZoneMapper {
                 dto.notes(),
                 dto.interviewType(),
                 dto.interviewCoordinatorId(),
-                dto.interviewCoordinatorDepartmentId()
+                dto.interviewCoordinatorDepartmentId(),
+                dto.acknowledgeCalendarConflict()
         );
     }
 }

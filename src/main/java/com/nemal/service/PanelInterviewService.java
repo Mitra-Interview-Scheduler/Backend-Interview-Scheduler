@@ -129,10 +129,12 @@ public class PanelInterviewService {
                 .map(slot -> slot.getInterviewer().getId())
                 .distinct()
                 .collect(Collectors.toList());
-        interviewRequestService.assertNoSchedulingConflicts(
-                panelInterviewerIds,
-                dto.startDateTime(),
-                dto.endDateTime());
+        if (!Boolean.TRUE.equals(dto.acknowledgeCalendarConflict())) {
+            interviewRequestService.assertNoSchedulingConflicts(
+                    panelInterviewerIds,
+                    dto.startDateTime(),
+                    dto.endDateTime());
+        }
 
         User interviewCoordinator = resolveInterviewCoordinator(
                 dto.interviewCoordinatorId(),

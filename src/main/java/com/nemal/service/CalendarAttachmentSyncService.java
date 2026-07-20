@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -49,6 +50,16 @@ public class CalendarAttachmentSyncService {
     @Async
     @Transactional(readOnly = true)
     public void syncCandidateDocumentsToEvent(Long organizerUserId, Long candidateId, String eventId) {
+        syncCandidateDocumentsToEvent(organizerUserId, candidateId, eventId, List.of());
+    }
+
+    @Async
+    @Transactional(readOnly = true)
+    public void syncCandidateDocumentsToEvent(
+            Long organizerUserId,
+            Long candidateId,
+            String eventId,
+            Collection<String> shareWithEmails) {
         if (organizerUserId == null || candidateId == null || eventId == null || eventId.isBlank()) {
             return;
         }
@@ -62,6 +73,9 @@ public class CalendarAttachmentSyncService {
 
             List<GoogleCalendarEventService.ResourceLink> links = new ArrayList<>();
             List<EventAttachment> attachments = new ArrayList<>();
+            List<String> shareEmails = shareWithEmails != null
+                    ? List.copyOf(shareWithEmails)
+                    : List.of();
 
             List<CandidateDocument> docs = candidateDocumentRepository
                     .findByCandidateIdOrderByCreatedAtDesc(candidateId);
@@ -71,7 +85,7 @@ public class CalendarAttachmentSyncService {
                 }
                 String title = buildDocumentAttachmentTitle(doc);
                 GoogleDriveService.UploadedFile uploaded = driveService.uploadInterviewAttachment(
-                        organizer, doc.getFileName(), doc.getContentType(), doc.getFileData());
+                        organizer, doc.getFileName(), doc.getContentType(), doc.getFileData(), shareEmails);
                 if (uploaded != null) {
                     attachments.add(eventService.buildDriveAttachment(
                             uploaded.fileId(),

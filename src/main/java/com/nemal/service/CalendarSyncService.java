@@ -281,7 +281,11 @@ public class CalendarSyncService {
         return new EventEnrichment(links, attachments);
     }
 
-    private void queueDocumentAttachmentSync(User organizer, Candidate candidate, String eventId) {
+    private void queueDocumentAttachmentSync(
+            User organizer,
+            Candidate candidate,
+            String eventId,
+            List<String> shareWithEmails) {
         if (organizer == null || organizer.getId() == null
                 || candidate == null || candidate.getId() == null
                 || eventId == null || eventId.isBlank()) {
@@ -289,7 +293,10 @@ public class CalendarSyncService {
         }
         try {
             calendarAttachmentSyncService.syncCandidateDocumentsToEvent(
-                    organizer.getId(), candidate.getId(), eventId);
+                    organizer.getId(),
+                    candidate.getId(),
+                    eventId,
+                    shareWithEmails != null ? shareWithEmails : List.of());
         } catch (Exception e) {
             logger.warn("Failed to queue Drive attachment sync for event {}: {}", eventId, e.getMessage());
         }
@@ -401,11 +408,17 @@ public class CalendarSyncService {
         try {
             boolean partialBooking = !originalSlot.getId().equals(bookedSlot.getId());
             List<String> attendees = buildInterviewAttendees(request, organizer);
+            // When Candidate Coordinator / Coordinated HR owns the Meet event, the
+            // interviewer must still be invited as a guest (not only get a busy block).
+            ensureGuestEmail(attendees, interviewer, organizer);
             String title = buildInterviewEventTitle("Interview", request.getCandidateName(), request, candidate);
             String targetDesignation = resolveCandidatePosition(request, candidate);
             EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
-            logger.info("Booking Google Calendar interview for request {} with organizer {} and {} guest(s)",
-                    request.getId(), organizer.getId(), attendees.size());
+            logger.info(
+                    "Booking Google Calendar interview for request {} with organizer {} and guest(s) {}",
+                    request.getId(),
+                    organizer.getId(),
+                    attendees);
 
             if (isSameUser(organizer, interviewer)) {
                 if (partialBooking) {
@@ -436,7 +449,7 @@ public class CalendarSyncService {
                 schedule.setGoogleCalendarEventId(result.eventId());
                 schedule.setMeetingLink(result.meetingLink());
                 interviewScheduleRepository.save(schedule);
-                queueDocumentAttachmentSync(organizer, candidate, result.eventId());
+                queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
                 return;
             }
 
@@ -458,7 +471,7 @@ public class CalendarSyncService {
             schedule.setGoogleCalendarEventId(result.eventId());
             schedule.setMeetingLink(result.meetingLink());
             interviewScheduleRepository.save(schedule);
-            queueDocumentAttachmentSync(organizer, candidate, result.eventId());
+            queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar interview for request {}: {}", request.getId(), e.getMessage());
         }
@@ -569,12 +582,17 @@ public class CalendarSyncService {
                     requests != null && !requests.isEmpty() ? requests.get(0) : null,
                     candidate);
             List<String> attendees = buildPanelAttendees(requests, panelForSync, organizer);
+            if (bookedSlots != null) {
+                for (AvailabilitySlot bookedSlot : bookedSlots) {
+                    ensureGuestEmail(attendees, bookedSlot.getInterviewer(), organizer);
+                }
+            }
             EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
             logger.info(
-                    "Creating panel Google Calendar event for panel {} with organizer {} and {} guest(s)",
+                    "Creating panel Google Calendar event for panel {} with organizer {} and guest(s) {}",
                     panel.getId(),
                     organizer.getId(),
-                    attendees.size());
+                    attendees);
 
             if (isSameUser(organizer, leadInterviewer)) {
                 for (AvailabilitySlot bookedSlot : bookedSlots) {
@@ -615,7 +633,7 @@ public class CalendarSyncService {
                         }
                     });
                 }
-                queueDocumentAttachmentSync(organizer, candidate, result.eventId());
+                queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
                 return;
             }
 
@@ -650,7 +668,7 @@ public class CalendarSyncService {
                     interviewScheduleRepository.save(schedule);
                 });
             }
-            queueDocumentAttachmentSync(organizer, candidate, result.eventId());
+            queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar panel {}: {}", panel.getId(), e.getMessage());
         }
@@ -742,7 +760,9 @@ public class CalendarSyncService {
                 && !isSameUser(organizer, request.getAssignedInterviewer())) {
             emails.add(request.getAssignedInterviewer().getEmail().trim());
         }
-        if (request.getInterviewCoordinator() != null && request.getInterviewCoordinator().getEmail() != null) {
+        if (request.getInterviewCoordinator() != null
+                && request.getInterviewCoordinator().getEmail() != null
+                && !isSameUser(organizer, request.getInterviewCoordinator())) {
             emails.add(request.getInterviewCoordinator().getEmail().trim());
         }
         if (request.getCandidate() != null
@@ -785,7 +805,9 @@ public class CalendarSyncService {
                 emails.add(request.getAssignedInterviewer().getEmail().trim());
             }
         }
-        if (panel.getInterviewCoordinator() != null && panel.getInterviewCoordinator().getEmail() != null) {
+        if (panel.getInterviewCoordinator() != null
+                && panel.getInterviewCoordinator().getEmail() != null
+                && !isSameUser(organizer, panel.getInterviewCoordinator())) {
             emails.add(panel.getInterviewCoordinator().getEmail().trim());
         }
         if (panel.getCandidate() != null
@@ -887,6 +909,22 @@ public class CalendarSyncService {
                 title);
         bookedSlot.setGoogleCalendarEventId(busyResult.eventId());
         availabilitySlotRepository.save(bookedSlot);
+    }
+
+    private void ensureGuestEmail(List<String> attendees, User guest, User organizer) {
+        if (attendees == null || guest == null || guest.getEmail() == null || guest.getEmail().isBlank()) {
+            return;
+        }
+        if (isSameUser(organizer, guest)) {
+            return;
+        }
+        String email = guest.getEmail().trim();
+        boolean alreadyPresent = attendees.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(existing -> existing.equalsIgnoreCase(email));
+        if (!alreadyPresent) {
+            attendees.add(email);
+        }
     }
 
     private boolean isSameUser(User left, User right) {

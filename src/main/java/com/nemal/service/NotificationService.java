@@ -1,8 +1,10 @@
 package com.nemal.service;
 
+import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.NotificationDto;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.InterviewPanel;
+import com.nemal.entity.InterviewPostponeRequest;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.Notification;
 import com.nemal.entity.User;
@@ -25,7 +27,8 @@ public class NotificationService {
     private final SimpMessagingTemplate messagingTemplate;
     private final EmailNotificationService emailNotificationService;
     private final int retentionDays;
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM dd, yyyy 'at' h:mm a");
+    private static final DateTimeFormatter DATE_FORMATTER =
+            DateTimeFormatter.ofPattern("EEE, MMM d, yyyy 'at' h:mm a");
 
     public NotificationService(
             NotificationRepository notificationRepository,
@@ -108,19 +111,15 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(request.getAssignedInterviewer())
                 .subject("Interview Scheduled")
-                .message(String.format(
-                        "An interview has been scheduled for you with candidate %s on %s. " +
-                                "Position: %s. Please check your schedule.",
+                .message(buildInterviewDetailsMessage(
+                        "An interview has been scheduled for you. Please review the details below.",
                         request.getCandidateName(),
-                        formattedDateTime,
-                        request.getCandidateDesignation() != null
-                                ? request.getCandidateDesignation().getName()
-                                : "Not specified"
+                        formatDateTime(request.getPreferredStartDateTime()),
+                        resolvePosition(request),
+                        null
                 ))
                 .type("INTERVIEW_SCHEDULED")
                 .relatedEntityId(request.getId())
@@ -131,15 +130,15 @@ public class NotificationService {
 
     public void sendInterviewCancelledNotification(InterviewRequest request) {
         if (request.getAssignedInterviewer() != null) {
-            String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
-
             deliver(Notification.builder()
                     .recipient(request.getAssignedInterviewer())
                     .subject("Interview Cancelled")
-                    .message(String.format(
-                            "The interview with candidate %s scheduled for %s has been cancelled by HR.",
+                    .message(buildInterviewDetailsMessage(
+                            "The interview below has been cancelled by HR.",
                             request.getCandidateName(),
-                            formattedDateTime
+                            formatDateTime(request.getPreferredStartDateTime()),
+                            resolvePosition(request),
+                            null
                     ))
                     .type("INTERVIEW_CANCELLED")
                     .relatedEntityId(request.getId())
@@ -154,15 +153,15 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(request.getAssignedInterviewer())
                 .subject("Interview Reminder")
-                .message(String.format(
-                        "Reminder: You have an interview with %s scheduled for %s.",
+                .message(buildInterviewDetailsMessage(
+                        "This is a reminder for your upcoming interview.",
                         request.getCandidateName(),
-                        formattedDateTime
+                        formatDateTime(request.getPreferredStartDateTime()),
+                        resolvePosition(request),
+                        null
                 ))
                 .type("INTERVIEW_REMINDER")
                 .relatedEntityId(request.getId())
@@ -176,19 +175,18 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
         String interviewerName = request.getAssignedInterviewer() != null
                 ? request.getAssignedInterviewer().getFullName()
-                : "the assigned interviewer";
+                : null;
 
         deliver(Notification.builder()
                 .recipient(request.getInterviewCoordinator())
                 .subject("Interview Coordinator Assignment")
-                .message(String.format(
-                        "You have been added as the interview coordinator for candidate %s. " +
-                                "The interview is scheduled on %s with %s.",
+                .message(buildInterviewDetailsMessage(
+                        "You have been added as the interview coordinator. Please review the details below.",
                         request.getCandidateName(),
-                        formattedDateTime,
+                        formatDateTime(request.getPreferredStartDateTime()),
+                        resolvePosition(request),
                         interviewerName
                 ))
                 .type("INTERVIEW_COORDINATOR_ASSIGNED")
@@ -203,16 +201,15 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = panel.getStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(panel.getInterviewCoordinator())
                 .subject("Interview Coordinator Assignment")
-                .message(String.format(
-                        "You have been added as the interview coordinator for candidate %s. " +
-                                "The panel interview is scheduled on %s.",
+                .message(buildInterviewDetailsMessage(
+                        "You have been added as the interview coordinator for a panel interview.",
                         candidateName,
-                        formattedDateTime
+                        formatDateTime(panel.getStartDateTime()),
+                        resolvePanelPosition(panel),
+                        null
                 ))
                 .type("INTERVIEW_COORDINATOR_ASSIGNED")
                 .relatedEntityId(panel.getId())
@@ -234,10 +231,12 @@ public class NotificationService {
         deliver(Notification.builder()
                 .recipient(recipient)
                 .subject("Candidate Coordinator Assignment")
-                .message(String.format(
-                        "You have been assigned as the candidate coordinator for %s (%s).",
+                .message(buildInterviewDetailsMessage(
+                        "You have been assigned as the candidate coordinator.",
                         candidate.getName(),
-                        designation
+                        null,
+                        designation,
+                        null
                 ))
                 .type("CANDIDATE_COORDINATOR_ASSIGNED")
                 .relatedEntityId(candidate.getId())
@@ -252,18 +251,18 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
         String interviewerName = request.getAssignedInterviewer() != null
                 ? request.getAssignedInterviewer().getFullName()
-                : "the assigned interviewer";
+                : null;
 
         deliver(Notification.builder()
                 .recipient(candidate.getCoordinatedHr())
                 .subject("Interview Scheduled")
-                .message(String.format(
-                        "An interview has been scheduled for your candidate %s on %s with %s.",
+                .message(buildInterviewDetailsMessage(
+                        "An interview has been scheduled for your candidate. Please review the details below.",
                         candidate.getName(),
-                        formattedDateTime,
+                        formatDateTime(request.getPreferredStartDateTime()),
+                        resolvePosition(request),
                         interviewerName
                 ))
                 .type("INTERVIEW_SCHEDULED")
@@ -279,15 +278,15 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = request.getPreferredStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(candidate.getCoordinatedHr())
                 .subject("Interview Cancelled")
-                .message(String.format(
-                        "The interview for your candidate %s scheduled on %s has been cancelled.",
+                .message(buildInterviewDetailsMessage(
+                        "The interview for your candidate has been cancelled.",
                         candidate.getName(),
-                        formattedDateTime
+                        formatDateTime(request.getPreferredStartDateTime()),
+                        resolvePosition(request),
+                        null
                 ))
                 .type("INTERVIEW_CANCELLED")
                 .relatedEntityId(request.getId())
@@ -302,15 +301,15 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = panel.getStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(candidate.getCoordinatedHr())
                 .subject("Panel Interview Scheduled")
-                .message(String.format(
-                        "A panel interview has been scheduled for your candidate %s on %s.",
+                .message(buildInterviewDetailsMessage(
+                        "A panel interview has been scheduled for your candidate.",
                         candidateName,
-                        formattedDateTime
+                        formatDateTime(panel.getStartDateTime()),
+                        resolvePanelPosition(panel),
+                        null
                 ))
                 .type("INTERVIEW_SCHEDULED")
                 .relatedEntityId(panel.getId())
@@ -325,19 +324,176 @@ public class NotificationService {
             return;
         }
 
-        String formattedDateTime = panel.getStartDateTime().format(DATE_FORMATTER);
-
         deliver(Notification.builder()
                 .recipient(candidate.getCoordinatedHr())
                 .subject("Panel Interview Cancelled")
-                .message(String.format(
-                        "The panel interview for your candidate %s scheduled on %s has been cancelled.",
+                .message(buildInterviewDetailsMessage(
+                        "The panel interview for your candidate has been cancelled.",
                         candidateName,
-                        formattedDateTime
+                        formatDateTime(panel.getStartDateTime()),
+                        resolvePanelPosition(panel),
+                        null
                 ))
                 .type("INTERVIEW_CANCELLED")
                 .relatedEntityId(panel.getId())
                 .relatedEntityType("INTERVIEW_PANEL")
+                .read(false)
+                .build());
+    }
+
+    public void sendInterviewPostponeRequestedNotification(InterviewPostponeRequest postponeRequest) {
+        InterviewRequest request = postponeRequest.getInterviewRequest();
+        if (request == null && postponeRequest.getInterviewSchedule() != null) {
+            request = postponeRequest.getInterviewSchedule().getRequest();
+        }
+        if (request == null) {
+            return;
+        }
+
+        String interviewerName = postponeRequest.getRequestedBy() != null
+                ? postponeRequest.getRequestedBy().getFullName()
+                : (request.getAssignedInterviewer() != null
+                        ? request.getAssignedInterviewer().getFullName()
+                        : "The interviewer");
+
+        Long submitterId = postponeRequest.getRequestedBy() != null
+                ? postponeRequest.getRequestedBy().getId()
+                : null;
+
+        String message = buildPostponeDetailsMessage(
+                interviewerName + " has proposed a new time for a scheduled interview. Please review the details below.",
+                request.getCandidateName(),
+                formatDateTime(request.getPreferredStartDateTime()),
+                resolvePosition(request),
+                interviewerName,
+                postponeRequest.getReason(),
+                formatPreferredWindow(
+                        postponeRequest.getPreferredStartDateTime(),
+                        postponeRequest.getPreferredEndDateTime())
+        );
+
+        java.util.LinkedHashMap<Long, User> recipients = new java.util.LinkedHashMap<>();
+        addPostponeRecipient(recipients, request.getRequestedBy(), submitterId);
+        if (request.getCandidate() != null) {
+            addPostponeRecipient(recipients, request.getCandidate().getCoordinatedHr(), submitterId);
+        }
+        addPostponeRecipient(recipients, resolveInterviewCoordinator(request), submitterId);
+
+        for (User recipient : recipients.values()) {
+            deliver(Notification.builder()
+                    .recipient(recipient)
+                    .subject("New Interview Time Proposed")
+                    .message(message)
+                    .type("INTERVIEW_POSTPONE_REQUESTED")
+                    .relatedEntityId(postponeRequest.getId())
+                    .relatedEntityType("INTERVIEW_POSTPONE_REQUEST")
+                    .read(false)
+                    .build());
+        }
+    }
+
+    private User resolveInterviewCoordinator(InterviewRequest request) {
+        if (request == null) {
+            return null;
+        }
+        if (request.getInterviewCoordinator() != null) {
+            return request.getInterviewCoordinator();
+        }
+        if (request.getPanel() != null && request.getPanel().getInterviewCoordinator() != null) {
+            return request.getPanel().getInterviewCoordinator();
+        }
+        return null;
+    }
+
+    private void addPostponeRecipient(
+            java.util.Map<Long, User> recipients,
+            User user,
+            Long excludeUserId) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+        if (excludeUserId != null && excludeUserId.equals(user.getId())) {
+            return;
+        }
+        recipients.putIfAbsent(user.getId(), user);
+    }
+
+    public void sendInterviewPostponeRejectedNotification(InterviewPostponeRequest postponeRequest) {
+        if (postponeRequest.getRequestedBy() == null) {
+            return;
+        }
+
+        InterviewRequest request = postponeRequest.getInterviewRequest();
+        if (request == null && postponeRequest.getInterviewSchedule() != null) {
+            request = postponeRequest.getInterviewSchedule().getRequest();
+        }
+
+        StringBuilder intro = new StringBuilder(
+                "Your request to postpone the interview has been declined by HR.");
+        if (postponeRequest.getReviewNotes() != null && !postponeRequest.getReviewNotes().isBlank()) {
+            intro.append(" Notes: ").append(postponeRequest.getReviewNotes().trim());
+        }
+
+        deliver(Notification.builder()
+                .recipient(postponeRequest.getRequestedBy())
+                .subject("Interview Postpone Request Declined")
+                .message(buildPostponeDetailsMessage(
+                        intro.toString(),
+                        request != null ? request.getCandidateName() : null,
+                        request != null ? formatDateTime(request.getPreferredStartDateTime()) : null,
+                        request != null ? resolvePosition(request) : null,
+                        postponeRequest.getRequestedBy().getFullName(),
+                        postponeRequest.getReason(),
+                        null
+                ))
+                .type("INTERVIEW_POSTPONE_REJECTED")
+                .relatedEntityId(postponeRequest.getId())
+                .relatedEntityType("INTERVIEW_POSTPONE_REQUEST")
+                .read(false)
+                .build());
+    }
+
+    public void sendInterviewPostponeApprovedNotification(
+            InterviewPostponeRequest postponeRequest,
+            InterviewRequestDto newInterview) {
+        if (postponeRequest.getRequestedBy() == null) {
+            return;
+        }
+
+        InterviewRequest request = postponeRequest.getInterviewRequest();
+        if (request == null && postponeRequest.getInterviewSchedule() != null) {
+            request = postponeRequest.getInterviewSchedule().getRequest();
+        }
+
+        String newWindow = newInterview != null
+                ? formatPreferredWindow(newInterview.preferredStartDateTime(), newInterview.preferredEndDateTime())
+                : formatPreferredWindow(
+                        postponeRequest.getPreferredStartDateTime(),
+                        postponeRequest.getPreferredEndDateTime());
+
+        StringBuilder intro = new StringBuilder(
+                "HR accepted your proposed time. The previous interview was cancelled and a new interview was scheduled.");
+        if (postponeRequest.getReviewNotes() != null && !postponeRequest.getReviewNotes().isBlank()) {
+            intro.append(" Notes: ").append(postponeRequest.getReviewNotes().trim());
+        }
+
+        deliver(Notification.builder()
+                .recipient(postponeRequest.getRequestedBy())
+                .subject("Interview Time Change Accepted")
+                .message(buildPostponeDetailsMessage(
+                        intro.toString(),
+                        request != null ? request.getCandidateName()
+                                : (newInterview != null ? newInterview.candidateName() : null),
+                        newWindow,
+                        request != null ? resolvePosition(request)
+                                : (newInterview != null ? newInterview.candidateDesignationName() : null),
+                        postponeRequest.getRequestedBy().getFullName(),
+                        postponeRequest.getReason(),
+                        newWindow
+                ))
+                .type("INTERVIEW_POSTPONE_APPROVED")
+                .relatedEntityId(postponeRequest.getId())
+                .relatedEntityType("INTERVIEW_POSTPONE_REQUEST")
                 .read(false)
                 .build());
     }
@@ -417,5 +573,91 @@ public class NotificationService {
                 saved.getSubject(),
                 saved.getMessage()
         );
+    }
+
+    private String buildInterviewDetailsMessage(
+            String intro,
+            String candidateName,
+            String when,
+            String position,
+            String interviewerName
+    ) {
+        StringBuilder message = new StringBuilder();
+        if (intro != null && !intro.isBlank()) {
+            message.append(intro.trim()).append("\n");
+        }
+        appendDetail(message, "Candidate", candidateName);
+        appendDetail(message, "When", when);
+        appendDetail(message, "Position", position);
+        appendDetail(message, "Interviewer", interviewerName);
+        return message.toString().trim();
+    }
+
+    private String buildPostponeDetailsMessage(
+            String intro,
+            String candidateName,
+            String when,
+            String position,
+            String interviewerName,
+            String reason,
+            String preferredWindow
+    ) {
+        StringBuilder message = new StringBuilder();
+        if (intro != null && !intro.isBlank()) {
+            message.append(intro.trim()).append("\n");
+        }
+        appendDetail(message, "Candidate", candidateName);
+        appendDetail(message, "When", when);
+        appendDetail(message, "Position", position);
+        appendDetail(message, "Interviewer", interviewerName);
+        appendDetail(message, "Reason", reason);
+        appendDetail(message, "Preferred time", preferredWindow);
+        return message.toString().trim();
+    }
+
+    private String formatPreferredWindow(LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null) {
+            return null;
+        }
+        return formatDateTime(start) + " – " + end.format(DateTimeFormatter.ofPattern("h:mm a"));
+    }
+
+    private void appendDetail(StringBuilder message, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        if (!message.isEmpty()) {
+            message.append("\n");
+        }
+        message.append(label).append(": ").append(value.trim());
+    }
+
+    private String formatDateTime(LocalDateTime dateTime) {
+        return dateTime != null ? dateTime.format(DATE_FORMATTER) : null;
+    }
+
+    private String resolvePosition(InterviewRequest request) {
+        if (request.getCandidateDesignation() != null
+                && request.getCandidateDesignation().getName() != null
+                && !request.getCandidateDesignation().getName().isBlank()) {
+            return request.getCandidateDesignation().getName().trim();
+        }
+        if (request.getCandidate() != null
+                && request.getCandidate().getTargetDesignation() != null
+                && request.getCandidate().getTargetDesignation().getName() != null
+                && !request.getCandidate().getTargetDesignation().getName().isBlank()) {
+            return request.getCandidate().getTargetDesignation().getName().trim();
+        }
+        return "Not specified";
+    }
+
+    private String resolvePanelPosition(InterviewPanel panel) {
+        if (panel.getCandidate() != null
+                && panel.getCandidate().getTargetDesignation() != null
+                && panel.getCandidate().getTargetDesignation().getName() != null
+                && !panel.getCandidate().getTargetDesignation().getName().isBlank()) {
+            return panel.getCandidate().getTargetDesignation().getName().trim();
+        }
+        return null;
     }
 }

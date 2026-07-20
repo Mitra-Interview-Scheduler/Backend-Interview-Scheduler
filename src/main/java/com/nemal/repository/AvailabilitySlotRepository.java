@@ -215,6 +215,23 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
 
+    /**
+     * AVAILABLE slots that fully cover [{@code start}, {@code end}] for an interviewer.
+     */
+    @Query("""
+            SELECT s FROM AvailabilitySlot s
+            WHERE s.interviewer.id = :interviewerId
+            AND s.isActive = true
+            AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+            AND s.startDateTime <= :start
+            AND s.endDateTime >= :end
+            ORDER BY s.startDateTime
+            """)
+    List<AvailabilitySlot> findCoveringAvailableSlots(
+            @Param("interviewerId") Long interviewerId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
             Long interviewerId,
             String recurrenceGroupId);

@@ -42,6 +42,23 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
 
     @Query("""
             SELECT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH c.coordinatedHr
+            LEFT JOIN FETCH c.targetDesignation
+            LEFT JOIN FETCH r.candidateDesignation
+            LEFT JOIN FETCH r.assignedInterviewer
+            LEFT JOIN FETCH r.requestedBy
+            LEFT JOIN FETCH r.interviewCoordinator
+            LEFT JOIN FETCH r.panel p
+            LEFT JOIN FETCH p.interviewCoordinator
+            LEFT JOIN FETCH s.interviewer
+            WHERE s.id = :scheduleId
+            """)
+    Optional<InterviewSchedule> findByIdWithPostponeDetails(@Param("scheduleId") Long scheduleId);
+
+    @Query("""
+            SELECT s FROM InterviewSchedule s
             JOIN s.request r
             WHERE r.panel.id = :panelId
             """)

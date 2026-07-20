@@ -1,6 +1,7 @@
 package com.nemal.service;
 
 import com.nemal.dto.AvailabilityFilterDto;
+import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.InterviewerAvailabilityDto;
 import com.nemal.dto.InterviewerMatchRequestDto;
 import com.nemal.dto.InterviewerMatchResponseDto;
@@ -65,6 +66,7 @@ public class HRAvailabilityService {
     private final InterviewerTechnologyRepository interviewerTechnologyRepository;
     private final UserDomainRepository userDomainRepository;
     private final UserRepository userRepository;
+    private final InterviewPostponeRequestService postponeRequestService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -75,7 +77,8 @@ public class HRAvailabilityService {
             CandidateTechnologyRepository candidateTechnologyRepository,
             InterviewerTechnologyRepository interviewerTechnologyRepository,
             UserDomainRepository userDomainRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            InterviewPostponeRequestService postponeRequestService
     ) {
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.candidateRepository = candidateRepository;
@@ -83,6 +86,7 @@ public class HRAvailabilityService {
         this.interviewerTechnologyRepository = interviewerTechnologyRepository;
         this.userDomainRepository = userDomainRepository;
         this.userRepository = userRepository;
+        this.postponeRequestService = postponeRequestService;
     }
 
     @Transactional
@@ -103,14 +107,7 @@ public class HRAvailabilityService {
                 slots = sortSlotsByMatchPriority(slots, filter);
             }
 
-            List<InterviewerAvailabilityDto> result = new ArrayList<>();
-            for (AvailabilitySlot slot : slots) {
-                try {
-                    result.add(InterviewerAvailabilityDto.from(slot));
-                } catch (Exception e) {
-                    logger.error("Error converting slot {} to DTO: {}", slot.getId(), e.getMessage(), e);
-                }
-            }
+            List<InterviewerAvailabilityDto> result = mapSlotsToDto(slots);
             return result;
 
         } catch (Exception e) {
@@ -300,10 +297,7 @@ public class HRAvailabilityService {
             Long total = entityManager.createQuery(countCq).getSingleResult();
 
             // map to DTOs
-            var result = new java.util.ArrayList<InterviewerAvailabilityDto>();
-            for (AvailabilitySlot s : slots) {
-                try { result.add(InterviewerAvailabilityDto.from(s)); } catch (Exception e) { logger.error("Error mapping slot {}: {}", s.getId(), e.getMessage()); }
-            }
+            List<InterviewerAvailabilityDto> result = mapSlotsToDto(slots);
 
             return new PagedResult<>(result, total != null ? total : 0L, page, size);
         } catch (Exception e) {
@@ -808,13 +802,14 @@ public class HRAvailabilityService {
         userRepository.findById(interviewerId)
                 .orElseThrow(() -> new IllegalArgumentException("Interviewer not found: " + interviewerId));
 
-        return availabilitySlotRepository
+        List<AvailabilitySlot> slots = availabilitySlotRepository
                 .findActiveSlotsForInterviewerBetween(interviewerId, startDateTime, endDateTime)
                 .stream()
                 .filter(slot -> slot.getEndDateTime() != null
                         && slot.getEndDateTime().isAfter(LocalDateTime.now()))
-                .map(InterviewerAvailabilityDto::from)
-                .collect(Collectors.toList());
+                .toList();
+
+        return mapSlotsToDto(slots);
     }
 
     private boolean matchesOptionalFilters(User interviewer, InterviewerMatchRequestDto request) {
@@ -872,5 +867,39 @@ public class HRAvailabilityService {
         }
 
         return true;
+    }
+
+    private List<InterviewerAvailabilityDto> mapSlotsToDto(List<AvailabilitySlot> slots) {
+        List<Long> scheduleIds = slots.stream()
+                .map(AvailabilitySlot::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(schedule -> schedule.getId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, InterviewPostponeRequestDto> pendingBySchedule =
+                postponeRequestService.findPendingByScheduleIds(scheduleIds);
+
+        List<InterviewerAvailabilityDto> result = new ArrayList<>();
+        for (AvailabilitySlot slot : slots) {
+            try {
+                InterviewerAvailabilityDto dto = InterviewerAvailabilityDto.from(slot);
+                Long scheduleId = dto.interviewScheduleId();
+                if (scheduleId != null && pendingBySchedule.containsKey(scheduleId)) {
+                    InterviewPostponeRequestDto pending = pendingBySchedule.get(scheduleId);
+                    dto = dto.withPendingPostpone(
+                            pending.id(),
+                            pending.reason(),
+                            pending.createdAt(),
+                            pending.preferredStartDateTime(),
+                            pending.preferredEndDateTime());
+                }
+                result.add(dto);
+            } catch (Exception e) {
+                logger.error("Error converting slot {} to DTO: {}", slot.getId(), e.getMessage(), e);
+            }
+        }
+        return result;
     }
 }
