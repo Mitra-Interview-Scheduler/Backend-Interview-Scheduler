@@ -41,22 +41,41 @@ public class CandidatePipelineAuditService {
                                    PipelineAuditActionType actionType,
                                    User changedBy,
                                    String notes) {
-        if (candidateId == null || newStatus == null || actionType == null) {
+        if (newStatus == null) {
+            return;
+        }
+        recordStatusChange(
+                candidateId,
+                newStatus.name(),
+                previousStatus != null ? previousStatus.name() : null,
+                actionType,
+                changedBy,
+                notes);
+    }
+
+    @Transactional
+    public void recordStatusChange(Long candidateId,
+                                   String newStatusKey,
+                                   String previousStatusKey,
+                                   PipelineAuditActionType actionType,
+                                   User changedBy,
+                                   String notes) {
+        if (candidateId == null || newStatusKey == null || newStatusKey.isBlank() || actionType == null) {
             return;
         }
 
-        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
+        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatusKey.trim().toUpperCase());
         if (masterStep == null) {
-            logger.warn("No master step configured for status key '{}' on candidate {}", newStatus.name(), candidateId);
+            logger.warn("No master step configured for status key '{}' on candidate {}", newStatusKey, candidateId);
             return;
         }
 
         MasterStep previousMasterStep = null;
-        if (previousStatus != null) {
-            previousMasterStep = masterStepRepository.findByStatusKey(previousStatus.name());
+        if (previousStatusKey != null && !previousStatusKey.isBlank()) {
+            previousMasterStep = masterStepRepository.findByStatusKey(previousStatusKey.trim().toUpperCase());
             if (previousMasterStep == null) {
                 logger.warn("No master step configured for previous status key '{}' on candidate {}",
-                        previousStatus.name(), candidateId);
+                        previousStatusKey, candidateId);
             }
         }
 

@@ -78,7 +78,7 @@ public class InterviewRequestSimpleDto {
                 .notes(request.getNotes())
                 .interviewScheduleId(schedule != null ? schedule.getId() : null)
                 .interviewStatus(schedule != null ? schedule.getStatus() : null)
-                .interviewType(schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null)
+                .interviewType(schedule != null ? schedule.getInterviewType() : null)
                 .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
                 .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
                 .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)

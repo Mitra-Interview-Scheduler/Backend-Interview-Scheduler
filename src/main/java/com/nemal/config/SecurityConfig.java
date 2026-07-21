@@ -101,6 +101,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/tiers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/tiers/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/interview-types", "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/interview-types", "/api/interview-types/**").authenticated()
+
                         .requestMatchers(HttpMethod.POST, "/api/technologies", "/api/technologies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/technologies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/technologies/**").hasRole("ADMIN")

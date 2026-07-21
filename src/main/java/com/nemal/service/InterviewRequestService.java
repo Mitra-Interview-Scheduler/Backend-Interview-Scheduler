@@ -6,7 +6,6 @@ import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewerConflictsDto;
 import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.PipelineAuditActionType;
@@ -49,6 +48,7 @@ public class InterviewRequestService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final CalendarSyncService calendarSyncService;
     private final PanelInterviewService panelInterviewService;
+    private final InterviewTypeService interviewTypeService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -124,7 +124,7 @@ public class InterviewRequestService {
         request.getRequiredTechnologies().addAll(technologies);
         InterviewRequest saved = interviewRequestRepository.save(request);
 
-        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
+        String interviewType = interviewTypeService.resolveCode(dto.interviewType());
 
         InterviewSchedule schedule = InterviewSchedule.builder()
                 .request(saved)
@@ -516,24 +516,26 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                InterviewType interviewType = interviewScheduleRepository.findActiveByRequestId(requestId)
+                String interviewType = interviewScheduleRepository.findActiveByRequestId(requestId)
                         .map(InterviewSchedule::getInterviewType)
-                        .orElse(InterviewType.TECHNICAL);
-                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
-                MasterStatus previousStatus = candidate.getStatus();
-                masterStepService.assignStatus(candidate, resetStatus);
+                        .orElse(InterviewTypeService.DEFAULT_CODE);
+                String resetStatusKey = interviewTypeService.cancelRestoreStatusKey(interviewType);
+                String previousStatusKey = candidate.getMasterStep() != null
+                        ? candidate.getMasterStep().getStatusKey()
+                        : null;
+                masterStepService.assignByStatusKey(candidate, resetStatusKey);
                 candidateRepository.save(candidate);
                 candidateStepPipelineService.restorePipelineAfterInterviewCancel(
                         candidate.getId(), interviewType);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
-                        resetStatus,
-                        previousStatus,
+                        resetStatusKey,
+                        previousStatusKey,
                         PipelineAuditActionType.INTERVIEW_CANCELLED,
                         user,
                         "Interview cancelled");
                 logger.info("Candidate {} reset to {} after {} interview cancel",
-                        candidate.getId(), resetStatus, interviewType);
+                        candidate.getId(), resetStatusKey, interviewType);
             }
         }
     }
@@ -609,9 +611,9 @@ public class InterviewRequestService {
 
         Candidate candidate = request.getCandidate();
         if (candidate != null) {
-            InterviewType interviewType = schedule.getInterviewType() != null
+            String interviewType = schedule.getInterviewType() != null
                     ? schedule.getInterviewType()
-                    : InterviewType.TECHNICAL;
+                    : InterviewTypeService.DEFAULT_CODE;
             candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
         }
 
@@ -681,21 +683,23 @@ public class InterviewRequestService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void applyCandidateStatusForScheduledInterview(Candidate candidate,
-                                                           InterviewType interviewType,
+                                                           String interviewType,
                                                            User changedBy) {
-        MasterStatus targetStatus = interviewType.toCandidateStatus();
-        MasterStatus oldStatus = candidate.getStatus();
-        masterStepService.assignStatus(candidate, targetStatus);
+        String targetStatusKey = interviewTypeService.roundStatusKey(interviewType);
+        String oldStatusKey = candidate.getMasterStep() != null
+                ? candidate.getMasterStep().getStatusKey()
+                : null;
+        masterStepService.assignByStatusKey(candidate, targetStatusKey);
         candidateRepository.save(candidate);
         candidateStepPipelineService.updatePipelineOnStatusChange(
-                candidate.getId(), targetStatus, oldStatus, true);
+                candidate.getId(), targetStatusKey, oldStatusKey, true);
         candidatePipelineAuditService.recordStatusChange(
                 candidate.getId(),
-                targetStatus,
-                oldStatus,
+                targetStatusKey,
+                oldStatusKey,
                 PipelineAuditActionType.INTERVIEW_SCHEDULED,
                 changedBy,
-                interviewType.name() + " interview scheduled");
+                interviewType + " interview scheduled");
     }
 
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {

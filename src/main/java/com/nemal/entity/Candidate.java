@@ -55,9 +55,18 @@ public class Candidate {
         try {
             return MasterStatus.valueOf(masterStep.getStatusKey());
         } catch (IllegalArgumentException ex) {
-            log.error("Candidate {} has unknown master step status key '{}'", id, masterStep.getStatusKey());
+            // Admin-created interview rounds are not MasterStatus enum values.
             return null;
         }
+    }
+
+    /** Always returns the master step status key, including custom interview rounds. */
+    public String getStatusKey() {
+        if (masterStep == null) {
+            log.error("Candidate {} has no master step assigned", id);
+            return null;
+        }
+        return masterStep.getStatusKey();
     }
 
     @Column(length = 2000)

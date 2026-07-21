@@ -518,11 +518,7 @@ public class InterviewPostponeRequestService {
 
 
 
-        String interviewType = oldSchedule.getInterviewType() != null
-
-                ? oldSchedule.getInterviewType().name()
-
-                : null;
+        String interviewType = oldSchedule.getInterviewType();
 
 
 

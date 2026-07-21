@@ -1,7 +1,6 @@
 package com.nemal.dto;
 
 import com.nemal.entity.Candidate;
-import com.nemal.enums.MasterStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,7 +19,7 @@ public record CandidateDto(
         String tierName,
         Integer tierOrder,
         Integer levelOrder,
-        MasterStatus status,
+        String status,
         String resourceRequestNumber,
         String resumeUrl,
         String jdUrl,
@@ -78,7 +77,7 @@ public record CandidateDto(
                 tier  != null ? tier.getName()       : null,
                 tier  != null ? tier.getTierOrder()  : null,
                 desig != null ? desig.getLevelOrder() : null,
-                candidate.getStatus(),
+                candidate.getStatusKey(),
                 candidate.getResourceRequestNumber(),
                 candidate.getResumeUrl(),
                 candidate.getJdUrl(),

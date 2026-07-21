@@ -63,4 +63,7 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
             WHERE r.panel.id = :panelId
             """)
     List<InterviewSchedule> findByPanelId(@Param("panelId") Long panelId);
+
+    /** Whether any schedule references the given interview type code (used to soft-delete types in use). */
+    boolean existsByInterviewTypeIgnoreCase(String interviewType);
 }

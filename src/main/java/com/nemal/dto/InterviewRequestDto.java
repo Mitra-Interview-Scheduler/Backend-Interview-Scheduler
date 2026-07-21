@@ -88,7 +88,7 @@ public record InterviewRequestDto(
                 request.getCreatedAt(),
                 schedule != null ? schedule.getId() : null,
                 schedule != null ? schedule.getStatus() : null,
-                schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null,
+                schedule != null ? schedule.getInterviewType() : null,
                 schedule != null ? schedule.getStartDateTime() : null,
                 schedule != null ? schedule.getEndDateTime() : null,
                 schedule != null ? schedule.getCompletedAt() : null,

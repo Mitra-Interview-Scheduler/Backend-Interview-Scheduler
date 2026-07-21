@@ -71,7 +71,7 @@ public record InterviewerAvailabilityDto(
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
             }
             if (slot.getInterviewSchedule().getInterviewType() != null) {
-                interviewType = slot.getInterviewSchedule().getInterviewType().name();
+                interviewType = slot.getInterviewSchedule().getInterviewType();
             }
             if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
                 meetingLink = resolveMeetingLink(slot);

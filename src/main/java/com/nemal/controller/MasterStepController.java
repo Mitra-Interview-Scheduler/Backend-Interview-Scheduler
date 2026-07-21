@@ -25,6 +25,11 @@ public class MasterStepController {
         return ResponseEntity.ok(masterStepService.getActiveAndVisibleCandidateSteps());
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<CandidateStepDto>> getAllActiveCandidateSteps() {
+        return ResponseEntity.ok(masterStepService.getActiveCandidateSteps());
+    }
+
     @GetMapping("/closing")
     public ResponseEntity<List<CandidateStepDto>> getClosingSteps() {
         return ResponseEntity.ok(masterStepService.getClosingCandidateSteps());

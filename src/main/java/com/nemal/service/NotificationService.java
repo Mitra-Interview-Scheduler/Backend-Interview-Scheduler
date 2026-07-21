@@ -8,7 +8,6 @@ import com.nemal.entity.InterviewPostponeRequest;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.Notification;
 import com.nemal.entity.User;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.repository.NotificationRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -498,14 +497,14 @@ public class NotificationService {
                 .build());
     }
 
-    public void sendFeedbackSubmittedNotification(Candidate candidate, User interviewer, InterviewType interviewType) {
+    public void sendFeedbackSubmittedNotification(Candidate candidate, User interviewer, String interviewType) {
         User recipient = candidate.getCoordinatedHr();
         if (recipient == null) {
             return;
         }
 
         String interviewerName = interviewer != null ? interviewer.getFullName() : "An interviewer";
-        String roundLabel = interviewType != null ? interviewType.name() : "interview";
+        String roundLabel = (interviewType != null && !interviewType.isBlank()) ? interviewType : "interview";
 
         deliver(Notification.builder()
                 .recipient(recipient)
