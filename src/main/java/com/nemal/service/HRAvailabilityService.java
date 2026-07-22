@@ -916,7 +916,8 @@ public class HRAvailabilityService {
                             pending.reason(),
                             pending.createdAt(),
                             pending.preferredStartDateTime(),
-                            pending.preferredEndDateTime());
+                            pending.preferredEndDateTime(),
+                            pending.requestedByName());
                 }
                 result.add(dto);
             } catch (Exception e) {

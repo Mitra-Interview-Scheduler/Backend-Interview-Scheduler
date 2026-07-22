@@ -3,12 +3,14 @@ package com.nemal.service;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
+import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.User;
 import java.util.Locale;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,8 @@ import java.time.ZoneOffset;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -35,14 +39,17 @@ public class AvailabilityService {
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewRequestService interviewRequestService;
+    private final InterviewPostponeRequestService postponeRequestService;
     private final CalendarSyncService calendarSyncService;
 
     public AvailabilityService(
             AvailabilitySlotRepository availabilitySlotRepository,
             InterviewRequestService interviewRequestService,
+            @Lazy InterviewPostponeRequestService postponeRequestService,
             CalendarSyncService calendarSyncService) {
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.interviewRequestService = interviewRequestService;
+        this.postponeRequestService = postponeRequestService;
         this.calendarSyncService = calendarSyncService;
     }
 
@@ -50,35 +57,58 @@ public class AvailabilityService {
 
     public List<AvailabilitySlotDto> getInterviewerAvailability(User interviewer) {
         LocalDateTime from = LocalDateTime.now().minusDays(INTERVIEWER_LOOKBACK_DAYS);
-        return availabilitySlotRepository
-                .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from)
-                .stream()
-                .map(this::toAvailabilitySlotDto)
-                .collect(Collectors.toList());
+        return mapSlotsWithPostpone(availabilitySlotRepository
+                .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from));
     }
 
     public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
             User interviewer, LocalDateTime start, LocalDateTime end) {
-        return availabilitySlotRepository
+        return mapSlotsWithPostpone(availabilitySlotRepository
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
-                        interviewer.getId(), start, end)
-                .stream()
-                .map(this::toAvailabilitySlotDto)
-                .collect(Collectors.toList());
+                        interviewer.getId(), start, end));
     }
 
     public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
             User interviewer, LocalDateTime start, LocalDateTime end, Integer page, Integer size) {
         int safePage = page != null ? Math.max(0, page) : 0;
         int safeSize = size != null ? Math.max(1, size) : 200;
-        return availabilitySlotRepository
+        return mapSlotsWithPostpone(availabilitySlotRepository
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTruePaged(
                         interviewer.getId(),
                         start,
                         end,
                         PageRequest.of(safePage, safeSize))
-                .stream()
-                .map(this::toAvailabilitySlotDto)
+                .getContent());
+    }
+
+    private List<AvailabilitySlotDto> mapSlotsWithPostpone(List<AvailabilitySlot> slots) {
+        List<Long> scheduleIds = slots.stream()
+                .map(AvailabilitySlot::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(schedule -> schedule.getId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, InterviewPostponeRequestDto> pendingBySchedule =
+                postponeRequestService.findPendingByScheduleIds(scheduleIds);
+
+        return slots.stream()
+                .map(slot -> {
+                    AvailabilitySlotDto dto = toAvailabilitySlotDto(slot);
+                    Long scheduleId = dto.interviewScheduleId();
+                    if (scheduleId != null && pendingBySchedule.containsKey(scheduleId)) {
+                        InterviewPostponeRequestDto pending = pendingBySchedule.get(scheduleId);
+                        dto = dto.withPendingPostpone(
+                                pending.id(),
+                                pending.reason(),
+                                pending.createdAt(),
+                                pending.preferredStartDateTime(),
+                                pending.preferredEndDateTime(),
+                                pending.requestedByName());
+                    }
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
