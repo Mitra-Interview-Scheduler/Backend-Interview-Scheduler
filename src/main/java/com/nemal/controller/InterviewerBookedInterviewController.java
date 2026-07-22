@@ -5,8 +5,10 @@ import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewRequestSimpleDto;
 import com.nemal.dto.PanelCommonFreeWindowDto;
+import com.nemal.dto.PanelMemberSimpleDto;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.User;
+import com.nemal.repository.InterviewRequestRepository;
 import com.nemal.service.InterviewPostponeRequestService;
 import com.nemal.service.InterviewRequestService;
 import com.nemal.util.TimeZoneMapper;
@@ -31,13 +33,16 @@ public class InterviewerBookedInterviewController {
     private static final Logger logger = LoggerFactory.getLogger(InterviewRequestController.class);
     private final InterviewRequestService interviewRequestService;
     private final InterviewPostponeRequestService postponeRequestService;
+    private final InterviewRequestRepository interviewRequestRepository;
 
 
     public InterviewerBookedInterviewController(
             InterviewRequestService interviewRequestService,
-            InterviewPostponeRequestService postponeRequestService) {
+            InterviewPostponeRequestService postponeRequestService,
+            InterviewRequestRepository interviewRequestRepository) {
         this.interviewRequestService = interviewRequestService;
         this.postponeRequestService = postponeRequestService;
+        this.interviewRequestRepository = interviewRequestRepository;
     }
 
     @GetMapping("/bookedInterviews/{interviewScheduleId}")
@@ -54,6 +59,9 @@ public class InterviewerBookedInterviewController {
                         if (effectiveStatus != null) {
                             dto.setInterviewStatus(effectiveStatus);
                         }
+                        if (request.getPanel() != null) {
+                            dto.setPanelMembers(loadPanelMembers(request.getPanel().getId()));
+                        }
                         return dto;
                     })
                     .collect(Collectors.toList());
@@ -64,6 +72,30 @@ public class InterviewerBookedInterviewController {
                     .body(Map.of("message", e.getMessage()));
         }
 
+    }
+
+    private List<PanelMemberSimpleDto> loadPanelMembers(Long panelId) {
+        return interviewRequestRepository.findByPanelIdWithDetails(panelId).stream()
+                .filter(request -> request.getAssignedInterviewer() != null)
+                .map(request -> new PanelMemberSimpleDto(
+                        request.getAssignedInterviewer().getId(),
+                        request.getAssignedInterviewer().getFullName(),
+                        request.getAssignedInterviewer().getCurrentDesignation() != null
+                                ? request.getAssignedInterviewer().getCurrentDesignation().getName()
+                                : null
+                ))
+                .collect(Collectors.toMap(
+                        PanelMemberSimpleDto::interviewerId,
+                        member -> member,
+                        (first, second) -> first
+                ))
+                .values()
+                .stream()
+                .sorted((left, right) -> String.CASE_INSENSITIVE_ORDER.compare(
+                        left.interviewerName() != null ? left.interviewerName() : "",
+                        right.interviewerName() != null ? right.interviewerName() : ""
+                ))
+                .collect(Collectors.toList());
     }
 
     @PatchMapping("/schedules/{scheduleId}/complete")

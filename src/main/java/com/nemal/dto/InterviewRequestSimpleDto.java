@@ -4,7 +4,6 @@ import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.InterviewSchedule;
 import com.nemal.entity.InterviewPanel;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -43,6 +42,9 @@ public class InterviewRequestSimpleDto {
     private InterviewStatus interviewStatus;
     private String interviewType;
     private Long panelId;
+    private String interviewCoordinatorName;
+    private String coordinatedHrName;
+    private java.util.List<PanelMemberSimpleDto> panelMembers;
     private LocalDateTime scheduledStartDateTime;
     private LocalDateTime scheduledEndDateTime;
     private LocalDateTime interviewCompletedAt;
@@ -55,6 +57,19 @@ public class InterviewRequestSimpleDto {
      */
     public static InterviewRequestSimpleDto from(InterviewRequest request) {
         InterviewSchedule schedule = request.getInterviewSchedule();
+        InterviewPanel panel = request.getPanel();
+        String interviewCoordinatorName = null;
+        if (request.getInterviewCoordinator() != null) {
+            interviewCoordinatorName = request.getInterviewCoordinator().getFullName().trim();
+        } else if (panel != null && panel.getInterviewCoordinator() != null) {
+            interviewCoordinatorName = panel.getInterviewCoordinator().getFullName().trim();
+        }
+
+        String coordinatedHrName = null;
+        if (request.getCandidate() != null && request.getCandidate().getCoordinatedHr() != null) {
+            coordinatedHrName = request.getCandidate().getCoordinatedHr().getFullName().trim();
+        }
+
         return InterviewRequestSimpleDto.builder()
                 .id(request.getId())
                 .candidateName(request.getCandidateName())
@@ -80,7 +95,10 @@ public class InterviewRequestSimpleDto {
                 .interviewScheduleId(schedule != null ? schedule.getId() : null)
                 .interviewStatus(schedule != null ? schedule.getStatus() : null)
                 .interviewType(schedule != null ? schedule.getInterviewType() : null)
-                .panelId(request.getPanel() != null ? request.getPanel().getId() : null)
+                .panelId(panel != null ? panel.getId() : null)
+                .interviewCoordinatorName(interviewCoordinatorName)
+                .coordinatedHrName(coordinatedHrName)
+                .panelMembers(java.util.List.of())
                 .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
                 .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
                 .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)
