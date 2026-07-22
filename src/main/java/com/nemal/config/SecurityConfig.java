@@ -126,6 +126,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/domains/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/domains/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/document-types", "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/document-types", "/api/document-types/**").hasAnyRole("HR", "ADMIN", "INTERVIEWER")
+
+                        .requestMatchers(HttpMethod.POST, "/api/resource-types", "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/resource-types", "/api/resource-types/**").hasAnyRole("HR", "ADMIN", "INTERVIEWER")
+
                         .requestMatchers("/api/notifications/**").authenticated()
 
                         .requestMatchers("/api/profile/**").authenticated()
