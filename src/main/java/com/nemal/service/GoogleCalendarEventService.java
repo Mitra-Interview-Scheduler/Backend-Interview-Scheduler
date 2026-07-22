@@ -160,34 +160,54 @@ public class GoogleCalendarEventService {
         try {
             return listEventsFromVisibleCalendars(interviewer, calendar, timeMin, timeMax);
         } catch (Exception e) {
-            logger.warn("Failed to list all Google calendars for user {}, falling back to primary: {}",
+            Optional<List<String>> customSelection = tokenService.findSelectedCalendarIds(interviewer);
+            if (customSelection.isPresent()) {
+                List<String> wantedIds = customSelection.get();
+                // Respect explicit Mitra selection: empty means no events; never invent other calendars.
+                if (wantedIds.isEmpty()) {
+                    return List.of();
+                }
+                boolean allowsPrimary = wantedIds.stream().anyMatch(id ->
+                        "primary".equalsIgnoreCase(id)
+                                || (id != null && id.equalsIgnoreCase(interviewer.getEmail())));
+                if (allowsPrimary) {
+                    logger.warn("Failed to list selected Google calendars for user {}, falling back to primary only: {}",
+                            interviewer.getId(), e.getMessage());
+                    return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+                }
+                logger.warn("Failed to list selected Google calendars for user {}; not falling back to other calendars: {}",
+                        interviewer.getId(), e.getMessage());
+                return List.of();
+            }
+            logger.warn("Failed to list Google calendars for user {}, falling back to primary: {}",
                     interviewer.getId(), e.getMessage());
             return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
         }
     }
 
+    /**
+     * Lists events only from calendars chosen in Mitra Settings → "Calendars to show".
+     * Used for My Availability display and HR scheduling conflict checks.
+     * If no Mitra selection has been saved yet, falls back to the primary calendar only
+     * (never all Google-visible calendars).
+     */
     private List<ListedCalendarEvent> listEventsFromVisibleCalendars(
             User interviewer,
             Calendar calendar,
             com.google.api.client.util.DateTime timeMin,
             com.google.api.client.util.DateTime timeMax) throws Exception {
-        List<CalendarListEntry> allEntries = listAllCalendarEntries(calendar, false);
-        if (allEntries.isEmpty()) {
-            return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
-        }
-
         Optional<List<String>> customSelection = tokenService.findSelectedCalendarIds(interviewer);
-        List<CalendarListEntry> selectedCalendars;
 
         if (customSelection.isPresent()) {
             List<String> wantedIds = customSelection.get();
-            // Explicit empty selection → show no Google calendars on availability.
+            // Explicit empty selection → no Google calendars for display or conflict checks.
             if (wantedIds.isEmpty()) {
                 return List.of();
             }
 
+            List<CalendarListEntry> allEntries = listAllCalendarEntries(calendar, false);
             Set<String> wanted = new HashSet<>(wantedIds);
-            selectedCalendars = allEntries.stream()
+            List<CalendarListEntry> selectedCalendars = allEntries.stream()
                     .filter(entry -> entry != null && entry.getId() != null)
                     .filter(entry -> wanted.contains(entry.getId())
                             || (wanted.contains("primary") && Boolean.TRUE.equals(entry.getPrimary())))
@@ -206,17 +226,21 @@ public class GoogleCalendarEventService {
                         })
                         .toList();
             }
-        } else {
-            selectedCalendars = allEntries.stream()
-                    .filter(entry -> entry != null && entry.getId() != null && !entry.getId().isBlank())
-                    .filter(entry -> !Boolean.FALSE.equals(entry.getSelected()))
-                    .limit(MAX_SELECTED_CALENDARS)
-                    .toList();
+
+            return listEventsFromCalendarEntries(interviewer, selectedCalendars, timeMin, timeMax);
         }
 
-        if (selectedCalendars.isEmpty()) {
-            // Legacy (no Mitra selection saved): fall back to primary.
-            return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+        // No Mitra "Calendars to show" selection saved — primary only (not every Google-visible calendar).
+        return listEventsFromCalendar(calendar, "primary", "Primary", timeMin, timeMax);
+    }
+
+    private List<ListedCalendarEvent> listEventsFromCalendarEntries(
+            User interviewer,
+            List<CalendarListEntry> selectedCalendars,
+            com.google.api.client.util.DateTime timeMin,
+            com.google.api.client.util.DateTime timeMax) {
+        if (selectedCalendars == null || selectedCalendars.isEmpty()) {
+            return List.of();
         }
 
         Map<String, ListedCalendarEvent> deduped = new ConcurrentHashMap<>();

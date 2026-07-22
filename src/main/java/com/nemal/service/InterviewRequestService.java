@@ -215,10 +215,10 @@ public class InterviewRequestService {
     // ── Read ──────────────────────────────────────────────────────────────────
 
     /**
-     * Checks each selected interviewer's connected Google Calendar for events that
-     * overlap the proposed interview window. Interviewers without Google Calendar
-     * connected (or with no overlap) simply return no conflicts. All-day events are
-     * ignored since they don't block a specific meeting time. Times are UTC.
+     * Checks each selected interviewer's Google Calendar for events that overlap the
+     * proposed interview window. Only calendars chosen in Settings → "Calendars to show"
+     * are considered. Interviewers without Google Calendar connected (or with no overlap)
+     * return no conflicts. All-day events are ignored. Times are UTC.
      *
      * <p>Used by HR scheduling to block booking when an overlapping event exists.
      */
