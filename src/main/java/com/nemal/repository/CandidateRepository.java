@@ -78,6 +78,7 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             WHERE c.isActive = true
             AND (:departmentId IS NULL OR c.department.id = :departmentId)
             AND (:statusKey IS NULL OR ms.statusKey = :statusKey)
+            AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
             AND (:searchTerm IS NULL OR :searchTerm = '' OR
                  LOWER(c.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
                  LOWER(c.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR
@@ -88,6 +89,7 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             @Param("departmentId") Long departmentId,
             @Param("statusKey") String statusKey,
             @Param("searchTerm") String searchTerm,
+            @Param("coordinatedHrId") Long coordinatedHrId,
             Pageable pageable);
 
     Optional<Candidate> findByIdAndIsActiveTrue(Long id);

@@ -37,14 +37,15 @@ public record CandidateDto(
         Long coordinatedHrDepartmentId,
         CandidateClosureDto closure,
         List<CandidateTechnologyDto> technologies,
-        List<DomainDto> domains
+        List<DomainDto> domains,
+        Long profilePictureDocumentId
 ) {
     public static CandidateDto from(Candidate candidate) {
-        return from(candidate, null, List.of(), List.of());
+        return from(candidate, null, List.of(), List.of(), null);
     }
 
     public static CandidateDto from(Candidate candidate, CandidateClosureDto closure) {
-        return from(candidate, closure, List.of(), List.of());
+        return from(candidate, closure, List.of(), List.of(), null);
     }
 
     public static CandidateDto from(
@@ -52,7 +53,7 @@ public record CandidateDto(
             CandidateClosureDto closure,
             List<CandidateTechnologyDto> technologies
     ) {
-        return from(candidate, closure, technologies, List.of());
+        return from(candidate, closure, technologies, List.of(), null);
     }
 
     public static CandidateDto from(
@@ -60,6 +61,16 @@ public record CandidateDto(
             CandidateClosureDto closure,
             List<CandidateTechnologyDto> technologies,
             List<DomainDto> domains
+    ) {
+        return from(candidate, closure, technologies, domains, null);
+    }
+
+    public static CandidateDto from(
+            Candidate candidate,
+            CandidateClosureDto closure,
+            List<CandidateTechnologyDto> technologies,
+            List<DomainDto> domains,
+            Long profilePictureDocumentId
     ) {
         var desig = candidate.getTargetDesignation();
         var tier  = (desig != null) ? desig.getTier() : null;
@@ -97,7 +108,8 @@ public record CandidateDto(
                         : null,
                 closure,
                 technologies != null ? technologies : List.of(),
-                domains != null ? domains : List.of()
+                domains != null ? domains : List.of(),
+                profilePictureDocumentId
         );
     }
 }

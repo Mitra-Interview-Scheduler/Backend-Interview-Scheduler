@@ -30,6 +30,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
@@ -63,6 +64,7 @@ public class CandidateService {
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
+    private static final Set<String> PROFILE_PICTURE_DOCUMENT_TYPES = Set.of("PROFILE", "PROFILE_PICTURE");
 
     public CandidateService(
             CandidateRepository candidateRepository,
@@ -126,7 +128,8 @@ public class CandidateService {
                 candidate,
                 candidateClosureService.getLatestClosure(id),
                 technologies,
-                domains
+                domains,
+                resolveProfilePictureDocumentId(id)
         );
     }
 
@@ -162,16 +165,24 @@ public class CandidateService {
         return toCandidateDtos(candidateRepository.searchCandidates(searchTerm));
     }
 
-    public List<CandidateDto> findWithFilters(Long departmentId, MasterStatus status, String searchTerm) {
+    public List<CandidateDto> findWithFilters(
+            Long departmentId,
+            MasterStatus status,
+            String searchTerm,
+            Long coordinatedHrId) {
         List<Candidate> candidates;
 
-        if (departmentId == null && status == null && (searchTerm == null || searchTerm.trim().isEmpty())) {
+        if (departmentId == null && status == null && coordinatedHrId == null
+                && (searchTerm == null || searchTerm.trim().isEmpty())) {
             candidates = candidateRepository.findByIsActiveTrueOrderByAppliedAtDesc();
-        } else if (departmentId != null && status == null && (searchTerm == null || searchTerm.trim().isEmpty())) {
+        } else if (departmentId != null && status == null && coordinatedHrId == null
+                && (searchTerm == null || searchTerm.trim().isEmpty())) {
             candidates = candidateRepository.findByDepartmentIdAndIsActiveTrueOrderByAppliedAtDesc(departmentId);
-        } else if (departmentId == null && status != null && (searchTerm == null || searchTerm.trim().isEmpty())) {
+        } else if (departmentId == null && status != null && coordinatedHrId == null
+                && (searchTerm == null || searchTerm.trim().isEmpty())) {
             candidates = candidateRepository.findByStatusAndIsActiveTrueOrderByAppliedAtDesc(status);
-        } else if (departmentId != null && status != null && (searchTerm == null || searchTerm.trim().isEmpty())) {
+        } else if (departmentId != null && status != null && coordinatedHrId == null
+                && (searchTerm == null || searchTerm.trim().isEmpty())) {
             candidates = candidateRepository.findByDepartmentIdAndStatusAndIsActiveTrueOrderByAppliedAtDesc(departmentId, status);
         } else {
             String term = (searchTerm != null) ? searchTerm.trim() : "";
@@ -193,6 +204,13 @@ public class CandidateService {
             }
         }
 
+        if (coordinatedHrId != null) {
+            final Long hrId = coordinatedHrId;
+            candidates = candidates.stream()
+                    .filter(c -> c.getCoordinatedHr() != null && Objects.equals(c.getCoordinatedHr().getId(), hrId))
+                    .collect(Collectors.toList());
+        }
+
         return toCandidateDtos(candidates);
     }
 
@@ -200,6 +218,7 @@ public class CandidateService {
             Long departmentId,
             MasterStatus status,
             String searchTerm,
+            Long coordinatedHrId,
             int page,
             int size
     ) {
@@ -214,6 +233,7 @@ public class CandidateService {
                 departmentId,
                 statusKey,
                 normalizedSearch,
+                coordinatedHrId,
                 PageRequest.of(safePage, safeSize)
         );
 
@@ -239,14 +259,61 @@ public class CandidateService {
                 candidateTechnologyService.getTechnologiesByCandidateIds(candidateIds);
         Map<Long, List<DomainDto>> domainsByCandidateId =
                 entityDomainService.getDomainsByCandidateIds(candidateIds);
+        Map<Long, Long> profilePictureDocumentIds = resolveProfilePictureDocumentIds(candidateIds);
         return candidates.stream()
                 .map(candidate -> CandidateDto.from(
                         candidate,
                         null,
                         technologiesByCandidateId.getOrDefault(candidate.getId(), List.of()),
-                        domainsByCandidateId.getOrDefault(candidate.getId(), List.of())
+                        domainsByCandidateId.getOrDefault(candidate.getId(), List.of()),
+                        profilePictureDocumentIds.get(candidate.getId())
                 ))
                 .collect(Collectors.toList());
+    }
+
+    private Long resolveProfilePictureDocumentId(Long candidateId) {
+        if (candidateId == null) {
+            return null;
+        }
+        return resolveProfilePictureDocumentIds(List.of(candidateId)).get(candidateId);
+    }
+
+    private Map<Long, Long> resolveProfilePictureDocumentIds(List<Long> candidateIds) {
+        if (candidateIds == null || candidateIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Long> profilePictureDocumentIds = new HashMap<>();
+        candidateDocumentRepository.findProfilePictureCandidatesByCandidateIds(candidateIds).stream()
+                .filter(this::isProfilePictureImage)
+                .forEach(document -> profilePictureDocumentIds.putIfAbsent(
+                        document.getCandidate().getId(),
+                        document.getId()
+                ));
+        return profilePictureDocumentIds;
+    }
+
+    private boolean isProfilePictureImage(CandidateDocument document) {
+        if (document == null || document.getDocumentType() == null) {
+            return false;
+        }
+
+        String documentType = document.getDocumentType().trim().toUpperCase(Locale.ROOT);
+        if (!PROFILE_PICTURE_DOCUMENT_TYPES.contains(documentType)) {
+            return false;
+        }
+
+        String contentType = document.getContentType() == null
+                ? ""
+                : document.getContentType().trim().toLowerCase(Locale.ROOT);
+        if ("image/jpeg".equals(contentType) || "image/jpg".equals(contentType) || "image/png".equals(contentType)) {
+            return true;
+        }
+
+        String fileName = document.getFileName() == null
+                ? ""
+                : document.getFileName().trim().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
     }
 
     private CandidateDto toCandidateDto(Candidate candidate) {
@@ -254,7 +321,8 @@ public class CandidateService {
                 candidate,
                 candidateClosureService.getLatestClosure(candidate.getId()),
                 candidateTechnologyService.getCandidateTechnologies(candidate.getId()),
-                entityDomainService.getCandidateDomains(candidate.getId())
+                entityDomainService.getCandidateDomains(candidate.getId()),
+                resolveProfilePictureDocumentId(candidate.getId())
         );
     }
 
