@@ -251,6 +251,15 @@ public class PanelInterviewService {
 
     @Transactional
     public void cancelPanelInterview(User hrUser, Long panelId) {
+        cancelPanelInterview(hrUser, panelId, false);
+    }
+
+    /**
+     * Cancels a panel interview. When {@code forReschedule} is true, skip cancel
+     * notifications and candidate pipeline reset — the caller will rebook immediately.
+     */
+    @Transactional
+    public void cancelPanelInterview(User hrUser, Long panelId, boolean forReschedule) {
         InterviewPanel panel = loadPanelWithRequests(panelId);
 
         boolean isHrOrAdmin = hrUser.getRoles().contains(Role.HR) || hrUser.getRoles().contains(Role.ADMIN);
@@ -293,25 +302,29 @@ public class PanelInterviewService {
             requestRepository.save(request);
             cancelledRequests.add(request);
 
-            try {
-                notificationService.sendInterviewCancelledNotification(request);
-            } catch (Exception e) {
-                logger.warn("Failed to send cancellation notification: {}", e.getMessage());
+            if (!forReschedule) {
+                try {
+                    notificationService.sendInterviewCancelledNotification(request);
+                } catch (Exception e) {
+                    logger.warn("Failed to send cancellation notification: {}", e.getMessage());
+                }
             }
         }
 
         calendarSyncService.cancelPanelInterview(panel, cancelledRequests, restoredSlots);
 
-        try {
-            String candidateName = panel.getCandidate() != null
-                    ? panel.getCandidate().getName()
-                    : "the candidate";
-            notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
-        } catch (Exception e) {
-            logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+        if (!forReschedule) {
+            try {
+                String candidateName = panel.getCandidate() != null
+                        ? panel.getCandidate().getName()
+                        : "the candidate";
+                notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
+            } catch (Exception e) {
+                logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+            }
         }
 
-        if (panel.getCandidate() != null) {
+        if (!forReschedule && panel.getCandidate() != null) {
             Candidate candidate = panel.getCandidate();
             long activeCount = requestRepository.findByCandidateId(candidate.getId())
                     .stream()
@@ -344,7 +357,8 @@ public class PanelInterviewService {
             }
         }
 
-        logger.info("Cancelled panel {} — all slots restored and merged", panelId);
+        logger.info("Cancelled panel {} — all slots restored and merged (forReschedule={})",
+                panelId, forReschedule);
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────

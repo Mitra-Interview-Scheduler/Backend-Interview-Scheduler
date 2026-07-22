@@ -4,6 +4,7 @@ import com.nemal.dto.CreateInterviewPostponeRequestDto;
 import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewRequestSimpleDto;
+import com.nemal.dto.PanelCommonFreeWindowDto;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.User;
 import com.nemal.service.InterviewPostponeRequestService;
@@ -76,6 +77,26 @@ public class InterviewerBookedInterviewController {
             return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
         } catch (Exception e) {
             logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/schedules/{scheduleId}/panel-common-windows")
+    public ResponseEntity<?> listPanelCommonWindows(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            List<PanelCommonFreeWindowDto> windows = postponeRequestService
+                    .listPanelCommonFreeWindows(user, scheduleId)
+                    .stream()
+                    .map(window -> TimeZoneMapper.fromUtc(window, zone))
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(windows);
+        } catch (Exception e) {
+            logger.error("Failed to list panel common windows for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         }

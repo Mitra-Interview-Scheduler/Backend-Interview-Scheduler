@@ -42,6 +42,7 @@ public class InterviewRequestSimpleDto {
     private Long interviewScheduleId;
     private InterviewStatus interviewStatus;
     private String interviewType;
+    private Long panelId;
     private LocalDateTime scheduledStartDateTime;
     private LocalDateTime scheduledEndDateTime;
     private LocalDateTime interviewCompletedAt;
@@ -79,6 +80,7 @@ public class InterviewRequestSimpleDto {
                 .interviewScheduleId(schedule != null ? schedule.getId() : null)
                 .interviewStatus(schedule != null ? schedule.getStatus() : null)
                 .interviewType(schedule != null ? schedule.getInterviewType() : null)
+                .panelId(request.getPanel() != null ? request.getPanel().getId() : null)
                 .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
                 .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
                 .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)

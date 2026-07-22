@@ -359,8 +359,17 @@ public class NotificationService {
                 ? postponeRequest.getRequestedBy().getId()
                 : null;
 
+        boolean hasProposedTime = postponeRequest.getPreferredStartDateTime() != null
+                && postponeRequest.getPreferredEndDateTime() != null;
+        boolean isPanel = request.getPanel() != null;
+        String intro = hasProposedTime
+                ? (isPanel
+                        ? interviewerName + " has proposed a new time for a panel interview. Please review the details below."
+                        : interviewerName + " has proposed a new time for a scheduled interview. Please review the details below.")
+                : interviewerName + " has requested to postpone a panel interview (no alternative time proposed). Please review and reschedule.";
+
         String message = buildPostponeDetailsMessage(
-                interviewerName + " has proposed a new time for a scheduled interview. Please review the details below.",
+                intro,
                 request.getCandidateName(),
                 formatDateTime(request.getPreferredStartDateTime()),
                 resolvePosition(request),
@@ -381,7 +390,7 @@ public class NotificationService {
         for (User recipient : recipients.values()) {
             deliver(Notification.builder()
                     .recipient(recipient)
-                    .subject("New Interview Time Proposed")
+                    .subject(hasProposedTime ? "New Interview Time Proposed" : "Panel Interview Postpone Requested")
                     .message(message)
                     .type("INTERVIEW_POSTPONE_REQUESTED")
                     .relatedEntityId(postponeRequest.getId())
@@ -389,6 +398,41 @@ public class NotificationService {
                     .read(false)
                     .build());
         }
+    }
+
+    public void sendInterviewPostponeAcknowledgedNotification(InterviewPostponeRequest postponeRequest) {
+        if (postponeRequest.getRequestedBy() == null) {
+            return;
+        }
+
+        InterviewRequest request = postponeRequest.getInterviewRequest();
+        if (request == null && postponeRequest.getInterviewSchedule() != null) {
+            request = postponeRequest.getInterviewSchedule().getRequest();
+        }
+
+        StringBuilder intro = new StringBuilder(
+                "HR acknowledged your postpone request. The current interview remains scheduled until HR reschedules it.");
+        if (postponeRequest.getReviewNotes() != null && !postponeRequest.getReviewNotes().isBlank()) {
+            intro.append(" Notes: ").append(postponeRequest.getReviewNotes().trim());
+        }
+
+        deliver(Notification.builder()
+                .recipient(postponeRequest.getRequestedBy())
+                .subject("Postpone Request Acknowledged")
+                .message(buildPostponeDetailsMessage(
+                        intro.toString(),
+                        request != null ? request.getCandidateName() : null,
+                        request != null ? formatDateTime(request.getPreferredStartDateTime()) : null,
+                        request != null ? resolvePosition(request) : null,
+                        postponeRequest.getRequestedBy().getFullName(),
+                        postponeRequest.getReason(),
+                        null
+                ))
+                .type("INTERVIEW_POSTPONE_ACKNOWLEDGED")
+                .relatedEntityId(postponeRequest.getId())
+                .relatedEntityType("INTERVIEW_POSTPONE_REQUEST")
+                .read(false)
+                .build());
     }
 
     private User resolveInterviewCoordinator(InterviewRequest request) {
