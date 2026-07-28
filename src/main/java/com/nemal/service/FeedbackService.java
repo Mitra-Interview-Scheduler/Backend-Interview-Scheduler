@@ -534,9 +534,7 @@ public class FeedbackService {
             return false;
         }
 
-        return interviewPanelRepository.findByIdWithDetails(panelId)
-                .map(InterviewPanel::getPanelRequests)
-                .orElse(Set.of())
+        return interviewRequestRepository.findByPanelIdWithDetails(panelId)
                 .stream()
                 .map(InterviewRequest::getAssignedInterviewer)
                 .filter(Objects::nonNull)

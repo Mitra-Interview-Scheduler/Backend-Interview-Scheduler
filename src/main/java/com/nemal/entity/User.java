@@ -144,4 +144,12 @@ public class User implements UserDetails {
     public boolean isActive() { return isActive; }
 
     public void setActive(boolean active) { isActive = active; }
+
+    public boolean hasRole(Role role) {
+        return roles != null && roles.contains(role);
+    }
+
+    public boolean hasInterviewerRole() {
+        return hasRole(Role.INTERVIEWER);
+    }
 }

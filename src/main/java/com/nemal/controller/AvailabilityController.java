@@ -1,11 +1,15 @@
 package com.nemal.controller;
 
+import com.nemal.dto.AvailabilityRangeResponseDto;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.User;
 import com.nemal.service.AvailabilityService;
+import com.nemal.service.CalendarSyncService;
+import com.nemal.service.GoogleCalendarTokenService;
 import com.nemal.util.TimeZoneMapper;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -17,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/availability")
@@ -24,9 +29,16 @@ import java.util.Map;
 public class AvailabilityController {
 
     private final AvailabilityService availabilityService;
+    private final CalendarSyncService calendarSyncService;
+    private final GoogleCalendarTokenService tokenService;
 
-    public AvailabilityController(AvailabilityService availabilityService) {
+    public AvailabilityController(
+            AvailabilityService availabilityService,
+            CalendarSyncService calendarSyncService,
+            GoogleCalendarTokenService tokenService) {
         this.availabilityService = availabilityService;
+        this.calendarSyncService = calendarSyncService;
+        this.tokenService = tokenService;
     }
 
     @GetMapping
@@ -40,23 +52,50 @@ public class AvailabilityController {
     }
 
     @GetMapping("/range")
-    public ResponseEntity<List<AvailabilitySlotDto>> getAvailabilityByDateRange(
+    public ResponseEntity<AvailabilityRangeResponseDto> getAvailabilityByDateRange(
             @AuthenticationPrincipal User user,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
+            @RequestParam(required = false, defaultValue = "true") boolean includeGoogleEvents,
             @RequestHeader(value = "X-Timezone", required = false) String timezone
     ) {
         ZoneId zone = TimeZoneMapper.resolveZone(timezone);
         LocalDateTime utcStart = TimeZoneMapper.toUtc(start, zone);
         LocalDateTime utcEnd = TimeZoneMapper.toUtc(end, zone);
-        return ResponseEntity.ok(
+
+        CompletableFuture<List<AvailabilitySlotDto>> itemsFuture = CompletableFuture.supplyAsync(() ->
                 TimeZoneMapper.fromUtcAvailability(
                         availabilityService.getInterviewerAvailabilityByDateRange(user, utcStart, utcEnd, page, size),
                         zone
                 )
         );
+
+        boolean fetchGoogle = includeGoogleEvents
+                && user.hasInterviewerRole()
+                && tokenService.isConnected(user);
+
+        if (fetchGoogle) {
+            CompletableFuture<List<GoogleCalendarExternalEventDto>> googleFuture = CompletableFuture.supplyAsync(() ->
+                    calendarSyncService
+                            .listExternalGoogleCalendarEvents(user, utcStart, utcEnd)
+                            .stream()
+                            .map(event -> new GoogleCalendarExternalEventDto(
+                                    event.googleEventId(),
+                                    event.title(),
+                                    TimeZoneMapper.fromUtc(event.startDateTime(), zone),
+                                    TimeZoneMapper.fromUtc(event.endDateTime(), zone),
+                                    event.allDay(),
+                                    true,
+                                    event.calendarName()))
+                            .toList()
+            );
+            CompletableFuture.allOf(itemsFuture, googleFuture).join();
+            return ResponseEntity.ok(new AvailabilityRangeResponseDto(itemsFuture.join(), googleFuture.join()));
+        }
+
+        return ResponseEntity.ok(new AvailabilityRangeResponseDto(itemsFuture.join(), List.of()));
     }
 
     @PostMapping

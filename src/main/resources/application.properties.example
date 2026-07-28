@@ -60,6 +60,12 @@ server.tomcat.max-http-form-post-size=10MB
 server.tomcat.max-swallow-size=-1
 
 google.client.id=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
+google.client.secret=YOUR_GOOGLE_CLIENT_SECRET
+google.calendar.redirect-uri=http://localhost:8080/api/integrations/google-calendar/callback
+google.workspace.domain=yourcompany.com
+google.calendar.encryption-key=CHANGE_ME_TO_32_BYTE_BASE64_OR_HEX_KEY
+google.calendar.required=true
+app.frontend.url=http://localhost:5173
 
 # Logging
 logging.level.org.springframework.security=WARN
@@ -69,5 +75,5 @@ logging.level.com.nemal=INFO
 # Internal notifications
 notification.reminder.lead-minutes=60
 notification.reminder.cron=0 */15 * * * *
-notification.retention.days=30
-notification.retention.cron=0 0 2 * * *
+notification.retention.days=15
+notification.retention.cron=0 0 12 * * *

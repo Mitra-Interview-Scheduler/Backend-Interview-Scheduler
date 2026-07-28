@@ -2,6 +2,8 @@ package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.InterviewSchedule;
+import com.nemal.entity.InterviewPanel;
+import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import lombok.AllArgsConstructor;
@@ -43,6 +45,7 @@ public class InterviewRequestSimpleDto {
     private LocalDateTime scheduledStartDateTime;
     private LocalDateTime scheduledEndDateTime;
     private LocalDateTime interviewCompletedAt;
+    private String meetingLink;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -79,8 +82,26 @@ public class InterviewRequestSimpleDto {
                 .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
                 .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
                 .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)
+                .meetingLink(schedule != null && schedule.getStatus() == InterviewStatus.SCHEDULED
+                        ? resolveMeetingLink(schedule, request)
+                        : null)
                 .createdAt(request.getCreatedAt())
                 .updatedAt(request.getUpdatedAt())
                 .build();
+    }
+
+    private static String resolveMeetingLink(InterviewSchedule schedule, InterviewRequest request) {
+        if (schedule == null || schedule.getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = schedule.getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewPanel panel = request != null ? request.getPanel() : null;
+        if (panel != null && panel.getMeetingLink() != null && !panel.getMeetingLink().isBlank()) {
+            return panel.getMeetingLink();
+        }
+        return null;
     }
 }

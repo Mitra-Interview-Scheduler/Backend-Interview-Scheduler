@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.nemal.enums.Role;
+import com.nemal.util.RoleUtils;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -158,7 +159,7 @@ public class AdminController {
             }
         }
 
-        user.setRoles(new HashSet<>(request.roles()));
+        user.setRoles(RoleUtils.sortRoles(request.roles()));
         userRepository.save(user);
         return ResponseEntity.ok(toAdminUserDto(user));
     }
@@ -171,7 +172,7 @@ public class AdminController {
 
         try {
             Role roleEnum = Role.valueOf(role.toUpperCase());
-            Set<Role> roles = new HashSet<>(user.getRoles());
+            Set<Role> roles = RoleUtils.sortRoles(new HashSet<>(user.getRoles()));
             roles.add(roleEnum);
             user.setRoles(roles);
             userRepository.save(user);
@@ -200,7 +201,7 @@ public class AdminController {
                 }
             }
 
-            Set<Role> roles = new HashSet<>(user.getRoles());
+            Set<Role> roles = RoleUtils.sortRoles(new HashSet<>(user.getRoles()));
             roles.remove(roleEnum);
 
             if (roles.isEmpty()) {

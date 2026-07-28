@@ -43,6 +43,9 @@ public class InterviewRequest {
     @Column(nullable = false)
     private String candidateName;
 
+    @Column(name = "candidate_invite_email")
+    private String candidateInviteEmail;
+
     // Optional link to Candidate record
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "candidate_id")

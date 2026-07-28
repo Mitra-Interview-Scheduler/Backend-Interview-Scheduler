@@ -18,7 +18,9 @@ public record InterviewPanelDto(
         Long requestedById,
         String requestedByName,
         String interviewCoordinatorName,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String meetingLink,
+        String googleCalendarEventId
 ) {
     public static InterviewPanelDto from(InterviewPanel panel) {
         return new InterviewPanelDto(
@@ -37,7 +39,9 @@ public record InterviewPanelDto(
                 panel.getRequestedBy() != null ? panel.getRequestedBy().getId() : null,
                 panel.getRequestedBy() != null ? panel.getRequestedBy().getFullName() : null,
                 panel.getInterviewCoordinator() != null ? panel.getInterviewCoordinator().getFullName().trim() : null,
-                panel.getCreatedAt()
+                panel.getCreatedAt(),
+                panel.getMeetingLink(),
+                panel.getGoogleCalendarEventId()
         );
     }
 }

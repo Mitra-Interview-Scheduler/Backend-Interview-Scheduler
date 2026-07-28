@@ -7,7 +7,8 @@ public record UserSettingsDto(
         Long userId,
         String timezone,
         String preferredDateFormat,
-        String preferredTimeFormat
+        String preferredTimeFormat,
+        boolean emailNotificationsEnabled
 ) {
     public static UserSettingsDto from(UserSettings settings) {
         if (settings == null) {
@@ -19,7 +20,8 @@ public record UserSettingsDto(
                 settings.getUser() != null ? settings.getUser().getId() : null,
                 settings.getTimezone(),
                 settings.getPreferredDateFormat(),
-                settings.getPreferredTimeFormat()
+                settings.getPreferredTimeFormat(),
+                settings.isEmailNotificationsEnabled()
         );
     }
 }

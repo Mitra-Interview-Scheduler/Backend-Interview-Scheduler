@@ -12,6 +12,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -58,6 +59,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleResponseStatus(ResponseStatusException ex) {
+        String detail = ex.getReason();
+        if (detail == null || detail.isBlank()) {
+            detail = ex.getStatusCode().toString();
+        }
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("message", detail));
     }
 
     @ExceptionHandler(RuntimeException.class)

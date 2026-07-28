@@ -55,6 +55,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
+                        .requestMatchers("/api/integrations/google-calendar/callback").permitAll()
                         .requestMatchers("/api/auth/verify").authenticated()
                         .requestMatchers("/ws/**", "/ws").permitAll()
 
@@ -123,6 +124,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/notifications/**").authenticated()
 
                         .requestMatchers("/api/profile/**").authenticated()
+                        .requestMatchers("/api/integrations/google-calendar/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/department/**").authenticated()
                         .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")

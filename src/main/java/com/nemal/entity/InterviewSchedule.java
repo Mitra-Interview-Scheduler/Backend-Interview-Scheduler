@@ -30,6 +30,9 @@ public class InterviewSchedule {
 
     private String meetingLink;
 
+    @Column(name = "google_calendar_event_id")
+    private String googleCalendarEventId;
+
     private String location;
 
     @Enumerated(EnumType.STRING)

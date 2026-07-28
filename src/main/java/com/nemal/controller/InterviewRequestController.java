@@ -1,7 +1,10 @@
 package com.nemal.controller;
 
+import com.nemal.dto.ConflictCheckRequestDto;
 import com.nemal.dto.CreateInterviewRequestDto;
+import com.nemal.dto.GoogleCalendarExternalEventDto;
 import com.nemal.dto.InterviewRequestDto;
+import com.nemal.dto.InterviewerConflictsDto;
 import com.nemal.entity.User;
 import com.nemal.service.InterviewRequestService;
 import com.nemal.util.TimeZoneMapper;
@@ -12,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,47 @@ public class InterviewRequestController {
             return ResponseEntity.status(HttpStatus.CREATED).body(TimeZoneMapper.fromUtc(result, zone));
         } catch (Exception e) {
             logger.error("Failed to create interview request: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Warn-before-scheduling: returns the selected interviewer(s)' Google Calendar
+     * events that overlap the proposed interview window. An empty list means no
+     * conflicts. HR may still schedule over a conflict (this is advisory only).
+     */
+    @PostMapping("/conflict-check")
+    public ResponseEntity<?> checkConflicts(
+            @AuthenticationPrincipal User user,
+            @RequestBody ConflictCheckRequestDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            LocalDateTime utcStart = TimeZoneMapper.toUtc(dto.startDateTime(), zone);
+            LocalDateTime utcEnd = TimeZoneMapper.toUtc(dto.endDateTime(), zone);
+
+            List<InterviewerConflictsDto> conflicts = interviewRequestService
+                    .findSchedulingConflicts(dto.interviewerIds(), utcStart, utcEnd)
+                    .stream()
+                    .map(ic -> new InterviewerConflictsDto(
+                            ic.interviewerId(),
+                            ic.interviewerName(),
+                            ic.conflicts().stream()
+                                    .map(event -> new GoogleCalendarExternalEventDto(
+                                            event.googleEventId(),
+                                            event.title(),
+                                            TimeZoneMapper.fromUtc(event.startDateTime(), zone),
+                                            TimeZoneMapper.fromUtc(event.endDateTime(), zone),
+                                            event.allDay(),
+                                            event.readOnly(),
+                                            event.calendarName()))
+                                    .toList()))
+                    .toList();
+
+            return ResponseEntity.ok(conflicts);
+        } catch (Exception e) {
+            logger.error("Failed to check scheduling conflicts: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         }

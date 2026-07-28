@@ -31,8 +31,12 @@ public class UserChannelInterceptor implements ChannelInterceptor {
             if (authToken != null && authToken.startsWith("Bearer ")) {
                 String jwt = authToken.substring(7);
                 String email = jwtService.extractUsername(jwt);
-                User user = userRepository.findByEmail(email).orElseThrow(() -> new AuthenticationException("User not found") {});
-                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+                User user = userRepository.findByEmail(email)
+                        .orElseThrow(() -> new AuthenticationException("User not found") {});
+                UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                        email,
+                        null,
+                        user.getAuthorities());
                 accessor.setUser(auth);
             } else {
                 return null;

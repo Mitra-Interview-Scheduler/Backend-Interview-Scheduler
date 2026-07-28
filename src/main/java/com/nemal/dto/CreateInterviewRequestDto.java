@@ -8,6 +8,7 @@ import java.util.List;
 public record CreateInterviewRequestDto(
         Long candidateId,
         String candidateName,
+        String candidateEmail,
         Long candidateDesignationId,
         List<Long> requiredTechnologyIds,
         Long availabilitySlotId,
@@ -22,5 +23,6 @@ public record CreateInterviewRequestDto(
         String notes,
         String interviewType,
         Long interviewCoordinatorId,
-        Long interviewCoordinatorDepartmentId
+        Long interviewCoordinatorDepartmentId,
+        Boolean acknowledgeCalendarConflict
 ) {}

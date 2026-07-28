@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.User;
+import com.nemal.util.RoleUtils;
 import com.nemal.enums.Role;
 
 import java.util.Set;
@@ -21,7 +22,7 @@ public record LoginResponse(
                 user.getEmail(),
                 user.getFirstName(),
                 user.getLastName(),
-                user.getRoles(),
+                RoleUtils.sortRoles(user.getRoles()),
                 user.getProfilePictureUrl()
         );
     }
