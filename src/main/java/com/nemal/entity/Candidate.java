@@ -114,6 +114,10 @@ public class Candidate {
     @JoinColumn(name = "coordinated_hr_id")
     private User coordinatedHr;
 
+    @ManyToOne
+    @JoinColumn(name = "created_by_user_id")
+    private User createdBy;
+
     @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<CandidateTechnology> candidateTechnologies = new HashSet<>();

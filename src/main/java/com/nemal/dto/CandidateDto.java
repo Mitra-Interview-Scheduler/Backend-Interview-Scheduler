@@ -35,6 +35,8 @@ public record CandidateDto(
         Long coordinatedHrId,
         String coordinatedHrName,
         Long coordinatedHrDepartmentId,
+        Long createdById,
+        String createdByName,
         CandidateClosureDto closure,
         List<CandidateTechnologyDto> technologies,
         List<DomainDto> domains,
@@ -106,6 +108,8 @@ public record CandidateDto(
                 candidate.getCoordinatedHr() != null && candidate.getCoordinatedHr().getDepartment() != null
                         ? candidate.getCoordinatedHr().getDepartment().getId()
                         : null,
+                candidate.getCreatedBy() != null ? candidate.getCreatedBy().getId() : null,
+                candidate.getCreatedBy() != null ? candidate.getCreatedBy().getFullName().trim() : null,
                 closure,
                 technologies != null ? technologies : List.of(),
                 domains != null ? domains : List.of(),

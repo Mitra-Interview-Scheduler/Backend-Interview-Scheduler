@@ -363,6 +363,8 @@ public class CandidateService {
             }
         }
 
+        User createdBy = changedBy != null ? changedBy : coordinatedHr;
+
         Candidate candidate = Candidate.builder()
                 .name(dto.name().trim())
                 .email(normalizedEmail)
@@ -378,6 +380,7 @@ public class CandidateService {
                 .notes(dto.notes())
                 .yearsOfExperience(dto.yearsOfExperience())
                 .coordinatedHr(coordinatedHr)
+                .createdBy(createdBy)
                 .isActive(true)
                 .build();
 
@@ -390,7 +393,7 @@ public class CandidateService {
                 MasterStatus.NEW,
                 null,
                 PipelineAuditActionType.APPLICATION_CREATED,
-                changedBy != null ? changedBy : coordinatedHr,
+                createdBy,
                 null);
         notificationService.sendCandidateCoordinatorAssignedNotification(candidate);
         return toCandidateDto(candidate);
