@@ -52,6 +52,14 @@ public class InterviewRequestService {
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
+        String interviewType = interviewTypeService.resolveCode(dto.interviewType());
+        if (!interviewTypeService.shouldRequireInterviewer(interviewType)) {
+            return createAssessmentRequest(requestedBy, dto, interviewType);
+        }
+
+        if (dto.availabilitySlotId() == null) {
+            throw new RuntimeException("Availability slot is required for this interview type");
+        }
 
         AvailabilitySlot slot = availabilitySlotRepository.findById(dto.availabilitySlotId())
                 .orElseThrow(() -> new RuntimeException("Availability slot not found: " + dto.availabilitySlotId()));
@@ -77,24 +85,11 @@ public class InterviewRequestService {
                     bookingEnd);
         }
 
-        Candidate candidate = null;
-        if (dto.candidateId() != null) {
-            candidate = candidateRepository.findById(dto.candidateId())
-                    .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
-        }
-        String candidateName = dto.candidateName() != null ? dto.candidateName()
-                : (candidate != null ? candidate.getName() : "Unknown");
+        Candidate candidate = resolveCandidate(dto);
+        String candidateName = resolveCandidateName(dto, candidate);
         String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
-
-        Designation candidateDesignation = null;
-        if (dto.candidateDesignationId() != null) {
-            candidateDesignation = designationRepository.findById(dto.candidateDesignationId())
-                    .orElseThrow(() -> new RuntimeException("Designation not found"));
-        }
-
-        List<Technology> technologies = dto.requiredTechnologyIds() != null
-                ? technologyRepository.findAllById(dto.requiredTechnologyIds())
-                : List.of();
+        Designation candidateDesignation = resolveCandidateDesignation(dto);
+        List<Technology> technologies = resolveTechnologies(dto);
 
         AvailabilitySlot originalSlot = slot;
         AvailabilitySlot bookedSlot = splitAndBookSlot(slot, bookingStart, bookingEnd, candidateName);
@@ -123,8 +118,6 @@ public class InterviewRequestService {
 
         request.getRequiredTechnologies().addAll(technologies);
         InterviewRequest saved = interviewRequestRepository.save(request);
-
-        String interviewType = interviewTypeService.resolveCode(dto.interviewType());
 
         InterviewSchedule schedule = InterviewSchedule.builder()
                 .request(saved)
@@ -157,6 +150,116 @@ public class InterviewRequestService {
         }
 
         return InterviewRequestDto.from(saved);
+    }
+
+    /**
+     * Assessment-style types: record a due window + notes without booking an interviewer slot.
+     */
+    private InterviewRequestDto createAssessmentRequest(
+            User requestedBy,
+            CreateInterviewRequestDto dto,
+            String interviewType) {
+        if (dto.candidateId() == null) {
+            throw new RuntimeException("Candidate is required for assessment scheduling");
+        }
+        if (dto.preferredStartDateTime() == null) {
+            throw new RuntimeException("Due date/time is required for assessment scheduling");
+        }
+
+        LocalDateTime dueStart = dto.preferredStartDateTime();
+        LocalDateTime dueEnd = dto.preferredEndDateTime() != null
+                ? dto.preferredEndDateTime()
+                : dueStart.plusHours(1);
+        if (!dueEnd.isAfter(dueStart)) {
+            throw new RuntimeException("Assessment end time must be after the due start time");
+        }
+
+        Candidate candidate = resolveCandidate(dto);
+        String candidateName = resolveCandidateName(dto, candidate);
+        String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
+        Designation candidateDesignation = resolveCandidateDesignation(dto);
+        List<Technology> technologies = resolveTechnologies(dto);
+
+        User interviewCoordinator = resolveInterviewCoordinator(
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId());
+
+        InterviewRequest request = InterviewRequest.builder()
+                .candidateName(candidateName)
+                .candidateInviteEmail(candidateInviteEmail)
+                .candidate(candidate)
+                .candidateDesignation(candidateDesignation)
+                .preferredStartDateTime(dueStart)
+                .preferredEndDateTime(dueEnd)
+                .requestedBy(requestedBy)
+                .assignedInterviewer(null)
+                .interviewCoordinator(interviewCoordinator)
+                .availabilitySlot(null)
+                .status(RequestStatus.ACCEPTED)
+                .respondedAt(LocalDateTime.now())
+                .responseNotes("Assessment recorded without interviewer booking")
+                .isUrgent(dto.isUrgent())
+                .notes(dto.notes())
+                .build();
+
+        request.getRequiredTechnologies().addAll(technologies);
+        InterviewRequest saved = interviewRequestRepository.save(request);
+
+        InterviewSchedule schedule = InterviewSchedule.builder()
+                .request(saved)
+                .interviewer(null)
+                .startDateTime(dueStart)
+                .endDateTime(dueEnd)
+                .status(InterviewStatus.SCHEDULED)
+                .interviewType(interviewType)
+                .build();
+        schedule = interviewScheduleRepository.save(schedule);
+        saved.setInterviewSchedule(schedule);
+
+        // No calendar sync / Meet — assessment types typically have createCalendarMeeting=false
+        if (candidate != null) {
+            applyCandidateStatusForScheduledInterview(candidate, interviewType, requestedBy);
+        }
+
+        try {
+            notificationService.sendCoordinatedHrInterviewScheduledNotification(saved);
+            if (interviewCoordinator != null) {
+                notificationService.sendInterviewCoordinatorScheduledNotification(saved);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to send assessment scheduled notification: {}", e.getMessage());
+        }
+
+        return InterviewRequestDto.from(saved);
+    }
+
+    private Candidate resolveCandidate(CreateInterviewRequestDto dto) {
+        if (dto.candidateId() == null) {
+            return null;
+        }
+        return candidateRepository.findById(dto.candidateId())
+                .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
+    }
+
+    private String resolveCandidateName(CreateInterviewRequestDto dto, Candidate candidate) {
+        if (dto.candidateName() != null) {
+            return dto.candidateName();
+        }
+        return candidate != null ? candidate.getName() : "Unknown";
+    }
+
+    private Designation resolveCandidateDesignation(CreateInterviewRequestDto dto) {
+        if (dto.candidateDesignationId() == null) {
+            return null;
+        }
+        return designationRepository.findById(dto.candidateDesignationId())
+                .orElseThrow(() -> new RuntimeException("Designation not found"));
+    }
+
+    private List<Technology> resolveTechnologies(CreateInterviewRequestDto dto) {
+        return dto.requiredTechnologyIds() != null
+                ? technologyRepository.findAllById(dto.requiredTechnologyIds())
+                : List.of();
     }
 
     private AvailabilitySlot splitAndBookSlot(AvailabilitySlot slot,

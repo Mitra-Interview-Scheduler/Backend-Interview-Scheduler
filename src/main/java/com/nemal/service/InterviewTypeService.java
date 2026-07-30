@@ -129,6 +129,34 @@ public class InterviewTypeService {
     }
 
     /**
+     * Whether booking this interview type should create a Google Calendar meeting
+     * (Meet link + attachments). Defaults to true when the type is unknown.
+     */
+    @Transactional(readOnly = true)
+    public boolean shouldCreateCalendarMeeting(String code) {
+        if (code == null || code.isBlank()) {
+            return true;
+        }
+        return repository.findByCodeIgnoreCase(normalizeCode(code))
+                .map(InterviewType::isCreateCalendarMeeting)
+                .orElse(true);
+    }
+
+    /**
+     * Whether scheduling this interview type requires an interviewer availability slot.
+     * Defaults to true when the type is unknown.
+     */
+    @Transactional(readOnly = true)
+    public boolean shouldRequireInterviewer(String code) {
+        if (code == null || code.isBlank()) {
+            return true;
+        }
+        return repository.findByCodeIgnoreCase(normalizeCode(code))
+                .map(InterviewType::isRequiresInterviewer)
+                .orElse(true);
+    }
+
+    /**
      * Resolves interviewer matching filters for a candidate + interview type,
      * using the type's SAME_AS_CANDIDATE / FIXED / NONE rules.
      */
@@ -303,8 +331,15 @@ public class InterviewTypeService {
                         dto.cancelRestoreStatusKey() != null && !dto.cancelRestoreStatusKey().isBlank()
                                 ? dto.cancelRestoreStatusKey()
                                 : MasterStatus.SCREENING.name()))
+                .createCalendarMeeting(dto.createCalendarMeeting() == null || dto.createCalendarMeeting())
+                .requiresInterviewer(dto.requiresInterviewer() == null || dto.requiresInterviewer())
                 .build();
         applyFilterRules(type, dto.filterRules() != null ? dto.filterRules() : InterviewTypeFilterRulesDto.defaults());
+
+        // Assessment-style types should not create Meet by default unless explicitly enabled
+        if (!type.isRequiresInterviewer() && dto.createCalendarMeeting() == null) {
+            type.setCreateCalendarMeeting(false);
+        }
 
         return InterviewTypeDto.from(repository.save(type));
     }
@@ -328,11 +363,20 @@ public class InterviewTypeService {
         }
         type.setRoundStatusKey(validateStatusKey(dto.roundStatusKey()));
         type.setCancelRestoreStatusKey(validateStatusKey(dto.cancelRestoreStatusKey()));
+        if (dto.createCalendarMeeting() != null) {
+            type.setCreateCalendarMeeting(dto.createCalendarMeeting());
+        }
+        if (dto.requiresInterviewer() != null) {
+            type.setRequiresInterviewer(dto.requiresInterviewer());
+            if (!dto.requiresInterviewer() && dto.createCalendarMeeting() == null) {
+                type.setCreateCalendarMeeting(false);
+            }
+        }
         if (dto.filterRules() != null) {
             applyFilterRules(type, dto.filterRules());
         }
 
-        return InterviewTypeDto.from(repository.save(type));
+        return InterviewTypeDto.from(repository.saveAndFlush(type));
     }
 
     @Transactional

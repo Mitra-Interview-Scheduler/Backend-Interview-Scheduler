@@ -1,5 +1,6 @@
 package com.nemal.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.nemal.entity.InterviewType;
 import com.nemal.enums.InterviewerFilterMode;
 
@@ -16,6 +17,8 @@ public record InterviewTypeDto(
         boolean isSystem,
         String roundStatusKey,
         String cancelRestoreStatusKey,
+        @JsonProperty("createCalendarMeeting") boolean createCalendarMeeting,
+        @JsonProperty("requiresInterviewer") boolean requiresInterviewer,
         InterviewTypeFilterRulesDto filterRules
 ) {
     public static InterviewTypeDto from(InterviewType type) {
@@ -32,6 +35,8 @@ public record InterviewTypeDto(
                 type.isSystem(),
                 type.getRoundStatusKey(),
                 type.getCancelRestoreStatusKey(),
+                type.isCreateCalendarMeeting(),
+                type.isRequiresInterviewer(),
                 toFilterRules(type)
         );
     }

@@ -35,6 +35,7 @@ public class CalendarSyncService {
     private final GoogleCalendarEventService eventService;
     private final GoogleCalendarTokenService tokenService;
     private final UserSettingsService userSettingsService;
+    private final InterviewTypeService interviewTypeService;
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final InterviewPanelRepository interviewPanelRepository;
@@ -46,6 +47,7 @@ public class CalendarSyncService {
             GoogleCalendarEventService eventService,
             GoogleCalendarTokenService tokenService,
             UserSettingsService userSettingsService,
+            InterviewTypeService interviewTypeService,
             AvailabilitySlotRepository availabilitySlotRepository,
             InterviewScheduleRepository interviewScheduleRepository,
             InterviewPanelRepository interviewPanelRepository,
@@ -58,6 +60,7 @@ public class CalendarSyncService {
         this.eventService = eventService;
         this.tokenService = tokenService;
         this.userSettingsService = userSettingsService;
+        this.interviewTypeService = interviewTypeService;
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.interviewScheduleRepository = interviewScheduleRepository;
         this.interviewPanelRepository = interviewPanelRepository;
@@ -394,6 +397,14 @@ public class CalendarSyncService {
             AvailabilitySlot bookedSlot,
             InterviewRequest request,
             InterviewSchedule schedule) {
+        if (schedule != null && !interviewTypeService.shouldCreateCalendarMeeting(schedule.getInterviewType())) {
+            logger.info(
+                    "Skipping Google Calendar meeting for request {} (interview type {} has createCalendarMeeting=false)",
+                    request.getId(),
+                    schedule.getInterviewType());
+            return;
+        }
+
         User interviewer = bookedSlot.getInterviewer();
         Candidate candidate = resolveCandidateForSync(request.getCandidate());
         User organizer = resolveInterviewOrganizer(interviewer, candidate);
@@ -549,6 +560,21 @@ public class CalendarSyncService {
             List<InterviewRequest> requests,
             List<AvailabilitySlot> bookedSlots) {
         if (requests.isEmpty() || bookedSlots.isEmpty()) {
+            return;
+        }
+
+        String interviewTypeCode = bookedSlots.stream()
+                .map(AvailabilitySlot::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(InterviewSchedule::getInterviewType)
+                .filter(type -> type != null && !type.isBlank())
+                .findFirst()
+                .orElse(null);
+        if (!interviewTypeService.shouldCreateCalendarMeeting(interviewTypeCode)) {
+            logger.info(
+                    "Skipping Google Calendar meeting for panel {} (interview type {} has createCalendarMeeting=false)",
+                    panel.getId(),
+                    interviewTypeCode);
             return;
         }
 

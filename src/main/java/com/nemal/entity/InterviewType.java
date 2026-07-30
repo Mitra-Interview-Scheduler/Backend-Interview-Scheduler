@@ -64,6 +64,23 @@ public class InterviewType {
     @Column(name = "cancel_restore_status_key", length = 64)
     private String cancelRestoreStatusKey;
 
+    /**
+     * When true (default), booking creates a Google Calendar event with Meet link and attachments.
+     * When false, no meeting is created or attached for interviews of this type.
+     */
+    @Column(name = "create_calendar_meeting", nullable = false)
+    @Builder.Default
+    private boolean createCalendarMeeting = true;
+
+    /**
+     * When true (default), scheduling requires picking an interviewer availability slot.
+     * When false (assessment-style), HR can record the activity with a due window and notes
+     * without booking an interviewer.
+     */
+    @Column(name = "requires_interviewer", nullable = false)
+    @Builder.Default
+    private boolean requiresInterviewer = true;
+
     // ── Interviewer filter rules ────────────────────────────────────────────
 
     @Enumerated(EnumType.STRING)

@@ -1,5 +1,8 @@
 package com.nemal.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public record CreateInterviewTypeDto(
         String code,
         String label,
@@ -8,5 +11,11 @@ public record CreateInterviewTypeDto(
         Integer displayOrder,
         String roundStatusKey,
         String cancelRestoreStatusKey,
+        @JsonProperty("createCalendarMeeting")
+        @JsonAlias({"create_calendar_meeting", "createMeeting", "meetingEnabled"})
+        Boolean createCalendarMeeting,
+        @JsonProperty("requiresInterviewer")
+        @JsonAlias({"requires_interviewer"})
+        Boolean requiresInterviewer,
         InterviewTypeFilterRulesDto filterRules
 ) {}
