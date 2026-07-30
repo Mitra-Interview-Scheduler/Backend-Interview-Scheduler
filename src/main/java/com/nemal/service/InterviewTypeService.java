@@ -1,6 +1,8 @@
 package com.nemal.service;
 
 import com.nemal.dto.CreateInterviewTypeDto;
+import com.nemal.dto.InterviewTypeDeletePreviewDto;
+import com.nemal.dto.InterviewTypeDeleteResultDto;
 import com.nemal.dto.InterviewTypeDto;
 import com.nemal.dto.InterviewTypeFilterRulesDto;
 import com.nemal.dto.ResolvedInterviewerFiltersDto;
@@ -334,7 +336,28 @@ public class InterviewTypeService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public InterviewTypeDto reactivate(Long id) {
+        InterviewType type = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Interview type not found: " + id));
+        if (type.isActive()) {
+            return InterviewTypeDto.from(type);
+        }
+        type.setActive(true);
+        return InterviewTypeDto.from(repository.save(type));
+    }
+
+    public InterviewTypeDeletePreviewDto getDeletePreview(Long id) {
+        InterviewType type = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Interview type not found: " + id));
+        if (type.isSystem()) {
+            throw new RuntimeException("System interview types cannot be deleted");
+        }
+        long scheduleCount = scheduleRepository.countByInterviewTypeIgnoreCase(type.getCode());
+        return new InterviewTypeDeletePreviewDto(type.getId(), type.getLabel(), scheduleCount > 0, scheduleCount);
+    }
+
+    @Transactional
+    public InterviewTypeDeleteResultDto delete(Long id) {
         InterviewType type = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Interview type not found: " + id));
         if (type.isSystem()) {
@@ -343,11 +366,15 @@ public class InterviewTypeService {
         if (scheduleRepository.existsByInterviewTypeIgnoreCase(type.getCode())) {
             type.setActive(false);
             repository.save(type);
-            return;
+            return new InterviewTypeDeleteResultDto(
+                    InterviewTypeDeleteResultDto.ACTION_DEACTIVATED,
+                    type.getLabel());
         }
         String roundKey = type.getRoundStatusKey();
+        String label = type.getLabel();
         repository.delete(type);
         deactivateOwnedRoundStep(roundKey);
+        return new InterviewTypeDeleteResultDto(InterviewTypeDeleteResultDto.ACTION_DELETED, label);
     }
 
     private void applyFilterRules(InterviewType type, InterviewTypeFilterRulesDto rules) {

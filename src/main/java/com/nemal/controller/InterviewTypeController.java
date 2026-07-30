@@ -1,6 +1,8 @@
 package com.nemal.controller;
 
 import com.nemal.dto.CreateInterviewTypeDto;
+import com.nemal.dto.InterviewTypeDeletePreviewDto;
+import com.nemal.dto.InterviewTypeDeleteResultDto;
 import com.nemal.dto.InterviewTypeDto;
 import com.nemal.dto.UpdateInterviewTypeDto;
 import com.nemal.service.InterviewTypeService;
@@ -53,11 +55,30 @@ public class InterviewTypeController {
         }
     }
 
+    @PatchMapping("/{id}/reactivate")
+    public ResponseEntity<?> reactivate(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(interviewTypeService.reactivate(id));
+        } catch (Exception e) {
+            logger.warn("Failed to reactivate interview type {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{id}/delete-preview")
+    public ResponseEntity<?> getDeletePreview(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(interviewTypeService.getDeletePreview(id));
+        } catch (Exception e) {
+            logger.warn("Failed to load delete preview for interview type {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {
-            interviewTypeService.delete(id);
-            return ResponseEntity.noContent().build();
+            return ResponseEntity.ok(interviewTypeService.delete(id));
         } catch (Exception e) {
             logger.warn("Failed to delete interview type {}: {}", id, e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));

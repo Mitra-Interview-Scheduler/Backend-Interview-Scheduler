@@ -66,4 +66,6 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
 
     /** Whether any schedule references the given interview type code (used to soft-delete types in use). */
     boolean existsByInterviewTypeIgnoreCase(String interviewType);
+
+    long countByInterviewTypeIgnoreCase(String interviewType);
 }
