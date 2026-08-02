@@ -9,7 +9,9 @@ public enum PipelineAuditActionType {
     APPLICATION_CLOSED("ACL"),
     INTERVIEW_SCHEDULED("IVS"),
     INTERVIEW_CANCELLED("IVC"),
-    FEEDBACK_SUBMITTED("FBS");
+    FEEDBACK_SUBMITTED("FBS"),
+    ASSESSMENT_RECEIVED("ASR"),
+    ASSESSMENT_COMPLETED("ASC");
 
     private final String code;
 
