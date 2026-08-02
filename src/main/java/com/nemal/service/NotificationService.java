@@ -6,6 +6,7 @@ import com.nemal.entity.Candidate;
 import com.nemal.entity.InterviewPanel;
 import com.nemal.entity.InterviewPostponeRequest;
 import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
 import com.nemal.entity.Notification;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
@@ -562,6 +563,34 @@ public class NotificationService {
                 .type("FEEDBACK_SUBMITTED")
                 .relatedEntityId(candidate.getId())
                 .relatedEntityType("CANDIDATE")
+                .read(false)
+                .build());
+    }
+
+    public void sendAssessmentReviewAssignedNotification(InterviewSchedule schedule, User reviewer) {
+        if (schedule == null || reviewer == null) {
+            return;
+        }
+        InterviewRequest request = schedule.getRequest();
+        String candidateName = request != null && request.getCandidate() != null
+                ? request.getCandidate().getName()
+                : (request != null ? request.getCandidateName() : "a candidate");
+        String typeLabel = schedule.getInterviewType() != null ? schedule.getInterviewType() : "Assessment";
+        String due = formatDateTime(schedule.getStartDateTime());
+
+        deliver(Notification.builder()
+                .recipient(reviewer)
+                .subject("Assessment Review Assigned")
+                .message(buildInterviewDetailsMessage(
+                        "You have been assigned to review an assessment. Open Assessments (or Interview Feedback) to download the submission and submit your review.",
+                        candidateName,
+                        due,
+                        typeLabel,
+                        null
+                ))
+                .type("ASSESSMENT_REVIEW_ASSIGNED")
+                .relatedEntityId(schedule.getId())
+                .relatedEntityType("INTERVIEW_SCHEDULE")
                 .read(false)
                 .build());
     }

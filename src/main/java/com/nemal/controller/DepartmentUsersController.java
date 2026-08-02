@@ -26,14 +26,16 @@ public class DepartmentUsersController {
 
     /**
      * List active users for HR pickers.
-     * - departmentId only → all active users in that department (e.g. interview or candidate coordinator)
-     * - role only → all active users with that role
+     * - departmentId only → all active users in that department
+     * - role only → all active users with that role (HR/ADMIN/INTERVIEWER)
      * - both → active users in department with that role
+     * - minTierOrder → keep users whose designation tierOrder >= minTierOrder
      */
     @GetMapping
     public ResponseEntity<List<DepartmentUserDto>> getDepartmentUsers(
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) Long departmentId
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Integer minTierOrder
     ) {
         if (departmentId == null && (role == null || role.isBlank())) {
             throw new IllegalArgumentException("Either role or departmentId is required");
@@ -57,6 +59,7 @@ public class DepartmentUsersController {
 
         List<DepartmentUserDto> result = users.stream()
                 .filter(User::isActive)
+                .filter(u -> matchesMinTier(u, minTierOrder))
                 .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
                 .map(DepartmentUserDto::from)
                 .toList();
@@ -64,15 +67,26 @@ public class DepartmentUsersController {
         return ResponseEntity.ok(result);
     }
 
+    private boolean matchesMinTier(User user, Integer minTierOrder) {
+        if (minTierOrder == null) {
+            return true;
+        }
+        if (user.getCurrentDesignation() == null || user.getCurrentDesignation().getTier() == null) {
+            return false;
+        }
+        Integer order = user.getCurrentDesignation().getTier().getTierOrder();
+        return order != null && order >= minTierOrder;
+    }
+
     private Role parseRole(String role) {
         try {
             Role targetRole = Role.valueOf(role.toUpperCase());
-            if (targetRole != Role.HR && targetRole != Role.ADMIN) {
-                throw new IllegalArgumentException("Only HR or Admin role filters are supported");
+            if (targetRole != Role.HR && targetRole != Role.ADMIN && targetRole != Role.INTERVIEWER) {
+                throw new IllegalArgumentException("Only HR, Admin, or Interviewer role filters are supported");
             }
             return targetRole;
         } catch (IllegalArgumentException ex) {
-            if (ex.getMessage() != null && ex.getMessage().contains("Only HR or Admin")) {
+            if (ex.getMessage() != null && ex.getMessage().contains("Only HR")) {
                 throw ex;
             }
             throw new IllegalArgumentException("Invalid role: " + role);

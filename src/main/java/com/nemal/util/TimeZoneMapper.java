@@ -136,7 +136,12 @@ public final class TimeZoneMapper {
                 fromUtc(dto.scheduledEndDateTime(), targetZone),
                 fromUtc(dto.interviewCompletedAt(), targetZone),
                 dto.meetingLink(),
-                dto.googleCalendarEventId()
+                dto.googleCalendarEventId(),
+                dto.assessmentPhase(),
+                dto.hasAssessmentFile(),
+                dto.assessmentFileName(),
+                dto.assessmentFileSize(),
+                fromUtc(dto.assessmentUploadedAt(), targetZone)
         );
     }
 

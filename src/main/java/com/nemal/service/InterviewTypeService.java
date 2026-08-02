@@ -100,6 +100,14 @@ public class InterviewTypeService {
     }
 
     @Transactional(readOnly = true)
+    public String labelForCode(String code) {
+        return repository.findByCodeIgnoreCase(normalizeCode(code))
+                .map(InterviewType::getLabel)
+                .filter(label -> label != null && !label.isBlank())
+                .orElse(normalizeCode(code));
+    }
+
+    @Transactional(readOnly = true)
     public MasterStatus roundStatus(String code) {
         return parseStatus(roundStatusKey(code), DEFAULT_ROUND_STATUS);
     }
@@ -164,6 +172,9 @@ public class InterviewTypeService {
     public ResolvedInterviewerFiltersDto resolveInterviewerFilters(String interviewTypeCode, Long candidateId) {
         InterviewType type = repository.findByCodeIgnoreCase(normalizeCode(interviewTypeCode))
                 .orElseThrow(() -> new RuntimeException("Unknown interview type: " + interviewTypeCode));
+        if (!type.isRequiresInterviewer()) {
+            return new ResolvedInterviewerFiltersDto(null, null, null, null, null, null, null);
+        }
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new RuntimeException("Candidate not found: " + candidateId));
 
@@ -334,10 +345,15 @@ public class InterviewTypeService {
                 .createCalendarMeeting(dto.createCalendarMeeting() == null || dto.createCalendarMeeting())
                 .requiresInterviewer(dto.requiresInterviewer() == null || dto.requiresInterviewer())
                 .build();
-        applyFilterRules(type, dto.filterRules() != null ? dto.filterRules() : InterviewTypeFilterRulesDto.defaults());
+        boolean requiresInterviewer = type.isRequiresInterviewer();
+        applyFilterRules(
+                type,
+                requiresInterviewer
+                        ? (dto.filterRules() != null ? dto.filterRules() : InterviewTypeFilterRulesDto.defaults())
+                        : InterviewTypeFilterRulesDto.noInterviewer());
 
         // Assessment-style types should not create Meet by default unless explicitly enabled
-        if (!type.isRequiresInterviewer() && dto.createCalendarMeeting() == null) {
+        if (!requiresInterviewer && dto.createCalendarMeeting() == null) {
             type.setCreateCalendarMeeting(false);
         }
 
@@ -372,7 +388,9 @@ public class InterviewTypeService {
                 type.setCreateCalendarMeeting(false);
             }
         }
-        if (dto.filterRules() != null) {
+        if (!type.isRequiresInterviewer()) {
+            applyFilterRules(type, InterviewTypeFilterRulesDto.noInterviewer());
+        } else if (dto.filterRules() != null) {
             applyFilterRules(type, dto.filterRules());
         }
 

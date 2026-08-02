@@ -37,4 +37,23 @@ public record InterviewTypeFilterRulesDto(
                 List.of()
         );
     }
+
+    /** Assessment types do not match interviewers — all filters disabled. */
+    public static InterviewTypeFilterRulesDto noInterviewer() {
+        return new InterviewTypeFilterRulesDto(
+                InterviewerFilterMode.NONE,
+                null,
+                null,
+                InterviewerFilterMode.NONE,
+                null,
+                InterviewerFilterMode.NONE,
+                null,
+                InterviewerFilterMode.NONE,
+                List.of(),
+                InterviewerFilterMode.NONE,
+                List.of(),
+                InterviewerFilterMode.NONE,
+                List.of()
+        );
+    }
 }

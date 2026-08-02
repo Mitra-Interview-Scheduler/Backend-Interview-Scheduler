@@ -42,6 +42,7 @@ public class FeedbackService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final NotificationService notificationService;
     private final InterviewTypeService interviewTypeService;
+    private final AssessmentService assessmentService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -395,7 +396,14 @@ public class FeedbackService {
             }
         }
 
-        return toResponseDto(saved);
+        boolean assessmentCompleted = false;
+        if (schedule.getAssessmentPhase() != null) {
+            assessmentCompleted = assessmentService.completeAssessmentIfAllReviewsDone(schedule, interviewer);
+            // Reload schedule so DTO reflects updated phase/status
+            schedule = interviewScheduleRepository.findById(schedule.getId()).orElse(schedule);
+        }
+
+        return toResponseDto(saved, schedule, assessmentCompleted);
     }
 
     private void recordFeedbackSubmittedAudit(InterviewSchedule schedule,
@@ -705,13 +713,27 @@ public class FeedbackService {
     }
 
     private FeedbackResponseDto toResponseDto(FeedbackResponse response) {
+        InterviewSchedule schedule = response.getInterviewSchedule();
+        boolean assessmentCompleted = schedule != null
+                && schedule.getAssessmentPhase() == com.nemal.enums.AssessmentPhase.COMPLETED;
+        return toResponseDto(response, schedule, assessmentCompleted);
+    }
+
+    private FeedbackResponseDto toResponseDto(FeedbackResponse response,
+                                              InterviewSchedule schedule,
+                                              boolean assessmentCompleted) {
+        String phase = schedule != null && schedule.getAssessmentPhase() != null
+                ? schedule.getAssessmentPhase().name()
+                : null;
         return new FeedbackResponseDto(
                 response.getId(),
-                response.getInterviewSchedule().getId(),
+                schedule != null ? schedule.getId() : null,
                 response.getForm() != null ? response.getForm().getId() : null,
                 response.getInterviewer() != null ? response.getInterviewer().getId() : null,
                 parseResponseMap(response.getResponsesJson()),
-                response.getSubmittedAt()
+                response.getSubmittedAt(),
+                phase,
+                assessmentCompleted
         );
     }
 

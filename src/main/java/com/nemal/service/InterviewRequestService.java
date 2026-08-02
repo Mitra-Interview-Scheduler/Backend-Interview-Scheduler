@@ -8,6 +8,7 @@ import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
+import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
@@ -212,9 +213,11 @@ public class InterviewRequestService {
                 .endDateTime(dueEnd)
                 .status(InterviewStatus.SCHEDULED)
                 .interviewType(interviewType)
+                .assessmentPhase(AssessmentPhase.AWAITING)
                 .build();
         schedule = interviewScheduleRepository.save(schedule);
         saved.setInterviewSchedule(schedule);
+        saved = interviewRequestRepository.saveAndFlush(saved);
 
         // No calendar sync / Meet — assessment types typically have createCalendarMeeting=false
         if (candidate != null) {
