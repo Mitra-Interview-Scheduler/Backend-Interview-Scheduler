@@ -1,0 +1,2 @@
+ALTER TABLE interview_types
+  ADD COLUMN IF NOT EXISTS requires_interviewer BOOLEAN NOT NULL DEFAULT TRUE;

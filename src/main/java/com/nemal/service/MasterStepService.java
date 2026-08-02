@@ -25,6 +25,14 @@ public class MasterStepService {
                 .collect(Collectors.toList());
     }
 
+    /** All active steps including invisible ones (e.g. Interview Schedules) — for admin mapping UIs. */
+    public List<CandidateStepDto> getActiveCandidateSteps() {
+        return masterStepRepository.findByIsActiveTrueOrderByStepOrderAscDisplayOrderAsc()
+                .stream()
+                .map(CandidateStepDto::from)
+                .collect(Collectors.toList());
+    }
+
     public List<CandidateStepDto> getClosingCandidateSteps() {
         return masterStepRepository.findAllByIsActiveTrueAndIsClosingStepTrueAndIsVisibleTrueOrderByDisplayOrderAsc()
                 .stream()
@@ -33,14 +41,25 @@ public class MasterStepService {
     }
 
     public MasterStep requireByStatus(MasterStatus status) {
-        MasterStep step = masterStepRepository.findByStatusKey(status.name());
+        return requireByStatusKey(status.name());
+    }
+
+    public MasterStep requireByStatusKey(String statusKey) {
+        if (statusKey == null || statusKey.isBlank()) {
+            throw new RuntimeException("Master step status key is required");
+        }
+        MasterStep step = masterStepRepository.findByStatusKey(statusKey.trim().toUpperCase());
         if (step == null) {
-            throw new RuntimeException("Master step not configured for status: " + status);
+            throw new RuntimeException("Master step not configured for status: " + statusKey);
         }
         return step;
     }
 
     public void assignStatus(Candidate candidate, MasterStatus status) {
         candidate.setMasterStep(requireByStatus(status));
+    }
+
+    public void assignByStatusKey(Candidate candidate, String statusKey) {
+        candidate.setMasterStep(requireByStatusKey(statusKey));
     }
 }

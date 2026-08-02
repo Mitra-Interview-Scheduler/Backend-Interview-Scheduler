@@ -25,7 +25,11 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
     @Query("""
             SELECT r FROM InterviewRequest r
             LEFT JOIN FETCH r.interviewSchedule s
-            LEFT JOIN FETCH r.panel
+            LEFT JOIN FETCH r.panel p
+            LEFT JOIN FETCH p.interviewCoordinator
+            LEFT JOIN FETCH r.interviewCoordinator
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH c.coordinatedHr
             WHERE s.id = :interviewScheduleId
             """)
     List<InterviewRequest> findByInterviewScheduleIdWithDetails(

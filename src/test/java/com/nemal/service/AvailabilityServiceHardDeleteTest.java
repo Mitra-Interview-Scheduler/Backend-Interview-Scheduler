@@ -24,6 +24,8 @@ class AvailabilityServiceHardDeleteTest {
     @Mock
     private InterviewRequestService interviewRequestService;
     @Mock
+    private InterviewPostponeRequestService postponeRequestService;
+    @Mock
     private CalendarSyncService calendarSyncService;
 
     private AvailabilityService availabilityService;
@@ -33,6 +35,7 @@ class AvailabilityServiceHardDeleteTest {
         availabilityService = new AvailabilityService(
                 availabilitySlotRepository,
                 interviewRequestService,
+                postponeRequestService,
                 calendarSyncService);
     }
 

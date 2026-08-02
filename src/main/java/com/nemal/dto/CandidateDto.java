@@ -1,7 +1,6 @@
 package com.nemal.dto;
 
 import com.nemal.entity.Candidate;
-import com.nemal.enums.MasterStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,7 +19,7 @@ public record CandidateDto(
         String tierName,
         Integer tierOrder,
         Integer levelOrder,
-        MasterStatus status,
+        String status,
         String resourceRequestNumber,
         String resumeUrl,
         String jdUrl,
@@ -36,16 +35,19 @@ public record CandidateDto(
         Long coordinatedHrId,
         String coordinatedHrName,
         Long coordinatedHrDepartmentId,
+        Long createdById,
+        String createdByName,
         CandidateClosureDto closure,
         List<CandidateTechnologyDto> technologies,
-        List<DomainDto> domains
+        List<DomainDto> domains,
+        Long profilePictureDocumentId
 ) {
     public static CandidateDto from(Candidate candidate) {
-        return from(candidate, null, List.of(), List.of());
+        return from(candidate, null, List.of(), List.of(), null);
     }
 
     public static CandidateDto from(Candidate candidate, CandidateClosureDto closure) {
-        return from(candidate, closure, List.of(), List.of());
+        return from(candidate, closure, List.of(), List.of(), null);
     }
 
     public static CandidateDto from(
@@ -53,7 +55,7 @@ public record CandidateDto(
             CandidateClosureDto closure,
             List<CandidateTechnologyDto> technologies
     ) {
-        return from(candidate, closure, technologies, List.of());
+        return from(candidate, closure, technologies, List.of(), null);
     }
 
     public static CandidateDto from(
@@ -61,6 +63,16 @@ public record CandidateDto(
             CandidateClosureDto closure,
             List<CandidateTechnologyDto> technologies,
             List<DomainDto> domains
+    ) {
+        return from(candidate, closure, technologies, domains, null);
+    }
+
+    public static CandidateDto from(
+            Candidate candidate,
+            CandidateClosureDto closure,
+            List<CandidateTechnologyDto> technologies,
+            List<DomainDto> domains,
+            Long profilePictureDocumentId
     ) {
         var desig = candidate.getTargetDesignation();
         var tier  = (desig != null) ? desig.getTier() : null;
@@ -78,7 +90,7 @@ public record CandidateDto(
                 tier  != null ? tier.getName()       : null,
                 tier  != null ? tier.getTierOrder()  : null,
                 desig != null ? desig.getLevelOrder() : null,
-                candidate.getStatus(),
+                candidate.getStatusKey(),
                 candidate.getResourceRequestNumber(),
                 candidate.getResumeUrl(),
                 candidate.getJdUrl(),
@@ -96,9 +108,12 @@ public record CandidateDto(
                 candidate.getCoordinatedHr() != null && candidate.getCoordinatedHr().getDepartment() != null
                         ? candidate.getCoordinatedHr().getDepartment().getId()
                         : null,
+                candidate.getCreatedBy() != null ? candidate.getCreatedBy().getId() : null,
+                candidate.getCreatedBy() != null ? candidate.getCreatedBy().getFullName().trim() : null,
                 closure,
                 technologies != null ? technologies : List.of(),
-                domains != null ? domains : List.of()
+                domains != null ? domains : List.of(),
+                profilePictureDocumentId
         );
     }
 }

@@ -50,7 +50,8 @@ public record InterviewerAvailabilityDto(
         String pendingPostponeReason,
         LocalDateTime pendingPostponeRequestedAt,
         LocalDateTime pendingPostponePreferredStart,
-        LocalDateTime pendingPostponePreferredEnd
+        LocalDateTime pendingPostponePreferredEnd,
+        String pendingPostponeRequestedByName
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
@@ -71,7 +72,7 @@ public record InterviewerAvailabilityDto(
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
             }
             if (slot.getInterviewSchedule().getInterviewType() != null) {
-                interviewType = slot.getInterviewSchedule().getInterviewType().name();
+                interviewType = slot.getInterviewSchedule().getInterviewType();
             }
             if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
                 meetingLink = resolveMeetingLink(slot);
@@ -175,6 +176,7 @@ public record InterviewerAvailabilityDto(
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -184,7 +186,8 @@ public record InterviewerAvailabilityDto(
             String reason,
             LocalDateTime requestedAt,
             LocalDateTime preferredStart,
-            LocalDateTime preferredEnd) {
+            LocalDateTime preferredEnd,
+            String requestedByName) {
         return new InterviewerAvailabilityDto(
                 slotId,
                 interviewerId,
@@ -214,7 +217,8 @@ public record InterviewerAvailabilityDto(
                 truncateReason(reason),
                 requestedAt,
                 preferredStart,
-                preferredEnd
+                preferredEnd,
+                requestedByName
         );
     }
 

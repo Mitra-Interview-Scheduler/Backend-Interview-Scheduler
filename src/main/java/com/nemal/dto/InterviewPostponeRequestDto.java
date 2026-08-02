@@ -11,6 +11,7 @@ public record InterviewPostponeRequestDto(
         Long id,
         Long interviewScheduleId,
         Long interviewRequestId,
+        Long panelId,
         Long requestedById,
         String requestedByName,
         String reason,
@@ -42,11 +43,15 @@ public record InterviewPostponeRequestDto(
                 : (schedule != null && schedule.getInterviewer() != null
                         ? schedule.getInterviewer().getFullName()
                         : null);
+        Long panelId = interviewRequest != null && interviewRequest.getPanel() != null
+                ? interviewRequest.getPanel().getId()
+                : null;
 
         return new InterviewPostponeRequestDto(
                 request.getId(),
                 schedule != null ? schedule.getId() : null,
                 interviewRequest != null ? interviewRequest.getId() : null,
+                panelId,
                 request.getRequestedBy() != null ? request.getRequestedBy().getId() : null,
                 request.getRequestedBy() != null ? request.getRequestedBy().getFullName() : null,
                 request.getReason(),

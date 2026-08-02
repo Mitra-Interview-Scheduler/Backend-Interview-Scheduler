@@ -3,6 +3,7 @@ package com.nemal.dto;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.InterviewSchedule;
 import com.nemal.entity.InterviewPanel;
+import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 
@@ -42,7 +43,12 @@ public record InterviewRequestDto(
         LocalDateTime scheduledEndDateTime,
         LocalDateTime interviewCompletedAt,
         String meetingLink,
-        String googleCalendarEventId
+        String googleCalendarEventId,
+        AssessmentPhase assessmentPhase,
+        boolean hasAssessmentFile,
+        String assessmentFileName,
+        Long assessmentFileSize,
+        LocalDateTime assessmentUploadedAt
 ) {
     public static InterviewRequestDto from(InterviewRequest request) {
         InterviewSchedule schedule = request.getInterviewSchedule();
@@ -88,14 +94,19 @@ public record InterviewRequestDto(
                 request.getCreatedAt(),
                 schedule != null ? schedule.getId() : null,
                 schedule != null ? schedule.getStatus() : null,
-                schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null,
+                schedule != null ? schedule.getInterviewType() : null,
                 schedule != null ? schedule.getStartDateTime() : null,
                 schedule != null ? schedule.getEndDateTime() : null,
                 schedule != null ? schedule.getCompletedAt() : null,
                 schedule != null && schedule.getStatus() == InterviewStatus.SCHEDULED
                         ? resolveMeetingLink(schedule, request)
                         : null,
-                schedule != null ? schedule.getGoogleCalendarEventId() : null
+                schedule != null ? schedule.getGoogleCalendarEventId() : null,
+                schedule != null ? schedule.getAssessmentPhase() : null,
+                schedule != null && schedule.getAssessmentFileName() != null,
+                schedule != null ? schedule.getAssessmentFileName() : null,
+                schedule != null ? schedule.getAssessmentFileSize() : null,
+                schedule != null ? schedule.getAssessmentUploadedAt() : null
         );
     }
 

@@ -4,7 +4,6 @@ import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.RequestStatus;
@@ -43,6 +42,7 @@ public class PanelInterviewService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final CalendarSyncService calendarSyncService;
     private final InterviewRequestService interviewRequestService;
+    private final InterviewTypeService interviewTypeService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -59,7 +59,8 @@ public class PanelInterviewService {
             UserRepository userRepository,
             CandidatePipelineAuditService candidatePipelineAuditService,
             CalendarSyncService calendarSyncService,
-            @Lazy InterviewRequestService interviewRequestService) {
+            @Lazy InterviewRequestService interviewRequestService,
+            InterviewTypeService interviewTypeService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -75,6 +76,7 @@ public class PanelInterviewService {
         this.candidatePipelineAuditService = candidatePipelineAuditService;
         this.calendarSyncService = calendarSyncService;
         this.interviewRequestService = interviewRequestService;
+        this.interviewTypeService = interviewTypeService;
     }
 
     @Transactional
@@ -156,7 +158,7 @@ public class PanelInterviewService {
         Designation finalDesignation = designation;
         String finalCandidateName = candidateName;
         Set<Technology> finalTechnologies = technologies;
-        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
+        String interviewType = interviewTypeService.resolveCode(dto.interviewType());
 
         List<InterviewRequest> createdRequests = new java.util.ArrayList<>();
         List<AvailabilitySlot> bookedSlots = new java.util.ArrayList<>();
@@ -211,19 +213,21 @@ public class PanelInterviewService {
         calendarSyncService.afterPanelInterviewBooked(panel, createdRequests, bookedSlots);
 
         if (candidate != null) {
-            MasterStatus targetStatus = interviewType.toCandidateStatus();
-            MasterStatus oldStatus = candidate.getStatus();
-            masterStepService.assignStatus(candidate, targetStatus);
+            String targetStatusKey = interviewTypeService.roundStatusKey(interviewType);
+            String oldStatusKey = candidate.getMasterStep() != null
+                    ? candidate.getMasterStep().getStatusKey()
+                    : null;
+            masterStepService.assignByStatusKey(candidate, targetStatusKey);
             candidateRepository.save(candidate);
             candidateStepPipelineService.updatePipelineOnStatusChange(
-                    candidate.getId(), targetStatus, oldStatus, true);
+                    candidate.getId(), targetStatusKey, oldStatusKey, true);
             candidatePipelineAuditService.recordStatusChange(
                     candidate.getId(),
-                    targetStatus,
-                    oldStatus,
+                    targetStatusKey,
+                    oldStatusKey,
                     PipelineAuditActionType.INTERVIEW_SCHEDULED,
                     requestedBy,
-                    interviewType.name() + " panel interview scheduled");
+                    interviewType + " panel interview scheduled");
         }
 
         InterviewPanel savedPanel = loadPanelWithRequests(panel.getId());
@@ -247,6 +251,15 @@ public class PanelInterviewService {
 
     @Transactional
     public void cancelPanelInterview(User hrUser, Long panelId) {
+        cancelPanelInterview(hrUser, panelId, false);
+    }
+
+    /**
+     * Cancels a panel interview. When {@code forReschedule} is true, skip cancel
+     * notifications and candidate pipeline reset — the caller will rebook immediately.
+     */
+    @Transactional
+    public void cancelPanelInterview(User hrUser, Long panelId, boolean forReschedule) {
         InterviewPanel panel = loadPanelWithRequests(panelId);
 
         boolean isHrOrAdmin = hrUser.getRoles().contains(Role.HR) || hrUser.getRoles().contains(Role.ADMIN);
@@ -289,56 +302,63 @@ public class PanelInterviewService {
             requestRepository.save(request);
             cancelledRequests.add(request);
 
-            try {
-                notificationService.sendInterviewCancelledNotification(request);
-            } catch (Exception e) {
-                logger.warn("Failed to send cancellation notification: {}", e.getMessage());
+            if (!forReschedule) {
+                try {
+                    notificationService.sendInterviewCancelledNotification(request);
+                } catch (Exception e) {
+                    logger.warn("Failed to send cancellation notification: {}", e.getMessage());
+                }
             }
         }
 
         calendarSyncService.cancelPanelInterview(panel, cancelledRequests, restoredSlots);
 
-        try {
-            String candidateName = panel.getCandidate() != null
-                    ? panel.getCandidate().getName()
-                    : "the candidate";
-            notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
-        } catch (Exception e) {
-            logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+        if (!forReschedule) {
+            try {
+                String candidateName = panel.getCandidate() != null
+                        ? panel.getCandidate().getName()
+                        : "the candidate";
+                notificationService.sendCoordinatedHrPanelInterviewCancelledNotification(panel, candidateName);
+            } catch (Exception e) {
+                logger.warn("Failed to send coordinated HR panel cancellation notification: {}", e.getMessage());
+            }
         }
 
-        if (panel.getCandidate() != null) {
+        if (!forReschedule && panel.getCandidate() != null) {
             Candidate candidate = panel.getCandidate();
             long activeCount = requestRepository.findByCandidateId(candidate.getId())
                     .stream()
                     .filter(r -> r.getStatus() == RequestStatus.ACCEPTED)
                     .count();
             if (activeCount == 0) {
-                InterviewType interviewType = panelRequests.stream()
+                String interviewType = panelRequests.stream()
                         .map(request -> scheduleRepository.findActiveByRequestId(request.getId()).orElse(null))
                         .filter(schedule -> schedule != null && schedule.getInterviewType() != null)
                         .map(InterviewSchedule::getInterviewType)
                         .findFirst()
-                        .orElse(InterviewType.TECHNICAL);
-                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
-                MasterStatus previousStatus = candidate.getStatus();
-                masterStepService.assignStatus(candidate, resetStatus);
+                        .orElse(InterviewTypeService.DEFAULT_CODE);
+                String resetStatusKey = interviewTypeService.cancelRestoreStatusKey(interviewType);
+                String previousStatusKey = candidate.getMasterStep() != null
+                        ? candidate.getMasterStep().getStatusKey()
+                        : null;
+                masterStepService.assignByStatusKey(candidate, resetStatusKey);
                 candidateRepository.save(candidate);
                 candidateStepPipelineService.restorePipelineAfterInterviewCancel(
                         candidate.getId(), interviewType);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
-                        resetStatus,
-                        previousStatus,
+                        resetStatusKey,
+                        previousStatusKey,
                         PipelineAuditActionType.INTERVIEW_CANCELLED,
                         hrUser,
                         "Panel interview cancelled");
                 logger.info("Candidate {} reset to {} after panel {} cancel",
-                        candidate.getId(), resetStatus, panelId);
+                        candidate.getId(), resetStatusKey, panelId);
             }
         }
 
-        logger.info("Cancelled panel {} — all slots restored and merged", panelId);
+        logger.info("Cancelled panel {} — all slots restored and merged (forReschedule={})",
+                panelId, forReschedule);
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────

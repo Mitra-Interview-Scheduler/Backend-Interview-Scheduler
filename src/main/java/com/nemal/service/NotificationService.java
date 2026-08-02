@@ -6,9 +6,9 @@ import com.nemal.entity.Candidate;
 import com.nemal.entity.InterviewPanel;
 import com.nemal.entity.InterviewPostponeRequest;
 import com.nemal.entity.InterviewRequest;
+import com.nemal.entity.InterviewSchedule;
 import com.nemal.entity.Notification;
 import com.nemal.entity.User;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.repository.NotificationRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -360,8 +360,17 @@ public class NotificationService {
                 ? postponeRequest.getRequestedBy().getId()
                 : null;
 
+        boolean hasProposedTime = postponeRequest.getPreferredStartDateTime() != null
+                && postponeRequest.getPreferredEndDateTime() != null;
+        boolean isPanel = request.getPanel() != null;
+        String intro = hasProposedTime
+                ? (isPanel
+                        ? interviewerName + " has proposed a new time for a panel interview. Please review the details below."
+                        : interviewerName + " has proposed a new time for a scheduled interview. Please review the details below.")
+                : interviewerName + " has requested to postpone a panel interview (no alternative time proposed). Please review and reschedule.";
+
         String message = buildPostponeDetailsMessage(
-                interviewerName + " has proposed a new time for a scheduled interview. Please review the details below.",
+                intro,
                 request.getCandidateName(),
                 formatDateTime(request.getPreferredStartDateTime()),
                 resolvePosition(request),
@@ -382,7 +391,7 @@ public class NotificationService {
         for (User recipient : recipients.values()) {
             deliver(Notification.builder()
                     .recipient(recipient)
-                    .subject("New Interview Time Proposed")
+                    .subject(hasProposedTime ? "New Interview Time Proposed" : "Panel Interview Postpone Requested")
                     .message(message)
                     .type("INTERVIEW_POSTPONE_REQUESTED")
                     .relatedEntityId(postponeRequest.getId())
@@ -390,6 +399,41 @@ public class NotificationService {
                     .read(false)
                     .build());
         }
+    }
+
+    public void sendInterviewPostponeAcknowledgedNotification(InterviewPostponeRequest postponeRequest) {
+        if (postponeRequest.getRequestedBy() == null) {
+            return;
+        }
+
+        InterviewRequest request = postponeRequest.getInterviewRequest();
+        if (request == null && postponeRequest.getInterviewSchedule() != null) {
+            request = postponeRequest.getInterviewSchedule().getRequest();
+        }
+
+        StringBuilder intro = new StringBuilder(
+                "HR acknowledged your postpone request. The current interview remains scheduled until HR reschedules it.");
+        if (postponeRequest.getReviewNotes() != null && !postponeRequest.getReviewNotes().isBlank()) {
+            intro.append(" Notes: ").append(postponeRequest.getReviewNotes().trim());
+        }
+
+        deliver(Notification.builder()
+                .recipient(postponeRequest.getRequestedBy())
+                .subject("Postpone Request Acknowledged")
+                .message(buildPostponeDetailsMessage(
+                        intro.toString(),
+                        request != null ? request.getCandidateName() : null,
+                        request != null ? formatDateTime(request.getPreferredStartDateTime()) : null,
+                        request != null ? resolvePosition(request) : null,
+                        postponeRequest.getRequestedBy().getFullName(),
+                        postponeRequest.getReason(),
+                        null
+                ))
+                .type("INTERVIEW_POSTPONE_ACKNOWLEDGED")
+                .relatedEntityId(postponeRequest.getId())
+                .relatedEntityType("INTERVIEW_POSTPONE_REQUEST")
+                .read(false)
+                .build());
     }
 
     private User resolveInterviewCoordinator(InterviewRequest request) {
@@ -498,14 +542,14 @@ public class NotificationService {
                 .build());
     }
 
-    public void sendFeedbackSubmittedNotification(Candidate candidate, User interviewer, InterviewType interviewType) {
+    public void sendFeedbackSubmittedNotification(Candidate candidate, User interviewer, String interviewType) {
         User recipient = candidate.getCoordinatedHr();
         if (recipient == null) {
             return;
         }
 
         String interviewerName = interviewer != null ? interviewer.getFullName() : "An interviewer";
-        String roundLabel = interviewType != null ? interviewType.name() : "interview";
+        String roundLabel = (interviewType != null && !interviewType.isBlank()) ? interviewType : "interview";
 
         deliver(Notification.builder()
                 .recipient(recipient)
@@ -519,6 +563,34 @@ public class NotificationService {
                 .type("FEEDBACK_SUBMITTED")
                 .relatedEntityId(candidate.getId())
                 .relatedEntityType("CANDIDATE")
+                .read(false)
+                .build());
+    }
+
+    public void sendAssessmentReviewAssignedNotification(InterviewSchedule schedule, User reviewer) {
+        if (schedule == null || reviewer == null) {
+            return;
+        }
+        InterviewRequest request = schedule.getRequest();
+        String candidateName = request != null && request.getCandidate() != null
+                ? request.getCandidate().getName()
+                : (request != null ? request.getCandidateName() : "a candidate");
+        String typeLabel = schedule.getInterviewType() != null ? schedule.getInterviewType() : "Assessment";
+        String due = formatDateTime(schedule.getStartDateTime());
+
+        deliver(Notification.builder()
+                .recipient(reviewer)
+                .subject("Assessment Review Assigned")
+                .message(buildInterviewDetailsMessage(
+                        "You have been assigned to review an assessment. Open Assessments (or Interview Feedback) to download the submission and submit your review.",
+                        candidateName,
+                        due,
+                        typeLabel,
+                        null
+                ))
+                .type("ASSESSMENT_REVIEW_ASSIGNED")
+                .relatedEntityId(schedule.getId())
+                .relatedEntityType("INTERVIEW_SCHEDULE")
                 .read(false)
                 .build());
     }

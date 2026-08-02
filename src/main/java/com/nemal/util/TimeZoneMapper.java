@@ -48,7 +48,15 @@ public final class TimeZoneMapper {
                 dto.interviewStatus(),
                 dto.googleCalendarEventId(),
                 dto.googleCalendarSynced(),
-                dto.meetingLink()
+                dto.meetingLink(),
+                dto.panelId(),
+                dto.hasPendingPostponeRequest(),
+                dto.pendingPostponeRequestId(),
+                dto.pendingPostponeReason(),
+                fromUtc(dto.pendingPostponeRequestedAt(), targetZone),
+                fromUtc(dto.pendingPostponePreferredStart(), targetZone),
+                fromUtc(dto.pendingPostponePreferredEnd(), targetZone),
+                dto.pendingPostponeRequestedByName()
         );
     }
 
@@ -86,7 +94,8 @@ public final class TimeZoneMapper {
                 dto.pendingPostponeReason(),
                 fromUtc(dto.pendingPostponeRequestedAt(), targetZone),
                 fromUtc(dto.pendingPostponePreferredStart(), targetZone),
-                fromUtc(dto.pendingPostponePreferredEnd(), targetZone)
+                fromUtc(dto.pendingPostponePreferredEnd(), targetZone),
+                dto.pendingPostponeRequestedByName()
         );
     }
 
@@ -127,7 +136,12 @@ public final class TimeZoneMapper {
                 fromUtc(dto.scheduledEndDateTime(), targetZone),
                 fromUtc(dto.interviewCompletedAt(), targetZone),
                 dto.meetingLink(),
-                dto.googleCalendarEventId()
+                dto.googleCalendarEventId(),
+                dto.assessmentPhase(),
+                dto.hasAssessmentFile(),
+                dto.assessmentFileName(),
+                dto.assessmentFileSize(),
+                fromUtc(dto.assessmentUploadedAt(), targetZone)
         );
     }
 
@@ -167,6 +181,7 @@ public final class TimeZoneMapper {
                 dto.id(),
                 dto.interviewScheduleId(),
                 dto.interviewRequestId(),
+                dto.panelId(),
                 dto.requestedById(),
                 dto.requestedByName(),
                 dto.reason(),
@@ -202,6 +217,18 @@ public final class TimeZoneMapper {
                 dto.interviewCoordinatorId(),
                 dto.interviewCoordinatorDepartmentId(),
                 dto.acknowledgeCalendarConflict()
+        );
+    }
+
+    public static PanelCommonFreeWindowDto fromUtc(PanelCommonFreeWindowDto dto, ZoneId targetZone) {
+        if (dto == null) {
+            return null;
+        }
+        return new PanelCommonFreeWindowDto(
+                fromUtc(dto.startDateTime(), targetZone),
+                fromUtc(dto.endDateTime(), targetZone),
+                dto.availabilitySlotIds(),
+                dto.interviewerNames()
         );
     }
 }

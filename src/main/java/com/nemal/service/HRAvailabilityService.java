@@ -134,9 +134,17 @@ public class HRAvailabilityService {
 
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
 
-            // base: active and status in (AVAILABLE, BOOKED)
+            final boolean hideBookedWhenFiltered = hasInterviewerMatchingFilters(filter);
+
+            // base: active; when interviewer filters are applied, show AVAILABLE only
             predicates.add(cb.isTrue(root.get("isActive")));
-            predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.AVAILABLE), cb.equal(root.get("status"), SlotStatus.BOOKED)));
+            if (hideBookedWhenFiltered) {
+                predicates.add(cb.equal(root.get("status"), SlotStatus.AVAILABLE));
+            } else {
+                predicates.add(cb.or(
+                        cb.equal(root.get("status"), SlotStatus.AVAILABLE),
+                        cb.equal(root.get("status"), SlotStatus.BOOKED)));
+            }
 
             // date range
             if (filter.startDateTime() != null && filter.endDateTime() != null) {
@@ -156,7 +164,7 @@ public class HRAvailabilityService {
                 predicates.add(deptMatch);
             }
 
-            // technology filter: match interviewer core technologies only; booked always pass
+            // technology filter: match interviewer core technologies only
             if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
                 Join<User, InterviewerTechnology> itJoin =
                     interviewerJoin.join("interviewerTechnologies", JoinType.LEFT);
@@ -166,23 +174,23 @@ public class HRAvailabilityService {
                 Predicate techCore = cb.isTrue(itJoin.get("isCore"));
                 Predicate techMatch = techJoin.get("id").in(filter.technologyIds());
                 Predicate techPredicate = cb.and(techActive, techCore, techMatch);
-                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), techPredicate));
+                predicates.add(techPredicate);
             }
 
-            // domain filter: available slots must match domains; booked always pass
+            // domain filter
             if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
                 Join<User, UserDomain> udJoin =
                     interviewerJoin.join("userDomains", JoinType.LEFT);
                 Join<UserDomain, Domain> domainJoin =
                     udJoin.join("domain", JoinType.LEFT);
                 Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
-                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), domainMatch));
+                predicates.add(domainMatch);
             }
 
             // min years of experience
             if (filter.minYearsOfExperience() != null) {
                 Expression<Integer> years = interviewerJoin.get("yearsOfExperience").as(Integer.class);
-                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience())));
+                predicates.add(cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience()));
             }
 
             // tier/level logic (mirrors in-memory logic)
@@ -210,8 +218,7 @@ public class HRAvailabilityService {
                     interviewerJoin.join("department", JoinType.LEFT);
                 Predicate deptMatch = cb.equal(deptJoin.get("id"), filter.departmentIdForDesignationFilter());
 
-                // booked slots always pass
-                predicates.add(cb.or(cb.equal(root.get("status"), SlotStatus.BOOKED), cb.and(deptMatch, tierPass)));
+                predicates.add(cb.and(deptMatch, tierPass));
             }
 
             cq.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
@@ -238,7 +245,13 @@ public class HRAvailabilityService {
             // replicate joins/predicates for count
             var countPredicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
             countPredicates.add(cb.isTrue(countRoot.get("isActive")));
-            countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.AVAILABLE), cb.equal(countRoot.get("status"), SlotStatus.BOOKED)));
+            if (hideBookedWhenFiltered) {
+                countPredicates.add(cb.equal(countRoot.get("status"), SlotStatus.AVAILABLE));
+            } else {
+                countPredicates.add(cb.or(
+                        cb.equal(countRoot.get("status"), SlotStatus.AVAILABLE),
+                        cb.equal(countRoot.get("status"), SlotStatus.BOOKED)));
+            }
             if (filter.startDateTime() != null && filter.endDateTime() != null) {
                 countPredicates.add(cb.greaterThanOrEqualTo(countRoot.get("startDateTime"), filter.startDateTime()));
                 countPredicates.add(cb.lessThanOrEqualTo(countRoot.get("endDateTime"), filter.endDateTime()));
@@ -259,7 +272,7 @@ public class HRAvailabilityService {
                     Predicate techCore = cb.isTrue(itJoin.get("isCore"));
                     Predicate techMatch = techJoin.get("id").in(filter.technologyIds());
                     Predicate techPredicate = cb.and(techActive, techCore, techMatch);
-                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), techPredicate));
+                countPredicates.add(techPredicate);
             }
             if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
                     Join<User, UserDomain> udJoin =
@@ -267,11 +280,11 @@ public class HRAvailabilityService {
                     Join<UserDomain, Domain> domainJoin =
                     udJoin.join("domain", JoinType.LEFT);
                     Predicate domainMatch = domainJoin.get("id").in(filter.domainIds());
-                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), domainMatch));
+                countPredicates.add(domainMatch);
             }
             if (filter.minYearsOfExperience() != null) {
                     Expression<Integer> years = countInterviewerJoin.get("yearsOfExperience").as(Integer.class);
-                    countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience())));
+                    countPredicates.add(cb.greaterThanOrEqualTo(years, filter.minYearsOfExperience()));
             }
             if (filter.minTierId() != null && filter.departmentIdForDesignationFilter() != null) {
                     Join<User, Designation> designationJoin =
@@ -290,7 +303,7 @@ public class HRAvailabilityService {
                     Join<User, Department> deptJoin =
                     countInterviewerJoin.join("department", JoinType.LEFT);
                     Predicate deptMatch = cb.equal(deptJoin.get("id"), filter.departmentIdForDesignationFilter());
-                countPredicates.add(cb.or(cb.equal(countRoot.get("status"), SlotStatus.BOOKED), cb.and(deptMatch, tierPass)));
+                countPredicates.add(cb.and(deptMatch, tierPass));
             }
 
             countCq.select(cb.countDistinct(countRoot)).where(countPredicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
@@ -321,6 +334,14 @@ public class HRAvailabilityService {
             }
             logger.info("Step 1 – initial slots: {}", slots.size());
 
+            // When interviewer filters are active, hide booked slots from the calendar.
+            if (hasInterviewerMatchingFilters(filter)) {
+                slots = slots.stream()
+                        .filter(slot -> SlotStatus.AVAILABLE.equals(slot.getStatus()))
+                        .collect(Collectors.toList());
+                logger.info("Step 1b – after hiding booked (filters active): {}", slots.size());
+            }
+
             // ── Step 2: department ────────────────────────────────────────────
             if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
                 slots = slots.stream()
@@ -339,7 +360,6 @@ public class HRAvailabilityService {
             if (filter.domainIds() != null && !filter.domainIds().isEmpty()) {
                 slots = slots.stream()
                         .filter(slot -> {
-                            if ("BOOKED".equals(slot.getStatus().name())) return true;
                             if (slot.getInterviewer() == null) return false;
 
                             var userDomains = slot.getInterviewer().getUserDomains();
@@ -358,13 +378,9 @@ public class HRAvailabilityService {
             }
 
             // ── Step 4: core technology (priority 2) ───────────────────────
-            // AVAILABLE slots filtered by interviewer's core technologies.
-            // BOOKED slots always pass — HR must see who is busy even if tech
-            // doesn't match the current filter.
             if (filter.technologyIds() != null && !filter.technologyIds().isEmpty()) {
                 slots = slots.stream()
                         .filter(slot -> {
-                            if ("BOOKED".equals(slot.getStatus().name())) return true;
                             if (slot.getInterviewer() == null) return false;
 
                             var techs = slot.getInterviewer().getInterviewerTechnologies();
@@ -389,7 +405,6 @@ public class HRAvailabilityService {
             if (filter.minYearsOfExperience() != null) {
                 slots = slots.stream()
                         .filter(slot -> {
-                            if ("BOOKED".equals(slot.getStatus().name())) return true;
                             if (slot.getInterviewer() == null) return false;
                             Integer years = slot.getInterviewer().getYearsOfExperience();
                             return years != null && years >= filter.minYearsOfExperience();
@@ -407,11 +422,6 @@ public class HRAvailabilityService {
 
                 List<AvailabilitySlot> passedSlots = new ArrayList<>();
                 for (AvailabilitySlot slot : slots) {
-                    // Always keep booked slots
-                    if ("BOOKED".equals(slot.getStatus().name())) {
-                        passedSlots.add(slot);
-                        continue;
-                    }
                     try {
                         if (slot.getInterviewer() == null
                                 || slot.getInterviewer().getCurrentDesignation() == null)
@@ -451,7 +461,6 @@ public class HRAvailabilityService {
                 final int candidateLevelOrder = filter.minDesignationLevelInDepartment().intValue();
                 slots = slots.stream()
                         .filter(slot -> {
-                            if ("BOOKED".equals(slot.getStatus().name())) return true;
                             if (slot.getInterviewer() == null || slot.getInterviewer().getCurrentDesignation() == null)
                                 return false;
 
@@ -474,6 +483,20 @@ public class HRAvailabilityService {
             logger.error("Error filtering slots: {}", e.getMessage(), e);
             throw new RuntimeException("Error filtering availability slots", e);
         }
+    }
+
+    /** True when HR applied interviewer-matching filters (hide booked slots on calendar). */
+    private boolean hasInterviewerMatchingFilters(AvailabilityFilterDto filter) {
+        if (filter == null) {
+            return false;
+        }
+        return (filter.departmentIds() != null && !filter.departmentIds().isEmpty())
+                || (filter.technologyIds() != null && !filter.technologyIds().isEmpty())
+                || (filter.domainIds() != null && !filter.domainIds().isEmpty())
+                || filter.minYearsOfExperience() != null
+                || filter.minTierId() != null
+                || filter.minDesignationLevelInDepartment() != null
+                || filter.departmentIdForDesignationFilter() != null;
     }
 
     private boolean shouldPrioritizeMatches(AvailabilityFilterDto filter) {
@@ -893,7 +916,8 @@ public class HRAvailabilityService {
                             pending.reason(),
                             pending.createdAt(),
                             pending.preferredStartDateTime(),
-                            pending.preferredEndDateTime());
+                            pending.preferredEndDateTime(),
+                            pending.requestedByName());
                 }
                 result.add(dto);
             } catch (Exception e) {

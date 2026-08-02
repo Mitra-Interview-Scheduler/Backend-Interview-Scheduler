@@ -55,9 +55,18 @@ public class Candidate {
         try {
             return MasterStatus.valueOf(masterStep.getStatusKey());
         } catch (IllegalArgumentException ex) {
-            log.error("Candidate {} has unknown master step status key '{}'", id, masterStep.getStatusKey());
+            // Admin-created interview rounds are not MasterStatus enum values.
             return null;
         }
+    }
+
+    /** Always returns the master step status key, including custom interview rounds. */
+    public String getStatusKey() {
+        if (masterStep == null) {
+            log.error("Candidate {} has no master step assigned", id);
+            return null;
+        }
+        return masterStep.getStatusKey();
     }
 
     @Column(length = 2000)
@@ -104,6 +113,10 @@ public class Candidate {
     @ManyToOne
     @JoinColumn(name = "coordinated_hr_id")
     private User coordinatedHr;
+
+    @ManyToOne
+    @JoinColumn(name = "created_by_user_id")
+    private User createdBy;
 
     @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

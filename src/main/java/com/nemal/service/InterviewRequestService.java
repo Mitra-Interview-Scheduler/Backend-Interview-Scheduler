@@ -6,9 +6,9 @@ import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewerConflictsDto;
 import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.RequestStatus;
+import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
@@ -49,9 +49,18 @@ public class InterviewRequestService {
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final CalendarSyncService calendarSyncService;
     private final PanelInterviewService panelInterviewService;
+    private final InterviewTypeService interviewTypeService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
+        String interviewType = interviewTypeService.resolveCode(dto.interviewType());
+        if (!interviewTypeService.shouldRequireInterviewer(interviewType)) {
+            return createAssessmentRequest(requestedBy, dto, interviewType);
+        }
+
+        if (dto.availabilitySlotId() == null) {
+            throw new RuntimeException("Availability slot is required for this interview type");
+        }
 
         AvailabilitySlot slot = availabilitySlotRepository.findById(dto.availabilitySlotId())
                 .orElseThrow(() -> new RuntimeException("Availability slot not found: " + dto.availabilitySlotId()));
@@ -77,24 +86,11 @@ public class InterviewRequestService {
                     bookingEnd);
         }
 
-        Candidate candidate = null;
-        if (dto.candidateId() != null) {
-            candidate = candidateRepository.findById(dto.candidateId())
-                    .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
-        }
-        String candidateName = dto.candidateName() != null ? dto.candidateName()
-                : (candidate != null ? candidate.getName() : "Unknown");
+        Candidate candidate = resolveCandidate(dto);
+        String candidateName = resolveCandidateName(dto, candidate);
         String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
-
-        Designation candidateDesignation = null;
-        if (dto.candidateDesignationId() != null) {
-            candidateDesignation = designationRepository.findById(dto.candidateDesignationId())
-                    .orElseThrow(() -> new RuntimeException("Designation not found"));
-        }
-
-        List<Technology> technologies = dto.requiredTechnologyIds() != null
-                ? technologyRepository.findAllById(dto.requiredTechnologyIds())
-                : List.of();
+        Designation candidateDesignation = resolveCandidateDesignation(dto);
+        List<Technology> technologies = resolveTechnologies(dto);
 
         AvailabilitySlot originalSlot = slot;
         AvailabilitySlot bookedSlot = splitAndBookSlot(slot, bookingStart, bookingEnd, candidateName);
@@ -123,8 +119,6 @@ public class InterviewRequestService {
 
         request.getRequiredTechnologies().addAll(technologies);
         InterviewRequest saved = interviewRequestRepository.save(request);
-
-        InterviewType interviewType = InterviewType.fromValue(dto.interviewType());
 
         InterviewSchedule schedule = InterviewSchedule.builder()
                 .request(saved)
@@ -157,6 +151,118 @@ public class InterviewRequestService {
         }
 
         return InterviewRequestDto.from(saved);
+    }
+
+    /**
+     * Assessment-style types: record a due window + notes without booking an interviewer slot.
+     */
+    private InterviewRequestDto createAssessmentRequest(
+            User requestedBy,
+            CreateInterviewRequestDto dto,
+            String interviewType) {
+        if (dto.candidateId() == null) {
+            throw new RuntimeException("Candidate is required for assessment scheduling");
+        }
+        if (dto.preferredStartDateTime() == null) {
+            throw new RuntimeException("Due date/time is required for assessment scheduling");
+        }
+
+        LocalDateTime dueStart = dto.preferredStartDateTime();
+        LocalDateTime dueEnd = dto.preferredEndDateTime() != null
+                ? dto.preferredEndDateTime()
+                : dueStart.plusHours(1);
+        if (!dueEnd.isAfter(dueStart)) {
+            throw new RuntimeException("Assessment end time must be after the due start time");
+        }
+
+        Candidate candidate = resolveCandidate(dto);
+        String candidateName = resolveCandidateName(dto, candidate);
+        String candidateInviteEmail = resolveCandidateInviteEmail(dto.candidateEmail(), candidate);
+        Designation candidateDesignation = resolveCandidateDesignation(dto);
+        List<Technology> technologies = resolveTechnologies(dto);
+
+        User interviewCoordinator = resolveInterviewCoordinator(
+                dto.interviewCoordinatorId(),
+                dto.interviewCoordinatorDepartmentId());
+
+        InterviewRequest request = InterviewRequest.builder()
+                .candidateName(candidateName)
+                .candidateInviteEmail(candidateInviteEmail)
+                .candidate(candidate)
+                .candidateDesignation(candidateDesignation)
+                .preferredStartDateTime(dueStart)
+                .preferredEndDateTime(dueEnd)
+                .requestedBy(requestedBy)
+                .assignedInterviewer(null)
+                .interviewCoordinator(interviewCoordinator)
+                .availabilitySlot(null)
+                .status(RequestStatus.ACCEPTED)
+                .respondedAt(LocalDateTime.now())
+                .responseNotes("Assessment recorded without interviewer booking")
+                .isUrgent(dto.isUrgent())
+                .notes(dto.notes())
+                .build();
+
+        request.getRequiredTechnologies().addAll(technologies);
+        InterviewRequest saved = interviewRequestRepository.save(request);
+
+        InterviewSchedule schedule = InterviewSchedule.builder()
+                .request(saved)
+                .interviewer(null)
+                .startDateTime(dueStart)
+                .endDateTime(dueEnd)
+                .status(InterviewStatus.SCHEDULED)
+                .interviewType(interviewType)
+                .assessmentPhase(AssessmentPhase.AWAITING)
+                .build();
+        schedule = interviewScheduleRepository.save(schedule);
+        saved.setInterviewSchedule(schedule);
+        saved = interviewRequestRepository.saveAndFlush(saved);
+
+        // No calendar sync / Meet — assessment types typically have createCalendarMeeting=false
+        if (candidate != null) {
+            applyCandidateStatusForScheduledInterview(candidate, interviewType, requestedBy);
+        }
+
+        try {
+            notificationService.sendCoordinatedHrInterviewScheduledNotification(saved);
+            if (interviewCoordinator != null) {
+                notificationService.sendInterviewCoordinatorScheduledNotification(saved);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to send assessment scheduled notification: {}", e.getMessage());
+        }
+
+        return InterviewRequestDto.from(saved);
+    }
+
+    private Candidate resolveCandidate(CreateInterviewRequestDto dto) {
+        if (dto.candidateId() == null) {
+            return null;
+        }
+        return candidateRepository.findById(dto.candidateId())
+                .orElseThrow(() -> new RuntimeException("Candidate not found: " + dto.candidateId()));
+    }
+
+    private String resolveCandidateName(CreateInterviewRequestDto dto, Candidate candidate) {
+        if (dto.candidateName() != null) {
+            return dto.candidateName();
+        }
+        return candidate != null ? candidate.getName() : "Unknown";
+    }
+
+    private Designation resolveCandidateDesignation(CreateInterviewRequestDto dto) {
+        if (dto.candidateDesignationId() == null) {
+            return null;
+        }
+        return designationRepository.findById(dto.candidateDesignationId())
+                .orElseThrow(() -> new RuntimeException("Designation not found"));
+    }
+
+    private List<Technology> resolveTechnologies(CreateInterviewRequestDto dto) {
+        return dto.requiredTechnologyIds() != null
+                ? technologyRepository.findAllById(dto.requiredTechnologyIds())
+                : List.of();
     }
 
     private AvailabilitySlot splitAndBookSlot(AvailabilitySlot slot,
@@ -215,10 +321,10 @@ public class InterviewRequestService {
     // ── Read ──────────────────────────────────────────────────────────────────
 
     /**
-     * Checks each selected interviewer's connected Google Calendar for events that
-     * overlap the proposed interview window. Interviewers without Google Calendar
-     * connected (or with no overlap) simply return no conflicts. All-day events are
-     * ignored since they don't block a specific meeting time. Times are UTC.
+     * Checks each selected interviewer's Google Calendar for events that overlap the
+     * proposed interview window. Only calendars chosen in Settings → "Calendars to show"
+     * are considered. Interviewers without Google Calendar connected (or with no overlap)
+     * return no conflicts. All-day events are ignored. Times are UTC.
      *
      * <p>Used by HR scheduling to block booking when an overlapping event exists.
      */
@@ -516,24 +622,26 @@ public class InterviewRequestService {
                             && !r.getId().equals(requestId))
                     .count();
             if (activeCount == 0) {
-                InterviewType interviewType = interviewScheduleRepository.findActiveByRequestId(requestId)
+                String interviewType = interviewScheduleRepository.findActiveByRequestId(requestId)
                         .map(InterviewSchedule::getInterviewType)
-                        .orElse(InterviewType.TECHNICAL);
-                MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
-                MasterStatus previousStatus = candidate.getStatus();
-                masterStepService.assignStatus(candidate, resetStatus);
+                        .orElse(InterviewTypeService.DEFAULT_CODE);
+                String resetStatusKey = interviewTypeService.cancelRestoreStatusKey(interviewType);
+                String previousStatusKey = candidate.getMasterStep() != null
+                        ? candidate.getMasterStep().getStatusKey()
+                        : null;
+                masterStepService.assignByStatusKey(candidate, resetStatusKey);
                 candidateRepository.save(candidate);
                 candidateStepPipelineService.restorePipelineAfterInterviewCancel(
                         candidate.getId(), interviewType);
                 candidatePipelineAuditService.recordStatusChange(
                         candidate.getId(),
-                        resetStatus,
-                        previousStatus,
+                        resetStatusKey,
+                        previousStatusKey,
                         PipelineAuditActionType.INTERVIEW_CANCELLED,
                         user,
                         "Interview cancelled");
                 logger.info("Candidate {} reset to {} after {} interview cancel",
-                        candidate.getId(), resetStatus, interviewType);
+                        candidate.getId(), resetStatusKey, interviewType);
             }
         }
     }
@@ -609,9 +717,9 @@ public class InterviewRequestService {
 
         Candidate candidate = request.getCandidate();
         if (candidate != null) {
-            InterviewType interviewType = schedule.getInterviewType() != null
+            String interviewType = schedule.getInterviewType() != null
                     ? schedule.getInterviewType()
-                    : InterviewType.TECHNICAL;
+                    : InterviewTypeService.DEFAULT_CODE;
             candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
         }
 
@@ -681,21 +789,23 @@ public class InterviewRequestService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void applyCandidateStatusForScheduledInterview(Candidate candidate,
-                                                           InterviewType interviewType,
+                                                           String interviewType,
                                                            User changedBy) {
-        MasterStatus targetStatus = interviewType.toCandidateStatus();
-        MasterStatus oldStatus = candidate.getStatus();
-        masterStepService.assignStatus(candidate, targetStatus);
+        String targetStatusKey = interviewTypeService.roundStatusKey(interviewType);
+        String oldStatusKey = candidate.getMasterStep() != null
+                ? candidate.getMasterStep().getStatusKey()
+                : null;
+        masterStepService.assignByStatusKey(candidate, targetStatusKey);
         candidateRepository.save(candidate);
         candidateStepPipelineService.updatePipelineOnStatusChange(
-                candidate.getId(), targetStatus, oldStatus, true);
+                candidate.getId(), targetStatusKey, oldStatusKey, true);
         candidatePipelineAuditService.recordStatusChange(
                 candidate.getId(),
-                targetStatus,
-                oldStatus,
+                targetStatusKey,
+                oldStatusKey,
                 PipelineAuditActionType.INTERVIEW_SCHEDULED,
                 changedBy,
-                interviewType.name() + " interview scheduled");
+                interviewType + " interview scheduled");
     }
 
     private void mergeAdjacentSlots(AvailabilitySlot restoredSlot) {

@@ -3,7 +3,6 @@ package com.nemal.service;
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateStepPipeline;
 import com.nemal.entity.MasterStep;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineStepStatus;
 import com.nemal.repository.CandidateRepository;
@@ -36,15 +35,18 @@ public class CandidateStepPipelineService {
     private final CandidateRepository candidateRepository;
     private final MasterStepRepository masterStepRepository;
     private final MasterStepService masterStepService;
+    private final InterviewTypeService interviewTypeService;
 
     public CandidateStepPipelineService(CandidateStepPipelineRepository pipelineRepository,
                                         CandidateRepository candidateRepository,
                                         MasterStepRepository masterStepRepository,
-                                        MasterStepService masterStepService) {
+                                        MasterStepService masterStepService,
+                                        InterviewTypeService interviewTypeService) {
         this.pipelineRepository = pipelineRepository;
         this.candidateRepository = candidateRepository;
         this.masterStepRepository = masterStepRepository;
         this.masterStepService = masterStepService;
+        this.interviewTypeService = interviewTypeService;
     }
 
     @Transactional
@@ -109,27 +111,28 @@ public class CandidateStepPipelineService {
      * Marks the active interview-round pipeline row as completed when its interview finishes.
      */
     @Transactional
-    public void completeInterviewRoundStep(Long candidateId, InterviewType interviewType) {
-        if (candidateId == null || interviewType == null) {
+    public void completeInterviewRoundStep(Long candidateId, String interviewTypeCode) {
+        if (candidateId == null || interviewTypeCode == null || interviewTypeCode.isBlank()) {
             return;
         }
 
-        MasterStatus roundStatus = interviewType.toCandidateStatus();
         List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
         if (pipeline.isEmpty()) {
             return;
         }
 
+        String roundKey = interviewTypeService.roundStatusKey(interviewTypeCode);
+
         Optional<CandidateStepPipeline> roundStep = pipeline.stream()
                 .filter(step -> step.getStep() != null
-                        && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                        && roundKey.equalsIgnoreCase(step.getStep().getStatusKey()))
                 .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
                 .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
 
         if (roundStep.isEmpty()) {
             roundStep = pipeline.stream()
                     .filter(step -> step.getStep() != null
-                            && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                            && roundKey.equalsIgnoreCase(step.getStep().getStatusKey()))
                     .filter(step -> step.getStepStatus() == PipelineStepStatus.PENDING)
                     .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
         }
@@ -249,9 +252,12 @@ public class CandidateStepPipelineService {
      * the existing pre-interview stage (e.g. SCREENING) instead of appending a duplicate row.
      */
     @Transactional
-    public void restorePipelineAfterInterviewCancel(Long candidateId, InterviewType interviewType) {
-        MasterStatus roundStatus = interviewType.toCandidateStatus();
-        MasterStatus resetStatus = interviewType.statusAfterInterviewCancel();
+    public void restorePipelineAfterInterviewCancel(Long candidateId, String interviewTypeCode) {
+        if (candidateId == null || interviewTypeCode == null || interviewTypeCode.isBlank()) {
+            return;
+        }
+        String roundKey = interviewTypeService.roundStatusKey(interviewTypeCode);
+        String resetKey = interviewTypeService.cancelRestoreStatusKey(interviewTypeCode);
 
         List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
         if (pipeline.isEmpty()) {
@@ -261,7 +267,7 @@ public class CandidateStepPipelineService {
         Optional<CandidateStepPipeline> roundToFail = pipeline.stream()
                 .filter(step -> step.getStepStatus() == PipelineStepStatus.CURRENT)
                 .filter(step -> step.getStep() != null
-                        && roundStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                        && roundKey.equalsIgnoreCase(step.getStep().getStatusKey()))
                 .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
 
         if (roundToFail.isEmpty()) {
@@ -275,11 +281,11 @@ public class CandidateStepPipelineService {
 
         Optional<CandidateStepPipeline> restoreStep = pipeline.stream()
                 .filter(step -> step.getStep() != null
-                        && resetStatus.name().equalsIgnoreCase(step.getStep().getStatusKey()))
+                        && resetKey.equalsIgnoreCase(step.getStep().getStatusKey()))
                 .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
 
         if (restoreStep.isEmpty()) {
-            logger.warn("No pipeline step found to restore for status {} on candidate {}", resetStatus, candidateId);
+            logger.warn("No pipeline step found to restore for status {} on candidate {}", resetKey, candidateId);
             return;
         }
 
@@ -305,49 +311,79 @@ public class CandidateStepPipelineService {
                                              MasterStatus newStatus,
                                              MasterStatus previousStatus,
                                              boolean addPipelineRound) {
+        updatePipelineOnStatusChange(
+                candidateId,
+                newStatus != null ? newStatus.name() : null,
+                previousStatus != null ? previousStatus.name() : null,
+                addPipelineRound);
+    }
+
+    @Transactional
+    public void updatePipelineOnStatusChange(Long candidateId,
+                                             String newStatusKey,
+                                             String previousStatusKey,
+                                             boolean addPipelineRound) {
         List<CandidateStepPipeline> pipeline = pipelineRepository.findByCandidateIdOrderBySequenceOrderAsc(candidateId);
         if (pipeline.isEmpty()) {
             return;
         }
+        if (newStatusKey == null || newStatusKey.isBlank()) {
+            return;
+        }
 
-        boolean statusChanged = previousStatus == null || previousStatus != newStatus;
+        String normalizedNew = newStatusKey.trim().toUpperCase();
+        String normalizedPrevious = previousStatusKey != null && !previousStatusKey.isBlank()
+                ? previousStatusKey.trim().toUpperCase()
+                : null;
+
+        boolean statusChanged = normalizedPrevious == null || !normalizedPrevious.equalsIgnoreCase(normalizedNew);
         if (!statusChanged && !addPipelineRound) {
             return;
         }
 
-        MasterStep masterStep = masterStepRepository.findByStatusKey(newStatus.name());
+        MasterStep masterStep = masterStepRepository.findByStatusKey(normalizedNew);
         if (masterStep == null) {
-            logger.warn("No master step configured for status key '{}' on candidate {}", newStatus.name(), candidateId);
+            logger.warn("No master step configured for status key '{}' on candidate {}", normalizedNew, candidateId);
             return;
         }
 
         Optional<CandidateStepPipeline> pendingTemplateStep = pipeline.stream()
                 .filter(p -> p.getStep() != null
-                        && p.getStep().getStatusKey().equalsIgnoreCase(newStatus.name())
+                        && p.getStep().getStatusKey().equalsIgnoreCase(normalizedNew)
                         && p.getStepStatus() == PipelineStepStatus.PENDING)
                 .findFirst();
 
+        MasterStatus newStatusEnum = null;
+        try {
+            newStatusEnum = MasterStatus.valueOf(normalizedNew);
+        } catch (IllegalArgumentException ignored) {
+            // Custom interview-round stages are not MasterStatus enum values.
+        }
+
         boolean shouldAppend = addPipelineRound
-                || (APPENDABLE_STATUSES.contains(newStatus) && pendingTemplateStep.isEmpty());
+                || (newStatusEnum != null
+                    && APPENDABLE_STATUSES.contains(newStatusEnum)
+                    && pendingTemplateStep.isEmpty())
+                || (newStatusEnum == null && pendingTemplateStep.isEmpty());
 
         if (!shouldAppend) {
             Optional<CandidateStepPipeline> stepToActivate = pendingTemplateStep;
             if (stepToActivate.isEmpty()) {
                 stepToActivate = pipeline.stream()
                         .filter(p -> p.getStep() != null
-                                && p.getStep().getStatusKey().equalsIgnoreCase(newStatus.name()))
+                                && p.getStep().getStatusKey().equalsIgnoreCase(normalizedNew))
                         .max(Comparator.comparing(CandidateStepPipeline::getSequenceOrder));
             }
             if (stepToActivate.isPresent()) {
                 activateExistingStep(candidateId, stepToActivate.get().getSequenceOrder());
-                cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
+                cleanupDefaultTemplateStepsIfNeeded(candidateId, normalizedNew);
                 return;
             }
         }
 
         if (shouldAppend) {
             boolean appendAfterEngagedHistory = addPipelineRound
-                    || newStatus == MasterStatus.OFFER_PENDING;
+                    || MasterStatus.OFFER_PENDING.name().equals(normalizedNew);
 
             if (appendAfterEngagedHistory) {
                 pipeline.stream()
@@ -361,8 +397,8 @@ public class CandidateStepPipelineService {
                     ? resolveInsertAfterForNewRound(pipeline)
                     : resolveInsertAfterSequenceOrder(pipeline);
 
-            insertStepAfter(candidateId, newStatus.name(), insertAfterSequenceOrder);
-            cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus);
+            insertStepAfter(candidateId, normalizedNew, insertAfterSequenceOrder);
+            cleanupDefaultTemplateStepsIfNeeded(candidateId, normalizedNew);
         }
     }
 
@@ -370,9 +406,15 @@ public class CandidateStepPipelineService {
      * Remove pre-seeded default template rows (invisible steps such as
      * INTERVIEW_SCHEDULES and DISPOSITION) once the candidate reaches Make Offer.
      */
-    private void cleanupDefaultTemplateStepsIfNeeded(Long candidateId, MasterStatus newStatus) {
-        if (newStatus == MasterStatus.OFFER_PENDING) {
+    private void cleanupDefaultTemplateStepsIfNeeded(Long candidateId, String newStatusKey) {
+        if (MasterStatus.OFFER_PENDING.name().equalsIgnoreCase(newStatusKey)) {
             pipelineRepository.deleteInvisibleStepsByCandidateId(candidateId);
+        }
+    }
+
+    private void cleanupDefaultTemplateStepsIfNeeded(Long candidateId, MasterStatus newStatus) {
+        if (newStatus != null) {
+            cleanupDefaultTemplateStepsIfNeeded(candidateId, newStatus.name());
         }
     }
 

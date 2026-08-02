@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.nemal.dto.*;
 import com.nemal.entity.*;
-import com.nemal.enums.InterviewType;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.Role;
@@ -42,6 +41,8 @@ public class FeedbackService {
     private final QuestionCategoryService questionCategoryService;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
     private final NotificationService notificationService;
+    private final InterviewTypeService interviewTypeService;
+    private final AssessmentService assessmentService;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -384,9 +385,9 @@ public class FeedbackService {
             recordFeedbackSubmittedAudit(schedule, form, interviewer);
             InterviewRequest request = schedule.getRequest();
             if (request != null && request.getCandidate() != null) {
-                InterviewType interviewType = schedule.getInterviewType() != null
+                String interviewType = schedule.getInterviewType() != null
                         ? schedule.getInterviewType()
-                        : InterviewType.TECHNICAL;
+                        : InterviewTypeService.DEFAULT_CODE;
                 notificationService.sendFeedbackSubmittedNotification(
                         request.getCandidate(),
                         interviewer,
@@ -395,7 +396,14 @@ public class FeedbackService {
             }
         }
 
-        return toResponseDto(saved);
+        boolean assessmentCompleted = false;
+        if (schedule.getAssessmentPhase() != null) {
+            assessmentCompleted = assessmentService.completeAssessmentIfAllReviewsDone(schedule, interviewer);
+            // Reload schedule so DTO reflects updated phase/status
+            schedule = interviewScheduleRepository.findById(schedule.getId()).orElse(schedule);
+        }
+
+        return toResponseDto(saved, schedule, assessmentCompleted);
     }
 
     private void recordFeedbackSubmittedAudit(InterviewSchedule schedule,
@@ -407,19 +415,22 @@ public class FeedbackService {
         }
 
         Candidate candidate = request.getCandidate();
-        InterviewType interviewType = schedule.getInterviewType() != null
+        String interviewType = schedule.getInterviewType() != null
                 ? schedule.getInterviewType()
-                : InterviewType.TECHNICAL;
-        MasterStatus stageStatus = interviewType.toCandidateStatus();
-        String notes = interviewType.name() + " feedback submitted";
+                : InterviewTypeService.DEFAULT_CODE;
+        String stageStatusKey = interviewTypeService.roundStatusKey(interviewType);
+        String notes = interviewType + " feedback submitted";
         if (form != null && form.getName() != null && !form.getName().isBlank()) {
             notes = form.getName() + " · " + notes;
         }
 
+        String previousStatusKey = candidate.getMasterStep() != null
+                ? candidate.getMasterStep().getStatusKey()
+                : null;
         candidatePipelineAuditService.recordStatusChange(
                 candidate.getId(),
-                stageStatus,
-                candidate.getStatus(),
+                stageStatusKey,
+                previousStatusKey,
                 PipelineAuditActionType.FEEDBACK_SUBMITTED,
                 interviewer,
                 notes);
@@ -702,13 +713,27 @@ public class FeedbackService {
     }
 
     private FeedbackResponseDto toResponseDto(FeedbackResponse response) {
+        InterviewSchedule schedule = response.getInterviewSchedule();
+        boolean assessmentCompleted = schedule != null
+                && schedule.getAssessmentPhase() == com.nemal.enums.AssessmentPhase.COMPLETED;
+        return toResponseDto(response, schedule, assessmentCompleted);
+    }
+
+    private FeedbackResponseDto toResponseDto(FeedbackResponse response,
+                                              InterviewSchedule schedule,
+                                              boolean assessmentCompleted) {
+        String phase = schedule != null && schedule.getAssessmentPhase() != null
+                ? schedule.getAssessmentPhase().name()
+                : null;
         return new FeedbackResponseDto(
                 response.getId(),
-                response.getInterviewSchedule().getId(),
+                schedule != null ? schedule.getId() : null,
                 response.getForm() != null ? response.getForm().getId() : null,
                 response.getInterviewer() != null ? response.getInterviewer().getId() : null,
                 parseResponseMap(response.getResponsesJson()),
-                response.getSubmittedAt()
+                response.getSubmittedAt(),
+                phase,
+                assessmentCompleted
         );
     }
 
