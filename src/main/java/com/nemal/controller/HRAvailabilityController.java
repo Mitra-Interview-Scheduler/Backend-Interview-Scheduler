@@ -2,14 +2,18 @@ package com.nemal.controller;
 
 import com.nemal.dto.AvailabilityFilterDto;
 import com.nemal.dto.InterviewerAvailabilityDto;
+import com.nemal.dto.InterviewerMatchRequestDto;
+import com.nemal.dto.InterviewerMatchResponseDto;
 import com.nemal.service.HRAvailabilityService;
 import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +71,64 @@ public class HRAvailabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Failed to fetch availability",
+                            "message", e.getMessage(),
+                            "timestamp", System.currentTimeMillis()
+                    ));
+        }
+    }
+
+    @PostMapping("/match")
+    public ResponseEntity<?> matchInterviewers(
+            @RequestBody InterviewerMatchRequestDto request
+    ) {
+        try {
+            logger.info("Received interviewer match request: {}", request);
+            InterviewerMatchResponseDto result = hrAvailabilityService.matchInterviewers(request);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid match request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Invalid match request",
+                    "message", e.getMessage(),
+                    "timestamp", System.currentTimeMillis()
+            ));
+        } catch (Exception e) {
+            logger.error("Error matching interviewers: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "error", "Failed to match interviewers",
+                            "message", e.getMessage(),
+                            "timestamp", System.currentTimeMillis()
+                    ));
+        }
+    }
+
+    @GetMapping("/interviewers/{interviewerId}/slots")
+    public ResponseEntity<?> getInterviewerSlots(
+            @PathVariable Long interviewerId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDateTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDateTime,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone
+    ) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            LocalDateTime utcStart = TimeZoneMapper.toUtc(startDateTime, zone);
+            LocalDateTime utcEnd = TimeZoneMapper.toUtc(endDateTime, zone);
+            List<InterviewerAvailabilityDto> slots =
+                    hrAvailabilityService.getInterviewerSlots(interviewerId, utcStart, utcEnd);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtcInterviewerAvailability(slots, zone));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid interviewer slots request: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Invalid slots request",
+                    "message", e.getMessage(),
+                    "timestamp", System.currentTimeMillis()
+            ));
+        } catch (Exception e) {
+            logger.error("Error fetching interviewer slots: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "error", "Failed to fetch interviewer slots",
                             "message", e.getMessage(),
                             "timestamp", System.currentTimeMillis()
                     ));

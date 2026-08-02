@@ -9,6 +9,8 @@ public record FeedbackResponseDto(
         Long feedbackFormId,
         Long interviewerId,
         Map<String, Object> responses,
-        LocalDateTime submittedAt
+        LocalDateTime submittedAt,
+        String assessmentPhase,
+        boolean assessmentCompleted
 ) {
 }

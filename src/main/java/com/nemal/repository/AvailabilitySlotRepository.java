@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,7 +26,8 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
      */
     @Query("SELECT s FROM AvailabilitySlot s " +
             "LEFT JOIN FETCH s.interviewSchedule sch " +
-            "LEFT JOIN FETCH sch.request " +
+            "LEFT JOIN FETCH sch.request req " +
+            "LEFT JOIN FETCH req.panel " +
             "WHERE s.interviewer.id = :interviewerId " +
             "AND s.isActive = true " +
             "AND (s.status = 'AVAILABLE' OR s.startDateTime >= :from)")
@@ -46,7 +48,8 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
     @Query(
             value = "SELECT s FROM AvailabilitySlot s " +
                     "LEFT JOIN FETCH s.interviewSchedule sch " +
-                    "LEFT JOIN FETCH sch.request " +
+                    "LEFT JOIN FETCH sch.request req " +
+                    "LEFT JOIN FETCH req.panel " +
                     "WHERE s.interviewer.id = :interviewerId " +
                     "AND s.startDateTime BETWEEN :start AND :end " +
                     "AND s.isActive = true " +
@@ -195,7 +198,7 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "AND s.isActive = true " +
             "AND s.status = 'AVAILABLE' " +
             "AND s.endDateTime = :time")
-    Optional<AvailabilitySlot> findActiveAvailableSlotEndingAt(
+    List<AvailabilitySlot> findActiveAvailableSlotsEndingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
 
@@ -208,13 +211,66 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             "AND s.isActive = true " +
             "AND s.status = 'AVAILABLE' " +
             "AND s.startDateTime = :time")
-    Optional<AvailabilitySlot> findActiveAvailableSlotStartingAt(
+    List<AvailabilitySlot> findActiveAvailableSlotsStartingAt(
             @Param("interviewerId") Long interviewerId,
             @Param("time") LocalDateTime time);
+
+    /**
+     * AVAILABLE slots that fully cover [{@code start}, {@code end}] for an interviewer.
+     */
+    @Query("""
+            SELECT s FROM AvailabilitySlot s
+            WHERE s.interviewer.id = :interviewerId
+            AND s.isActive = true
+            AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+            AND s.startDateTime <= :start
+            AND s.endDateTime >= :end
+            ORDER BY s.startDateTime
+            """)
+    List<AvailabilitySlot> findCoveringAvailableSlots(
+            @Param("interviewerId") Long interviewerId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
     List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndIsActiveTrue(
             Long interviewerId,
             String recurrenceGroupId);
+
+    @Query("""
+            SELECT DISTINCT s.interviewer.id FROM AvailabilitySlot s
+            WHERE s.isActive = true
+            AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+            AND s.startDateTime >= :from
+            AND s.startDateTime < :to
+            AND s.interviewer.id IN :interviewerIds
+            """)
+    List<Long> findInterviewerIdsWithAvailableSlotsBetween(
+            @Param("interviewerIds") Collection<Long> interviewerIds,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT s FROM AvailabilitySlot s
+            LEFT JOIN FETCH s.interviewer i
+            LEFT JOIN FETCH i.department
+            LEFT JOIN FETCH i.currentDesignation d
+            LEFT JOIN FETCH d.tier
+            LEFT JOIN FETCH i.interviewerTechnologies it
+            LEFT JOIN FETCH it.technology
+            LEFT JOIN FETCH s.interviewSchedule sch
+            LEFT JOIN FETCH sch.request req
+            LEFT JOIN FETCH req.panel
+            WHERE s.interviewer.id = :interviewerId
+            AND s.isActive = true
+            AND (s.status = com.nemal.enums.SlotStatus.AVAILABLE OR s.status = com.nemal.enums.SlotStatus.BOOKED)
+            AND s.startDateTime >= :start
+            AND s.startDateTime < :end
+            ORDER BY s.startDateTime
+            """)
+    List<AvailabilitySlot> findActiveSlotsForInterviewerBetween(
+            @Param("interviewerId") Long interviewerId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
     List<AvailabilitySlot> findByInterviewerIdAndRecurrenceGroupIdAndStartDateTimeGreaterThanEqualAndIsActiveTrue(
             Long interviewerId,

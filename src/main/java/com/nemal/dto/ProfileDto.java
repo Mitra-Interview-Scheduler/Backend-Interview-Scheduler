@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.User;
+import com.nemal.util.RoleUtils;
 
 import java.util.List;
 
@@ -26,7 +27,7 @@ public record ProfileDto(
                 user.getLastName(),
                 user.getPhone(),
                 user.getProfilePictureUrl(),
-                user.getRoles().stream().map(Enum::name).toList(),
+                RoleUtils.toSortedRoleNames(user.getRoles()),
                 user.getDepartment() != null ? DepartmentSimpleDto.from(user.getDepartment()) : null,
                 user.getCurrentDesignation() != null ? DesignationSimpleDto.from(user.getCurrentDesignation()) : null,
                 user.getYearsOfExperience() != null ? user.getYearsOfExperience() : 0,

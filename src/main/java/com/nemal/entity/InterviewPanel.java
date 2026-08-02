@@ -38,6 +38,9 @@ public class InterviewPanel {
     @Column(nullable = false)
     private String candidateName;
 
+    @Column(name = "candidate_invite_email")
+    private String candidateInviteEmail;
+
     @Column(nullable = false)
     private LocalDateTime startDateTime;
 
@@ -58,6 +61,12 @@ public class InterviewPanel {
     @Column(nullable = false)
     @Builder.Default
     private boolean isUrgent = false;
+
+    @Column(name = "google_calendar_event_id")
+    private String googleCalendarEventId;
+
+    @Column(name = "meeting_link", length = 500)
+    private String meetingLink;
 
     @OneToMany(mappedBy = "panel", fetch = FetchType.LAZY)
     @Builder.Default

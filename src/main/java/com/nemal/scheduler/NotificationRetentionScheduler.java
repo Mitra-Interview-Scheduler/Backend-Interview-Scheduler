@@ -17,7 +17,7 @@ public class NotificationRetentionScheduler {
         this.notificationService = notificationService;
     }
 
-    @Scheduled(cron = "${notification.retention.cron:0 0 2 * * *}")
+    @Scheduled(cron = "${notification.retention.cron:0 0 12 * * *}")
     public void purgeExpiredNotifications() {
         int deleted = notificationService.purgeExpiredNotifications();
         if (deleted > 0) {

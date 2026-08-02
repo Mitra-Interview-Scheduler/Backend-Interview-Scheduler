@@ -2,6 +2,7 @@ package com.nemal.dto;
 
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.InterviewSchedule;
+import com.nemal.entity.InterviewPanel;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.RequestStatus;
 import lombok.AllArgsConstructor;
@@ -40,9 +41,14 @@ public class InterviewRequestSimpleDto {
     private Long interviewScheduleId;
     private InterviewStatus interviewStatus;
     private String interviewType;
+    private Long panelId;
+    private String interviewCoordinatorName;
+    private String coordinatedHrName;
+    private java.util.List<PanelMemberSimpleDto> panelMembers;
     private LocalDateTime scheduledStartDateTime;
     private LocalDateTime scheduledEndDateTime;
     private LocalDateTime interviewCompletedAt;
+    private String meetingLink;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -51,6 +57,19 @@ public class InterviewRequestSimpleDto {
      */
     public static InterviewRequestSimpleDto from(InterviewRequest request) {
         InterviewSchedule schedule = request.getInterviewSchedule();
+        InterviewPanel panel = request.getPanel();
+        String interviewCoordinatorName = null;
+        if (request.getInterviewCoordinator() != null) {
+            interviewCoordinatorName = request.getInterviewCoordinator().getFullName().trim();
+        } else if (panel != null && panel.getInterviewCoordinator() != null) {
+            interviewCoordinatorName = panel.getInterviewCoordinator().getFullName().trim();
+        }
+
+        String coordinatedHrName = null;
+        if (request.getCandidate() != null && request.getCandidate().getCoordinatedHr() != null) {
+            coordinatedHrName = request.getCandidate().getCoordinatedHr().getFullName().trim();
+        }
+
         return InterviewRequestSimpleDto.builder()
                 .id(request.getId())
                 .candidateName(request.getCandidateName())
@@ -75,12 +94,34 @@ public class InterviewRequestSimpleDto {
                 .notes(request.getNotes())
                 .interviewScheduleId(schedule != null ? schedule.getId() : null)
                 .interviewStatus(schedule != null ? schedule.getStatus() : null)
-                .interviewType(schedule != null && schedule.getInterviewType() != null ? schedule.getInterviewType().name() : null)
+                .interviewType(schedule != null ? schedule.getInterviewType() : null)
+                .panelId(panel != null ? panel.getId() : null)
+                .interviewCoordinatorName(interviewCoordinatorName)
+                .coordinatedHrName(coordinatedHrName)
+                .panelMembers(java.util.List.of())
                 .scheduledStartDateTime(schedule != null ? schedule.getStartDateTime() : null)
                 .scheduledEndDateTime(schedule != null ? schedule.getEndDateTime() : null)
                 .interviewCompletedAt(schedule != null ? schedule.getCompletedAt() : null)
+                .meetingLink(schedule != null && schedule.getStatus() == InterviewStatus.SCHEDULED
+                        ? resolveMeetingLink(schedule, request)
+                        : null)
                 .createdAt(request.getCreatedAt())
                 .updatedAt(request.getUpdatedAt())
                 .build();
+    }
+
+    private static String resolveMeetingLink(InterviewSchedule schedule, InterviewRequest request) {
+        if (schedule == null || schedule.getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = schedule.getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewPanel panel = request != null ? request.getPanel() : null;
+        if (panel != null && panel.getMeetingLink() != null && !panel.getMeetingLink().isBlank()) {
+            return panel.getMeetingLink();
+        }
+        return null;
     }
 }

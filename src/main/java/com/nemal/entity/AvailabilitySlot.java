@@ -41,6 +41,9 @@ public class AvailabilitySlot {
     @Column(name = "recurrence_group_id")
     private String recurrenceGroupId;
 
+    @Column(name = "google_calendar_event_id")
+    private String googleCalendarEventId;
+
     @Column(name = "duration_hours", insertable = false, updatable = false)
     private Double durationHours;
 

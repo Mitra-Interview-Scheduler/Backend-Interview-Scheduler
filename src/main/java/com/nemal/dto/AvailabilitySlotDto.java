@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.AvailabilitySlot;
+import com.nemal.entity.InterviewRequest;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.SlotStatus;
 
@@ -12,12 +13,23 @@ public record AvailabilitySlotDto(
         LocalDateTime endDateTime,
         String status,
         String description,
-    String recurrenceGroupId,
-    boolean isRecurring,
+        String recurrenceGroupId,
+        boolean isRecurring,
         Long interviewScheduleId,
-        Double durationHours,   // new field for duration in hours
-        String candidateName,   // populated for BOOKED slots via description or schedule chain
-        String interviewStatus  // SCHEDULED | COMPLETED | CANCELLED
+        Double durationHours,
+        String candidateName,
+        String interviewStatus,
+        String googleCalendarEventId,
+        boolean googleCalendarSynced,
+        String meetingLink,
+        Long panelId,
+        boolean hasPendingPostponeRequest,
+        Long pendingPostponeRequestId,
+        String pendingPostponeReason,
+        LocalDateTime pendingPostponeRequestedAt,
+        LocalDateTime pendingPostponePreferredStart,
+        LocalDateTime pendingPostponePreferredEnd,
+        String pendingPostponeRequestedByName
 ) {
     public static AvailabilitySlotDto from(AvailabilitySlot slot) {
         return from(slot, null);
@@ -26,8 +38,9 @@ public record AvailabilitySlotDto(
     public static AvailabilitySlotDto from(AvailabilitySlot slot, InterviewStatus effectiveInterviewStatus) {
         String candidateName = null;
         String interviewStatus = null;
+        String meetingLink = null;
+        Long panelId = null;
 
-        // 1. Try via interviewSchedule → request chain (set for full bookings)
         if (slot.getStatus() == SlotStatus.BOOKED
                 && slot.getInterviewSchedule() != null) {
             if (effectiveInterviewStatus != null) {
@@ -35,12 +48,18 @@ public record AvailabilitySlotDto(
             } else if (slot.getInterviewSchedule().getStatus() != null) {
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
             }
-            if (slot.getInterviewSchedule().getRequest() != null) {
-                candidateName = slot.getInterviewSchedule().getRequest().getCandidateName();
+            if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
+                meetingLink = resolveMeetingLink(slot);
+            }
+            InterviewRequest request = slot.getInterviewSchedule().getRequest();
+            if (request != null) {
+                candidateName = request.getCandidateName();
+                if (request.getPanel() != null) {
+                    panelId = request.getPanel().getId();
+                }
             }
         }
 
-        // 2. Fall back to description pattern "Interview: John" or "Panel Interview: John"
         if (candidateName == null && slot.getDescription() != null) {
             String desc = slot.getDescription();
             if (desc.startsWith("Panel Interview: ")) {
@@ -69,7 +88,78 @@ public record AvailabilitySlotDto(
                 slot.getInterviewSchedule() != null ? slot.getInterviewSchedule().getId() : null,
                 duration,
                 candidateName,
-                interviewStatus
+                interviewStatus,
+                slot.getGoogleCalendarEventId(),
+                slot.getGoogleCalendarEventId() != null,
+                meetingLink,
+                panelId,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
+    }
+
+    public AvailabilitySlotDto withPendingPostpone(
+            Long postponeRequestId,
+            String reason,
+            LocalDateTime requestedAt,
+            LocalDateTime preferredStart,
+            LocalDateTime preferredEnd,
+            String requestedByName) {
+        return new AvailabilitySlotDto(
+                id,
+                startDateTime,
+                endDateTime,
+                status,
+                description,
+                recurrenceGroupId,
+                isRecurring,
+                interviewScheduleId,
+                durationHours,
+                candidateName,
+                interviewStatus,
+                googleCalendarEventId,
+                googleCalendarSynced,
+                meetingLink,
+                panelId,
+                postponeRequestId != null,
+                postponeRequestId,
+                truncateReason(reason),
+                requestedAt,
+                preferredStart,
+                preferredEnd,
+                requestedByName
+        );
+    }
+
+    private static String truncateReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() <= 240 ? trimmed : trimmed.substring(0, 237) + "...";
+    }
+
+    private static String resolveMeetingLink(AvailabilitySlot slot) {
+        if (slot.getInterviewSchedule() == null
+                || slot.getInterviewSchedule().getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = slot.getInterviewSchedule().getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewRequest request = slot.getInterviewSchedule().getRequest();
+        if (request != null && request.getPanel() != null) {
+            String panelLink = request.getPanel().getMeetingLink();
+            if (panelLink != null && !panelLink.isBlank()) {
+                return panelLink;
+            }
+        }
+        return null;
     }
 }

@@ -2,7 +2,6 @@ package com.nemal.dto;
 
 import com.nemal.entity.InterviewSchedule;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.InterviewType;
 import java.time.LocalDateTime;
 
 public record InterviewScheduleDto(
@@ -17,7 +16,7 @@ public record InterviewScheduleDto(
         String meetingLink,
         String location,
         InterviewStatus status,
-        InterviewType interviewType,
+        String interviewType,
         LocalDateTime completedAt
 ) {
     public static InterviewScheduleDto from(InterviewSchedule schedule) {

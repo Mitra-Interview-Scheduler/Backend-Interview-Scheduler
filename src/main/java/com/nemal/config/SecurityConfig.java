@@ -55,6 +55,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/google").permitAll()
+                        .requestMatchers("/api/integrations/google-calendar/callback").permitAll()
                         .requestMatchers("/api/auth/verify").authenticated()
                         .requestMatchers("/ws/**", "/ws").permitAll()
 
@@ -100,6 +101,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/tiers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/tiers/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/interview-types", "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/interview-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/interview-types", "/api/interview-types/**").authenticated()
+
                         .requestMatchers(HttpMethod.POST, "/api/technologies", "/api/technologies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/technologies/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/technologies/**").hasRole("ADMIN")
@@ -120,9 +126,20 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/domains/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/domains/**").authenticated()
 
+                        .requestMatchers(HttpMethod.POST, "/api/document-types", "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/document-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/document-types", "/api/document-types/**").hasAnyRole("HR", "ADMIN", "INTERVIEWER")
+
+                        .requestMatchers(HttpMethod.POST, "/api/resource-types", "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/resource-types/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/resource-types", "/api/resource-types/**").hasAnyRole("HR", "ADMIN", "INTERVIEWER")
+
                         .requestMatchers("/api/notifications/**").authenticated()
 
                         .requestMatchers("/api/profile/**").authenticated()
+                        .requestMatchers("/api/integrations/google-calendar/**").authenticated()
                         .requestMatchers("/api/departments/**").authenticated()
                         .requestMatchers("/api/department/**").authenticated()
                         .requestMatchers("/api/masterSteps/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")

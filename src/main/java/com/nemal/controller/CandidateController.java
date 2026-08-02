@@ -68,6 +68,7 @@ public class CandidateController {
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) MasterStatus status,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) Long coordinatedHrId,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
     ) {
@@ -75,14 +76,14 @@ public class CandidateController {
             int pageValue = page != null ? page : 0;
             int sizeValue = size != null ? size : 10;
             PaginatedResponseDto<CandidateDto> result = candidateService.findWithFiltersPaged(
-                    departmentId, status, search, pageValue, sizeValue
+                    departmentId, status, search, coordinatedHrId, pageValue, sizeValue
             );
             return ResponseEntity.ok(result);
         }
 
-        if (departmentId != null || status != null || search != null) {
+        if (departmentId != null || status != null || search != null || coordinatedHrId != null) {
             return ResponseEntity.ok(
-                    candidateService.findWithFilters(departmentId, status, search));
+                    candidateService.findWithFilters(departmentId, status, search, coordinatedHrId));
         }
         return ResponseEntity.ok(candidateService.getAllCandidates());
     }

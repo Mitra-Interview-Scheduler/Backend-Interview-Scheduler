@@ -4,6 +4,7 @@ import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.Designation;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.Tier;
+import com.nemal.enums.InterviewStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,29 +30,41 @@ public record InterviewerAvailabilityDto(
         Integer yearsOfExperience,
         List<String> technologies,
         List<String> coreTechnologies,
+        List<String> domains,
         LocalDateTime startDateTime,
         LocalDateTime endDateTime,
         String status,
         String candidateName,
         Long requestId,              // ID of the InterviewRequest that booked this slot
+        Long panelId,                // Non-null when this booking belongs to a panel interview
         Integer interviewerTierOrder,  // NEW — Tier.tierOrder for the interviewer
         Integer interviewerLevelOrder,  // NEW — Designation.levelOrder for the interviewer
         String interviewType,         // TECHNICAL | HR — from the booked InterviewSchedule
         Long interviewScheduleId,
         String interviewStatus,        // SCHEDULED | COMPLETED | CANCELLED — from InterviewSchedule
         String interviewCoordinatorName,
-        String coordinatedHrName
+        String coordinatedHrName,
+        String meetingLink,
+        boolean hasPendingPostponeRequest,
+        Long pendingPostponeRequestId,
+        String pendingPostponeReason,
+        LocalDateTime pendingPostponeRequestedAt,
+        LocalDateTime pendingPostponePreferredStart,
+        LocalDateTime pendingPostponePreferredEnd,
+        String pendingPostponeRequestedByName
 ) {
 
     public static InterviewerAvailabilityDto from(AvailabilitySlot slot) {
         // ── Resolve candidateName + requestId ────────────────────────────────
         String candidateName = null;
         Long requestId = null;
+        Long panelId = null;
         String interviewType = null;
         Long interviewScheduleId = null;
         String interviewStatus = null;
         String interviewCoordinatorName = null;
         String coordinatedHrName = null;
+        String meetingLink = null;
 
         if (slot.getInterviewSchedule() != null) {
             interviewScheduleId = slot.getInterviewSchedule().getId();
@@ -59,12 +72,18 @@ public record InterviewerAvailabilityDto(
                 interviewStatus = slot.getInterviewSchedule().getStatus().name();
             }
             if (slot.getInterviewSchedule().getInterviewType() != null) {
-                interviewType = slot.getInterviewSchedule().getInterviewType().name();
+                interviewType = slot.getInterviewSchedule().getInterviewType();
+            }
+            if (slot.getInterviewSchedule().getStatus() == InterviewStatus.SCHEDULED) {
+                meetingLink = resolveMeetingLink(slot);
             }
             InterviewRequest req = slot.getInterviewSchedule().getRequest();
             if (req != null) {
                 candidateName = req.getCandidateName();
                 requestId = req.getId();
+                if (req.getPanel() != null) {
+                    panelId = req.getPanel().getId();
+                }
                 if (req.getInterviewCoordinator() != null) {
                     interviewCoordinatorName = req.getInterviewCoordinator().getFullName().trim();
                 } else if (req.getPanel() != null && req.getPanel().getInterviewCoordinator() != null) {
@@ -101,6 +120,16 @@ public record InterviewerAvailabilityDto(
                     .collect(Collectors.toList());
         }
 
+        // ── Domains ──────────────────────────────────────────────────────────
+        List<String> domains = List.of();
+        if (slot.getInterviewer() != null
+                && slot.getInterviewer().getUserDomains() != null) {
+            domains = slot.getInterviewer().getUserDomains().stream()
+                    .filter(ud -> ud != null && ud.getDomain() != null)
+                    .map(ud -> ud.getDomain().getName())
+                    .collect(Collectors.toList());
+        }
+
         // ── Tier / level for privilege check ─────────────────────────────────
         Integer tierOrder  = null;
         Integer levelOrder = null;
@@ -127,18 +156,96 @@ public record InterviewerAvailabilityDto(
                 slot.getInterviewer() != null ? slot.getInterviewer().getYearsOfExperience() : null,
                 techs,
                 coreTechs,
+                domains,
                 slot.getStartDateTime(),
                 slot.getEndDateTime(),
                 slot.getStatus() != null ? slot.getStatus().name() : "AVAILABLE",
                 candidateName,
                 requestId,
+                panelId,
                 tierOrder,    // interviewerTierOrder
                 levelOrder,   // interviewerLevelOrder
                 interviewType,
                 interviewScheduleId,
                 interviewStatus,
                 interviewCoordinatorName,
-                coordinatedHrName
+                coordinatedHrName,
+                meetingLink,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
+    }
+
+    public InterviewerAvailabilityDto withPendingPostpone(
+            Long postponeRequestId,
+            String reason,
+            LocalDateTime requestedAt,
+            LocalDateTime preferredStart,
+            LocalDateTime preferredEnd,
+            String requestedByName) {
+        return new InterviewerAvailabilityDto(
+                slotId,
+                interviewerId,
+                interviewerName,
+                department,
+                designation,
+                yearsOfExperience,
+                technologies,
+                coreTechnologies,
+                domains,
+                startDateTime,
+                endDateTime,
+                status,
+                candidateName,
+                requestId,
+                panelId,
+                interviewerTierOrder,
+                interviewerLevelOrder,
+                interviewType,
+                interviewScheduleId,
+                interviewStatus,
+                interviewCoordinatorName,
+                coordinatedHrName,
+                meetingLink,
+                postponeRequestId != null,
+                postponeRequestId,
+                truncateReason(reason),
+                requestedAt,
+                preferredStart,
+                preferredEnd,
+                requestedByName
+        );
+    }
+
+    private static String truncateReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 117) + "...";
+    }
+
+    private static String resolveMeetingLink(AvailabilitySlot slot) {
+        if (slot.getInterviewSchedule() == null
+                || slot.getInterviewSchedule().getStatus() != InterviewStatus.SCHEDULED) {
+            return null;
+        }
+        String link = slot.getInterviewSchedule().getMeetingLink();
+        if (link != null && !link.isBlank()) {
+            return link;
+        }
+        InterviewRequest req = slot.getInterviewSchedule().getRequest();
+        if (req != null && req.getPanel() != null) {
+            String panelLink = req.getPanel().getMeetingLink();
+            if (panelLink != null && !panelLink.isBlank()) {
+                return panelLink;
+            }
+        }
+        return null;
     }
 }

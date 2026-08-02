@@ -5,6 +5,7 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.nemal.dto.LoginResponse;
+import com.nemal.util.RoleUtils;
 import com.nemal.entity.User;
 import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
@@ -73,7 +74,7 @@ public class GoogleAuthService {
                     user.getEmail(),
                     user.getFirstName(),
                     user.getLastName(),
-                    user.getRoles(),
+                    RoleUtils.sortRoles(user.getRoles()),
                     user.getProfilePictureUrl()
             );
         } catch (Exception ex) {

@@ -3,22 +3,26 @@ package com.nemal.service;
 import com.nemal.dto.AvailabilitySlotDto;
 import com.nemal.dto.BulkAvailabilitySlotDto;
 import com.nemal.dto.CreateAvailabilitySlotDto;
+import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.UpdateAvailabilitySlotDto;
 import com.nemal.entity.AvailabilitySlot;
 import com.nemal.entity.User;
 import java.util.Locale;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.AvailabilitySlotRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneOffset;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -31,57 +35,80 @@ public class AvailabilityService {
      * can review their recent history without data appearing to vanish.
      */
     private static final int INTERVIEWER_LOOKBACK_DAYS = 14;
-
-    /**
-     * Minimum hours of lead time required for same-day availability slots.
-     * Prevents interviewers from accidentally accepting last-minute sessions
-     * without enough prep time.
-     */
-    private static final double SAME_DAY_MIN_LEAD_HOURS = 0.25;
+    private static final int SLOT_LOOKBACK_MINUTES = 15;
 
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final InterviewRequestService interviewRequestService;
+    private final InterviewPostponeRequestService postponeRequestService;
+    private final CalendarSyncService calendarSyncService;
 
     public AvailabilityService(
             AvailabilitySlotRepository availabilitySlotRepository,
-            InterviewRequestService interviewRequestService) {
+            InterviewRequestService interviewRequestService,
+            @Lazy InterviewPostponeRequestService postponeRequestService,
+            CalendarSyncService calendarSyncService) {
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.interviewRequestService = interviewRequestService;
+        this.postponeRequestService = postponeRequestService;
+        this.calendarSyncService = calendarSyncService;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
     public List<AvailabilitySlotDto> getInterviewerAvailability(User interviewer) {
         LocalDateTime from = LocalDateTime.now().minusDays(INTERVIEWER_LOOKBACK_DAYS);
-        return availabilitySlotRepository
-                .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from)
-                .stream()
-                .map(this::toAvailabilitySlotDto)
-                .collect(Collectors.toList());
+        return mapSlotsWithPostpone(availabilitySlotRepository
+                .findByInterviewerIdAndIsActiveTrueWithLookback(interviewer.getId(), from));
     }
 
     public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
             User interviewer, LocalDateTime start, LocalDateTime end) {
-        return availabilitySlotRepository
+        return mapSlotsWithPostpone(availabilitySlotRepository
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTrue(
-                        interviewer.getId(), start, end)
-                .stream()
-                .map(this::toAvailabilitySlotDto)
-                .collect(Collectors.toList());
+                        interviewer.getId(), start, end));
     }
 
     public List<AvailabilitySlotDto> getInterviewerAvailabilityByDateRange(
             User interviewer, LocalDateTime start, LocalDateTime end, Integer page, Integer size) {
         int safePage = page != null ? Math.max(0, page) : 0;
         int safeSize = size != null ? Math.max(1, size) : 200;
-        return availabilitySlotRepository
+        return mapSlotsWithPostpone(availabilitySlotRepository
                 .findByInterviewerIdAndStartDateTimeBetweenAndIsActiveTruePaged(
                         interviewer.getId(),
                         start,
                         end,
                         PageRequest.of(safePage, safeSize))
-                .stream()
-                .map(this::toAvailabilitySlotDto)
+                .getContent());
+    }
+
+    private List<AvailabilitySlotDto> mapSlotsWithPostpone(List<AvailabilitySlot> slots) {
+        List<Long> scheduleIds = slots.stream()
+                .map(AvailabilitySlot::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(schedule -> schedule.getId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, InterviewPostponeRequestDto> pendingBySchedule =
+                postponeRequestService.findPendingByScheduleIds(scheduleIds);
+
+        return slots.stream()
+                .map(slot -> {
+                    AvailabilitySlotDto dto = toAvailabilitySlotDto(slot);
+                    Long scheduleId = dto.interviewScheduleId();
+                    if (scheduleId != null && pendingBySchedule.containsKey(scheduleId)) {
+                        InterviewPostponeRequestDto pending = pendingBySchedule.get(scheduleId);
+                        dto = dto.withPendingPostpone(
+                                pending.id(),
+                                pending.reason(),
+                                pending.createdAt(),
+                                pending.preferredStartDateTime(),
+                                pending.preferredEndDateTime(),
+                                pending.requestedByName());
+                    }
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -95,28 +122,19 @@ public class AvailabilityService {
 
     /**
      * Validates that a slot's time window is acceptable:
-     *  - Past days are rejected entirely.
-     *  - Same-day slots must start at least {@value SAME_DAY_MIN_LEAD_HOURS} hours from now.
-     *  - Future days are always allowed.
-     *  - End must be after start.
+     *  - Start may be up to {@value SLOT_LOOKBACK_MINUTES} minutes before now (UTC).
+     *  - End must be after now and after start.
      */
-    private void validateSlotTimes(LocalDateTime start, LocalDateTime end,LocalDateTime now) {
-        LocalDate currentTime = now.toLocalDate();
-        // Reject past dates
-        if (start.toLocalDate().isBefore(currentTime)) {
-            throw new RuntimeException("Cannot create availability slots for past dates");
+    private void validateSlotTimes(LocalDateTime start, LocalDateTime end) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime minAllowedStart = now.minusMinutes(SLOT_LOOKBACK_MINUTES);
+        if (start.isBefore(minAllowedStart)) {
+            throw new RuntimeException(
+                    "Start time cannot be more than " + SLOT_LOOKBACK_MINUTES + " minutes before now");
         }
-        // Same-day: require at least SAME_DAY_MIN_LEAD_HOURS hours of lead time
-        if (start.toLocalDate().equals(currentTime)) {
-            LocalDateTime minAllowed = now.plusHours((long) SAME_DAY_MIN_LEAD_HOURS);
-            if (start.isBefore(minAllowed)) {
-                String earliest = minAllowed.format(DateTimeFormatter.ofPattern("HH:mm"));
-                throw new RuntimeException(
-                        "Same-day slots must start at least " + SAME_DAY_MIN_LEAD_HOURS +
-                                " hours from now. Earliest allowed start today: " + earliest);
-            }
+        if (!end.isAfter(now)) {
+            throw new RuntimeException("End time must be after the current time");
         }
-
         if (!end.isAfter(start)) {
             throw new RuntimeException("End time must be after start time");
         }
@@ -126,7 +144,8 @@ public class AvailabilityService {
 
     @Transactional
     public AvailabilitySlotDto createAvailabilitySlot(User interviewer, CreateAvailabilitySlotDto dto) {
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
+        calendarSyncService.ensureInterviewerConnected(interviewer);
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
 
         List<AvailabilitySlot> conflicts = availabilitySlotRepository.findConflictingSlots(
                 interviewer.getId(), dto.startDateTime(), dto.endDateTime());
@@ -146,6 +165,7 @@ public class AvailabilityService {
                 .build();
 
         slot = availabilitySlotRepository.save(slot);
+        calendarSyncService.syncAvailabilitySlotCreated(slot);
         return AvailabilitySlotDto.from(slot);
     }
 
@@ -159,6 +179,7 @@ public class AvailabilityService {
         if (!slot.getInterviewer().getId().equals(interviewer.getId())) {
             throw new RuntimeException("Unauthorized: this slot does not belong to you");
         }
+        calendarSyncService.ensureInterviewerConnected(interviewer);
         if (slot.getStatus() == SlotStatus.BOOKED) {
             throw new RuntimeException("Cannot edit a booked slot — it has an interview scheduled");
         }
@@ -166,7 +187,7 @@ public class AvailabilityService {
             throw new RuntimeException("Cannot edit an inactive slot");
         }
 
-        validateSlotTimes(dto.startDateTime(), dto.endDateTime(),dto.currentTime());
+        validateSlotTimes(dto.startDateTime(), dto.endDateTime());
 
         DeleteScope updateScope = DeleteScope.from(scope);
         boolean isRecurringEdit = updateScope != DeleteScope.SINGLE && slot.getRecurrenceGroupId() != null && !slot.getRecurrenceGroupId().isBlank();
@@ -188,6 +209,7 @@ public class AvailabilityService {
         if (!isRecurringEdit) {
             applyUpdateToSlot(slot, dto.startDateTime(), dto.endDateTime(), dto.description());
             slot = availabilitySlotRepository.save(slot);
+            calendarSyncService.syncAvailabilitySlotUpdated(slot);
             return AvailabilitySlotDto.from(slot);
         }
 
@@ -216,6 +238,7 @@ public class AvailabilityService {
         }
 
         availabilitySlotRepository.saveAll(editableSlots);
+        editableSlots.forEach(calendarSyncService::syncAvailabilitySlotUpdated);
         return AvailabilitySlotDto.from(updatedAnchor != null ? updatedAnchor : slot);
     }
 
@@ -247,6 +270,7 @@ public class AvailabilityService {
         if (!slot.getInterviewer().getId().equals(interviewer.getId())) {
             throw new RuntimeException("Unauthorized");
         }
+        calendarSyncService.ensureInterviewerConnected(interviewer);
         if (slot.getStatus() == SlotStatus.BOOKED) {
             throw new RuntimeException("Cannot delete booked slots");
         }
@@ -255,8 +279,7 @@ public class AvailabilityService {
         String recurrenceGroupId = slot.getRecurrenceGroupId();
 
         if (deleteScope == DeleteScope.SINGLE || recurrenceGroupId == null || recurrenceGroupId.isBlank()) {
-            slot.setActive(false);
-            availabilitySlotRepository.save(slot);
+            hardDeleteSlot(slot);
             return;
         }
 
@@ -279,8 +302,12 @@ public class AvailabilityService {
             throw new RuntimeException("No deletable recurring slots found for selected scope");
         }
 
-        deletableSlots.forEach(s -> s.setActive(false));
-        availabilitySlotRepository.saveAll(deletableSlots);
+        deletableSlots.forEach(this::hardDeleteSlot);
+    }
+
+    private void hardDeleteSlot(AvailabilitySlot slot) {
+        calendarSyncService.syncAvailabilitySlotDeleted(slot);
+        availabilitySlotRepository.delete(slot);
     }
 
     private String resolveRecurrenceGroupId(String recurrenceGroupId) {

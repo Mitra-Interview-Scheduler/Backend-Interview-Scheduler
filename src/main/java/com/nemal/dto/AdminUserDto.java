@@ -1,6 +1,7 @@
 package com.nemal.dto;
 
 import com.nemal.entity.User;
+import com.nemal.util.RoleUtils;
 import com.nemal.enums.Role;
 
 import java.util.List;
@@ -31,7 +32,7 @@ public record AdminUserDto(
                 user.getEmail(),
                 user.getFirstName(),
                 user.getLastName(),
-                user.getRoles(),
+                RoleUtils.sortRoles(user.getRoles()),
                 user.isActive(),
                 user.getCurrentDesignation() != null ? user.getCurrentDesignation().getName() : null,
                 user.getDepartment() != null ? user.getDepartment().getName() : null,

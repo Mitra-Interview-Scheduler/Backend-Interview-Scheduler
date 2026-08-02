@@ -1,9 +1,15 @@
 package com.nemal.controller;
 
+import com.nemal.dto.CreateInterviewPostponeRequestDto;
+import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.dto.InterviewRequestSimpleDto;
+import com.nemal.dto.PanelCommonFreeWindowDto;
+import com.nemal.dto.PanelMemberSimpleDto;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.User;
+import com.nemal.repository.InterviewRequestRepository;
+import com.nemal.service.InterviewPostponeRequestService;
 import com.nemal.service.InterviewRequestService;
 import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
@@ -26,10 +32,17 @@ public class InterviewerBookedInterviewController {
 
     private static final Logger logger = LoggerFactory.getLogger(InterviewRequestController.class);
     private final InterviewRequestService interviewRequestService;
+    private final InterviewPostponeRequestService postponeRequestService;
+    private final InterviewRequestRepository interviewRequestRepository;
 
 
-    public InterviewerBookedInterviewController(InterviewRequestService interviewRequestService) {
+    public InterviewerBookedInterviewController(
+            InterviewRequestService interviewRequestService,
+            InterviewPostponeRequestService postponeRequestService,
+            InterviewRequestRepository interviewRequestRepository) {
         this.interviewRequestService = interviewRequestService;
+        this.postponeRequestService = postponeRequestService;
+        this.interviewRequestRepository = interviewRequestRepository;
     }
 
     @GetMapping("/bookedInterviews/{interviewScheduleId}")
@@ -46,6 +59,9 @@ public class InterviewerBookedInterviewController {
                         if (effectiveStatus != null) {
                             dto.setInterviewStatus(effectiveStatus);
                         }
+                        if (request.getPanel() != null) {
+                            dto.setPanelMembers(loadPanelMembers(request.getPanel().getId()));
+                        }
                         return dto;
                     })
                     .collect(Collectors.toList());
@@ -56,6 +72,30 @@ public class InterviewerBookedInterviewController {
                     .body(Map.of("message", e.getMessage()));
         }
 
+    }
+
+    private List<PanelMemberSimpleDto> loadPanelMembers(Long panelId) {
+        return interviewRequestRepository.findByPanelIdWithDetails(panelId).stream()
+                .filter(request -> request.getAssignedInterviewer() != null)
+                .map(request -> new PanelMemberSimpleDto(
+                        request.getAssignedInterviewer().getId(),
+                        request.getAssignedInterviewer().getFullName(),
+                        request.getAssignedInterviewer().getCurrentDesignation() != null
+                                ? request.getAssignedInterviewer().getCurrentDesignation().getName()
+                                : null
+                ))
+                .collect(Collectors.toMap(
+                        PanelMemberSimpleDto::interviewerId,
+                        member -> member,
+                        (first, second) -> first
+                ))
+                .values()
+                .stream()
+                .sorted((left, right) -> String.CASE_INSENSITIVE_ORDER.compare(
+                        left.interviewerName() != null ? left.interviewerName() : "",
+                        right.interviewerName() != null ? right.interviewerName() : ""
+                ))
+                .collect(Collectors.toList());
     }
 
     @PatchMapping("/schedules/{scheduleId}/complete")
@@ -69,6 +109,84 @@ public class InterviewerBookedInterviewController {
             return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
         } catch (Exception e) {
             logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/schedules/{scheduleId}/panel-common-windows")
+    public ResponseEntity<?> listPanelCommonWindows(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            List<PanelCommonFreeWindowDto> windows = postponeRequestService
+                    .listPanelCommonFreeWindows(user, scheduleId)
+                    .stream()
+                    .map(window -> TimeZoneMapper.fromUtc(window, zone))
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(windows);
+        } catch (Exception e) {
+            logger.error("Failed to list panel common windows for schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/schedules/{scheduleId}/postpone-requests")
+    public ResponseEntity<?> requestPostpone(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @RequestBody CreateInterviewPostponeRequestDto dto,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewPostponeRequestDto result = postponeRequestService.createPostponeRequest(
+                    user,
+                    scheduleId,
+                    TimeZoneMapper.toUtc(dto, zone));
+            return ResponseEntity.status(HttpStatus.CREATED).body(TimeZoneMapper.fromUtc(result, zone));
+        } catch (Exception e) {
+            logger.error("Failed to create postpone request for schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/schedules/{scheduleId}/postpone-requests/pending")
+    public ResponseEntity<?> getPendingPostpone(
+            @PathVariable Long scheduleId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewPostponeRequestDto pending = postponeRequestService.getPendingForSchedule(scheduleId);
+            if (pending == null) {
+                return ResponseEntity.ok(Map.of("pending", false));
+            }
+            return ResponseEntity.ok(Map.of(
+                    "pending", true,
+                    "request", TimeZoneMapper.fromUtc(pending, zone)
+            ));
+        } catch (Exception e) {
+            logger.error("Failed to get pending postpone for schedule {}: {}", scheduleId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/postpone-requests/{postponeRequestId}")
+    public ResponseEntity<?> withdrawPostpone(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long postponeRequestId,
+            @RequestHeader(value = "X-Timezone", required = false) String timezone) {
+        try {
+            ZoneId zone = TimeZoneMapper.resolveZone(timezone);
+            InterviewPostponeRequestDto result = postponeRequestService.withdrawPostponeRequest(
+                    user, postponeRequestId);
+            return ResponseEntity.ok(TimeZoneMapper.fromUtc(result, zone));
+        } catch (Exception e) {
+            logger.error("Failed to withdraw postpone request {}: {}", postponeRequestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
         }
