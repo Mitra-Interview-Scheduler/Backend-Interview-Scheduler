@@ -28,6 +28,7 @@ public class CandidateClosureService {
     private final MasterStepService masterStepService;
     private final CandidateStepPipelineService candidateStepPipelineService;
     private final CandidatePipelineAuditService candidatePipelineAuditService;
+    private final CandidateFolderAccessService candidateFolderAccessService;
 
     public CandidateClosureService(
             CandidateRepository candidateRepository,
@@ -36,7 +37,8 @@ public class CandidateClosureService {
             MasterStepRepository masterStepRepository,
             MasterStepService masterStepService,
             CandidateStepPipelineService candidateStepPipelineService,
-            CandidatePipelineAuditService candidatePipelineAuditService
+            CandidatePipelineAuditService candidatePipelineAuditService,
+            CandidateFolderAccessService candidateFolderAccessService
     ) {
         this.candidateRepository = candidateRepository;
         this.closingReasonRepository = closingReasonRepository;
@@ -45,6 +47,7 @@ public class CandidateClosureService {
         this.masterStepService = masterStepService;
         this.candidateStepPipelineService = candidateStepPipelineService;
         this.candidatePipelineAuditService = candidatePipelineAuditService;
+        this.candidateFolderAccessService = candidateFolderAccessService;
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +109,10 @@ public class CandidateClosureService {
                 PipelineAuditActionType.APPLICATION_CLOSED,
                 closedBy,
                 comment.isEmpty() ? null : comment);
+
+        // Closed candidate: revoke transient interviewer/coordinator access to the Drive folder
+        // (reconciler collapses the desired set to creator + coordinatedHr).
+        candidateFolderAccessService.reconcile(candidateId);
 
         return CandidateDto.from(candidate, CandidateClosureDto.from(closure));
     }

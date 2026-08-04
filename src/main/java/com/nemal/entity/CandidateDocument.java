@@ -51,10 +51,19 @@ public class CandidateDocument {
     @Column(name = "file_size", nullable = false)
     private Long fileSize;
 
+    /** Legacy in-DB blob. Nullable now that Drive is the store; new uploads leave this null. */
     @Basic(fetch = FetchType.LAZY)
     @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "file_data", nullable = false, columnDefinition = "bytea")
+    @Column(name = "file_data", columnDefinition = "bytea")
     private byte[] fileData;
+
+    /** Id of the file in the Recruitment Shared Drive (source of truth for the bytes). */
+    @Column(name = "drive_file_id", length = 255)
+    private String driveFileId;
+
+    /** Drive webViewLink used to open/download the file. */
+    @Column(name = "web_view_link", length = 1024)
+    private String webViewLink;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
