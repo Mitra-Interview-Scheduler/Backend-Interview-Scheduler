@@ -11,7 +11,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/email-logs")
-@CrossOrigin(origins = "http://localhost:5173")
 @PreAuthorize("hasRole('ADMIN')")
 public class EmailDeliveryLogController {
 
