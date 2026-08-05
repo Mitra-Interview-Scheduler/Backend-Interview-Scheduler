@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -31,6 +32,8 @@ import java.util.stream.Collectors;
 public class CalendarSyncService {
 
     private static final Logger logger = LoggerFactory.getLogger(CalendarSyncService.class);
+    private static final DateTimeFormatter CALENDAR_WHEN_FORMATTER =
+            DateTimeFormatter.ofPattern("EEE, MMM d, yyyy 'at' h:mm a");
 
     private final GoogleCalendarEventService eventService;
     private final GoogleCalendarTokenService tokenService;
@@ -41,6 +44,7 @@ public class CalendarSyncService {
     private final InterviewPanelRepository interviewPanelRepository;
     private final CandidateRepository candidateRepository;
     private final CalendarAttachmentSyncService calendarAttachmentSyncService;
+    private final EmailDeliveryLogService emailDeliveryLogService;
     private final boolean calendarRequired;
 
     public CalendarSyncService(
@@ -55,6 +59,7 @@ public class CalendarSyncService {
             CandidateDocumentRepository candidateDocumentRepository,
             GoogleDriveService driveService,
             CalendarAttachmentSyncService calendarAttachmentSyncService,
+            EmailDeliveryLogService emailDeliveryLogService,
             @Value("${app.frontend.url:}") String frontendUrl,
             @Value("${google.calendar.required:false}") boolean calendarRequired) {
         this.eventService = eventService;
@@ -66,6 +71,7 @@ public class CalendarSyncService {
         this.interviewPanelRepository = interviewPanelRepository;
         this.candidateRepository = candidateRepository;
         this.calendarAttachmentSyncService = calendarAttachmentSyncService;
+        this.emailDeliveryLogService = emailDeliveryLogService;
         this.calendarRequired = calendarRequired;
     }
 
@@ -416,14 +422,15 @@ public class CalendarSyncService {
             organizer = interviewer;
         }
 
+        List<String> attendees = buildInterviewAttendees(request, organizer);
+        // When Candidate Coordinator / Coordinated HR owns the Meet event, the
+        // interviewer must still be invited as a guest (not only get a busy block).
+        ensureGuestEmail(attendees, interviewer, organizer);
+        String title = buildInterviewEventTitle("Interview", request.getCandidateName(), request, candidate);
+        String targetDesignation = resolveCandidatePosition(request, candidate);
+
         try {
             boolean partialBooking = !originalSlot.getId().equals(bookedSlot.getId());
-            List<String> attendees = buildInterviewAttendees(request, organizer);
-            // When Candidate Coordinator / Coordinated HR owns the Meet event, the
-            // interviewer must still be invited as a guest (not only get a busy block).
-            ensureGuestEmail(attendees, interviewer, organizer);
-            String title = buildInterviewEventTitle("Interview", request.getCandidateName(), request, candidate);
-            String targetDesignation = resolveCandidatePosition(request, candidate);
             EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
             logger.info(
                     "Booking Google Calendar interview for request {} with organizer {} and guest(s) {}",
@@ -461,6 +468,18 @@ public class CalendarSyncService {
                 schedule.setMeetingLink(result.meetingLink());
                 interviewScheduleRepository.save(schedule);
                 queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
+                logCalendarInviteDelivery(
+                        title,
+                        attendees,
+                        request.getCandidateName(),
+                        targetDesignation,
+                        bookedSlot.getStartDateTime(),
+                        bookedSlot.getEndDateTime(),
+                        timeZone,
+                        result.meetingLink(),
+                        EmailDeliveryLogService.STATUS_SENT,
+                        null
+                );
                 return;
             }
 
@@ -483,8 +502,32 @@ public class CalendarSyncService {
             schedule.setMeetingLink(result.meetingLink());
             interviewScheduleRepository.save(schedule);
             queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
+            logCalendarInviteDelivery(
+                    title,
+                    attendees,
+                    request.getCandidateName(),
+                    targetDesignation,
+                    bookedSlot.getStartDateTime(),
+                    bookedSlot.getEndDateTime(),
+                    organizerTimeZone,
+                    result.meetingLink(),
+                    EmailDeliveryLogService.STATUS_SENT,
+                    null
+            );
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar interview for request {}: {}", request.getId(), e.getMessage());
+            logCalendarInviteDelivery(
+                    title,
+                    attendees,
+                    request.getCandidateName(),
+                    targetDesignation,
+                    bookedSlot.getStartDateTime(),
+                    bookedSlot.getEndDateTime(),
+                    resolveTimeZone(organizer),
+                    null,
+                    EmailDeliveryLogService.STATUS_FAILED,
+                    e.getMessage()
+            );
         }
     }
 
@@ -598,21 +641,22 @@ public class CalendarSyncService {
             return;
         }
 
-        try {
-            String title = buildInterviewEventTitle(
-                    "Panel Interview",
-                    panelForSync.getCandidateName(),
-                    requests != null && !requests.isEmpty() ? requests.get(0) : null,
-                    candidate);
-            String targetDesignation = resolveCandidatePosition(
-                    requests != null && !requests.isEmpty() ? requests.get(0) : null,
-                    candidate);
-            List<String> attendees = buildPanelAttendees(requests, panelForSync, organizer);
-            if (bookedSlots != null) {
-                for (AvailabilitySlot bookedSlot : bookedSlots) {
-                    ensureGuestEmail(attendees, bookedSlot.getInterviewer(), organizer);
-                }
+        String title = buildInterviewEventTitle(
+                "Panel Interview",
+                panelForSync.getCandidateName(),
+                requests != null && !requests.isEmpty() ? requests.get(0) : null,
+                candidate);
+        String targetDesignation = resolveCandidatePosition(
+                requests != null && !requests.isEmpty() ? requests.get(0) : null,
+                candidate);
+        List<String> attendees = buildPanelAttendees(requests, panelForSync, organizer);
+        if (bookedSlots != null) {
+            for (AvailabilitySlot bookedSlot : bookedSlots) {
+                ensureGuestEmail(attendees, bookedSlot.getInterviewer(), organizer);
             }
+        }
+
+        try {
             EventEnrichment enrichment = buildCandidateEnrichment(candidate, organizer);
             logger.info(
                     "Creating panel Google Calendar event for panel {} with organizer {} and guest(s) {}",
@@ -660,6 +704,18 @@ public class CalendarSyncService {
                     });
                 }
                 queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
+                logCalendarInviteDelivery(
+                        title,
+                        attendees,
+                        panelForSync.getCandidateName(),
+                        targetDesignation,
+                        panelForSync.getStartDateTime(),
+                        panelForSync.getEndDateTime(),
+                        timeZone,
+                        result.meetingLink(),
+                        EmailDeliveryLogService.STATUS_SENT,
+                        null
+                );
                 return;
             }
 
@@ -695,8 +751,32 @@ public class CalendarSyncService {
                 });
             }
             queueDocumentAttachmentSync(organizer, candidate, result.eventId(), attendees);
+            logCalendarInviteDelivery(
+                    title,
+                    attendees,
+                    panelForSync.getCandidateName(),
+                    targetDesignation,
+                    panelForSync.getStartDateTime(),
+                    panelForSync.getEndDateTime(),
+                    organizerTimeZone,
+                    result.meetingLink(),
+                    EmailDeliveryLogService.STATUS_SENT,
+                    null
+            );
         } catch (Exception e) {
             logger.warn("Failed to book Google Calendar panel {}: {}", panel.getId(), e.getMessage());
+            logCalendarInviteDelivery(
+                    title,
+                    attendees,
+                    panelForSync.getCandidateName(),
+                    targetDesignation,
+                    panelForSync.getStartDateTime(),
+                    panelForSync.getEndDateTime(),
+                    resolveTimeZone(organizer),
+                    null,
+                    EmailDeliveryLogService.STATUS_FAILED,
+                    e.getMessage()
+            );
         }
     }
 
@@ -959,5 +1039,77 @@ public class CalendarSyncService {
 
     private String resolveTimeZone(User user) {
         return userSettingsService.resolveTimezoneForCalendarSync(user);
+    }
+
+    private void logCalendarInviteDelivery(
+            String title,
+            List<String> attendees,
+            String candidateName,
+            String position,
+            LocalDateTime start,
+            LocalDateTime end,
+            String timeZone,
+            String meetingLink,
+            String status,
+            String errorMessage
+    ) {
+        if (attendees == null || attendees.isEmpty()) {
+            return;
+        }
+        String recipients = attendees.stream()
+                .filter(email -> email != null && !email.isBlank())
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.joining(", "));
+        if (recipients.isBlank()) {
+            return;
+        }
+
+        emailDeliveryLogService.logCalendarInvite(
+                recipients,
+                candidateName,
+                title != null ? title : "Calendar invitation",
+                buildCalendarInviteBody(candidateName, position, start, end, timeZone, meetingLink),
+                meetingLink,
+                status,
+                errorMessage
+        );
+    }
+
+    private String buildCalendarInviteBody(
+            String candidateName,
+            String position,
+            LocalDateTime start,
+            LocalDateTime end,
+            String timeZone,
+            String meetingLink
+    ) {
+        StringBuilder body = new StringBuilder("Calendar invitation sent via Google Calendar.\n");
+        appendCalendarDetail(body, "When", formatCalendarWhen(start, end, timeZone));
+        appendCalendarDetail(body, "Candidate", candidateName);
+        appendCalendarDetail(body, "Position", position);
+        if (meetingLink != null && !meetingLink.isBlank()) {
+            appendCalendarDetail(body, "Meeting link", meetingLink.trim());
+        }
+        return body.toString().trim();
+    }
+
+    private String formatCalendarWhen(LocalDateTime start, LocalDateTime end, String timeZone) {
+        if (start == null) {
+            return null;
+        }
+        ZoneId zone = ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone : "UTC");
+        String startLabel = start.atZone(zone).format(CALENDAR_WHEN_FORMATTER);
+        if (end == null) {
+            return startLabel;
+        }
+        return startLabel + " - " + end.atZone(zone).format(CALENDAR_WHEN_FORMATTER);
+    }
+
+    private void appendCalendarDetail(StringBuilder body, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        body.append('\n').append(label).append(": ").append(value.trim());
     }
 }
