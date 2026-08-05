@@ -54,6 +54,8 @@ public class CandidateService {
     private final CandidateTechnologyService candidateTechnologyService;
     private final EntityDomainService entityDomainService;
     private final NotificationService notificationService;
+    private final RecruitmentDriveService recruitmentDriveService;
+    private final CandidateFolderAccessService candidateFolderAccessService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -79,7 +81,9 @@ public class CandidateService {
             UserRepository userRepository,
             CandidateTechnologyService candidateTechnologyService,
             EntityDomainService entityDomainService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            RecruitmentDriveService recruitmentDriveService,
+            CandidateFolderAccessService candidateFolderAccessService
 
     ) {
         this.candidateRepository = candidateRepository;
@@ -95,6 +99,28 @@ public class CandidateService {
         this.candidateTechnologyService = candidateTechnologyService;
         this.entityDomainService = entityDomainService;
         this.notificationService = notificationService;
+        this.recruitmentDriveService = recruitmentDriveService;
+        this.candidateFolderAccessService = candidateFolderAccessService;
+    }
+
+    /**
+     * Ensures the candidate has a folder in the Recruitment Shared Drive, creating it on first
+     * need. Returns the folder id (or null if Drive isn't configured yet). Persists the id.
+     */
+    @Transactional
+    public String ensureCandidateFolder(Candidate candidate) {
+        if (candidate.getDriveFolderId() != null && !candidate.getDriveFolderId().isBlank()) {
+            return candidate.getDriveFolderId();
+        }
+        if (!recruitmentDriveService.isConfigured()) {
+            return null;
+        }
+        String folderId = recruitmentDriveService.createFolder("Candidate - " + candidate.getId());
+        if (folderId != null) {
+            candidate.setDriveFolderId(folderId);
+            candidateRepository.save(candidate);
+        }
+        return folderId;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -143,12 +169,8 @@ public class CandidateService {
     @Transactional(readOnly = true)
     public CandidateDocument getCandidateDocumentFile(Long candidateId, Long documentId) {
         ensureActiveCandidate(candidateId);
-        CandidateDocument document = candidateDocumentRepository.findByIdAndCandidateId(documentId, candidateId)
+        return candidateDocumentRepository.findByIdAndCandidateId(documentId, candidateId)
                 .orElseThrow(() -> new RuntimeException("Candidate document not found"));
-        if (document.getFileData().length < 0) {
-            throw new RuntimeException("Candidate document data is invalid");
-        }
-        return document;
     }
 
     public List<CandidateDto> getCandidatesByDepartment(Long departmentId) {
@@ -396,6 +418,11 @@ public class CandidateService {
                 createdBy,
                 null);
         notificationService.sendCandidateCoordinatorAssignedNotification(candidate);
+
+        // Provision the candidate's Drive folder and grant the creator + coordinator access.
+        ensureCandidateFolder(candidate);
+        candidateFolderAccessService.reconcile(candidate.getId());
+
         return toCandidateDto(candidate);
     }
 
@@ -511,16 +538,33 @@ public class CandidateService {
         validateDocument(file);
 
         try {
-            CandidateDocument document = CandidateDocument.builder()
+            String fileName = safeFileName(file.getOriginalFilename());
+            String contentType = resolveContentType(file);
+
+            CandidateDocument.CandidateDocumentBuilder builder = CandidateDocument.builder()
                     .candidate(candidate)
                     .documentType(normalizeDocumentType(documentType))
-                    .fileName(safeFileName(file.getOriginalFilename()))
-                    .contentType(resolveContentType(file))
-                    .fileSize(file.getSize())
-                    .fileData(file.getBytes())
-                    .build();
+                    .fileName(fileName)
+                    .contentType(contentType)
+                    .fileSize(file.getSize());
 
-            return CandidateDocumentDto.from(candidateDocumentRepository.save(document));
+            // Store the bytes in the org-owned Recruitment Shared Drive (source of truth).
+            String folderId = ensureCandidateFolder(candidate);
+            RecruitmentDriveService.UploadedFile uploaded = folderId != null
+                    ? recruitmentDriveService.uploadFile(folderId, fileName, contentType, file.getBytes())
+                    : null;
+
+            if (uploaded != null) {
+                builder.driveFileId(uploaded.fileId()).webViewLink(uploaded.webViewLink());
+            } else {
+                // Drive not configured/available yet — fall back to the legacy in-DB blob.
+                builder.fileData(file.getBytes());
+            }
+
+            CandidateDocumentDto dto = CandidateDocumentDto.from(candidateDocumentRepository.save(builder.build()));
+            // Make sure the current creator/coordinator/interviewers can see the new file.
+            candidateFolderAccessService.reconcile(candidateId);
+            return dto;
         } catch (IOException e) {
             throw new RuntimeException("Failed to read uploaded document", e);
         }

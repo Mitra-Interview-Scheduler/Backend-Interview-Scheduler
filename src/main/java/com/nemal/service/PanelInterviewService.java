@@ -43,6 +43,7 @@ public class PanelInterviewService {
     private final CalendarSyncService calendarSyncService;
     private final InterviewRequestService interviewRequestService;
     private final InterviewTypeService interviewTypeService;
+    private final CandidateFolderAccessService candidateFolderAccessService;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -60,7 +61,8 @@ public class PanelInterviewService {
             CandidatePipelineAuditService candidatePipelineAuditService,
             CalendarSyncService calendarSyncService,
             @Lazy InterviewRequestService interviewRequestService,
-            InterviewTypeService interviewTypeService) {
+            InterviewTypeService interviewTypeService,
+            CandidateFolderAccessService candidateFolderAccessService) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -77,6 +79,7 @@ public class PanelInterviewService {
         this.calendarSyncService = calendarSyncService;
         this.interviewRequestService = interviewRequestService;
         this.interviewTypeService = interviewTypeService;
+        this.candidateFolderAccessService = candidateFolderAccessService;
     }
 
     @Transactional
@@ -232,6 +235,11 @@ public class PanelInterviewService {
 
         InterviewPanel savedPanel = loadPanelWithRequests(panel.getId());
 
+        // Grant all panel interviewers/coordinators access to the candidate's Drive folder.
+        if (savedPanel.getCandidate() != null) {
+            candidateFolderAccessService.reconcile(savedPanel.getCandidate().getId());
+        }
+
         if (interviewCoordinator != null) {
             try {
                 notificationService.sendInterviewCoordinatorPanelScheduledNotification(savedPanel, candidateName);
@@ -355,6 +363,11 @@ public class PanelInterviewService {
                 logger.info("Candidate {} reset to {} after panel {} cancel",
                         candidate.getId(), resetStatusKey, panelId);
             }
+        }
+
+        // Revoke the cancelled panel interviewers' access to the candidate's Drive folder.
+        if (panel.getCandidate() != null) {
+            candidateFolderAccessService.reconcile(panel.getCandidate().getId());
         }
 
         logger.info("Cancelled panel {} — all slots restored and merged (forReschedule={})",

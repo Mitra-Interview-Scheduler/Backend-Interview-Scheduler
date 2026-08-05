@@ -50,6 +50,7 @@ public class InterviewRequestService {
     private final CalendarSyncService calendarSyncService;
     private final PanelInterviewService panelInterviewService;
     private final InterviewTypeService interviewTypeService;
+    private final CandidateFolderAccessService candidateFolderAccessService;
 
     @Transactional
     public InterviewRequestDto createInterviewRequest(User requestedBy, CreateInterviewRequestDto dto) {
@@ -148,6 +149,11 @@ public class InterviewRequestService {
             }
         } catch (Exception e) {
             logger.warn("Failed to send scheduled notification: {}", e.getMessage());
+        }
+
+        // Grant the assigned interviewer/coordinator access to the candidate's Drive folder.
+        if (saved.getCandidate() != null) {
+            candidateFolderAccessService.reconcile(saved.getCandidate().getId());
         }
 
         return InterviewRequestDto.from(saved);
@@ -597,6 +603,11 @@ public class InterviewRequestService {
         request.setAvailabilitySlot(null);
         interviewRequestRepository.save(request);
         logger.info("Request {} marked CANCELLED", requestId);
+
+        // Revoke the now-unassigned interviewer's access to the candidate's Drive folder.
+        if (request.getCandidate() != null) {
+            candidateFolderAccessService.reconcile(request.getCandidate().getId());
+        }
 
         if (forReschedule) {
             return;

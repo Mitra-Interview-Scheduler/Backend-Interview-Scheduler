@@ -118,6 +118,10 @@ public class Candidate {
     @JoinColumn(name = "created_by_user_id")
     private User createdBy;
 
+    /** Id of this candidate's folder in the Recruitment Shared Drive (holds their documents). */
+    @Column(name = "drive_folder_id", length = 255)
+    private String driveFolderId;
+
     @OneToMany(mappedBy = "candidate", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<CandidateTechnology> candidateTechnologies = new HashSet<>();

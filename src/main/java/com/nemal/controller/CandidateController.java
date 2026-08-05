@@ -153,11 +153,23 @@ public class CandidateController {
     }
 
     @GetMapping("/{id}/documents/{documentId}/download")
-    public ResponseEntity<byte[]> downloadCandidateDocument(
+    public ResponseEntity<?> downloadCandidateDocument(
             @PathVariable Long id,
             @PathVariable Long documentId
     ) {
         CandidateDocument document = candidateService.getCandidateDocumentFile(id, documentId);
+
+        // Drive-backed (source of truth): redirect the caller to the file in the Shared Drive.
+        if (document.getWebViewLink() != null && !document.getWebViewLink().isBlank()) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(java.net.URI.create(document.getWebViewLink()))
+                    .build();
+        }
+
+        // Legacy in-DB blob fallback.
+        if (document.getFileData() == null) {
+            return ResponseEntity.notFound().build();
+        }
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(document.getContentType()))
                 .contentLength(document.getFileSize())
