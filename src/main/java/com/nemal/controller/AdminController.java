@@ -4,10 +4,12 @@ import com.nemal.dto.AdminProfessionalDetailsUpdateDto;
 import com.nemal.dto.AdminUserBasicInfoUpdateDto;
 import com.nemal.dto.AdminUserDto;
 import com.nemal.dto.DomainDto;
+import com.nemal.dto.EmailDeliveryLogDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateRoleRequestDto;
 import com.nemal.entity.User;
 import com.nemal.repository.UserRepository;
+import com.nemal.service.EmailDeliveryLogService;
 import com.nemal.service.EntityDomainService;
 import com.nemal.service.ProfileService;
 import jakarta.validation.Valid;
@@ -25,22 +27,24 @@ import com.nemal.util.RoleUtils;
 
 @RestController
 @RequestMapping("/api/admin")
-@CrossOrigin(origins = "http://localhost:5173")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminController {
 
     private final UserRepository userRepository;
     private final ProfileService profileService;
     private final EntityDomainService entityDomainService;
+    private final EmailDeliveryLogService emailDeliveryLogService;
 
     public AdminController(
             UserRepository userRepository,
             ProfileService profileService,
-            EntityDomainService entityDomainService
+            EntityDomainService entityDomainService,
+            EmailDeliveryLogService emailDeliveryLogService
     ) {
         this.userRepository = userRepository;
         this.profileService = profileService;
         this.entityDomainService = entityDomainService;
+        this.emailDeliveryLogService = emailDeliveryLogService;
     }
 
     // GET /api/admin/users
@@ -224,5 +228,34 @@ public class AdminController {
         }
         userRepository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // GET /api/admin/email-logs
+    @GetMapping("/email-logs")
+    public ResponseEntity<PaginatedResponseDto<EmailDeliveryLogDto>> listEmailLogs(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(emailDeliveryLogService.list(search, status, page, size));
+    }
+
+    // GET /api/admin/email-logs/meta
+    @GetMapping("/email-logs/meta")
+    public ResponseEntity<Map<String, Object>> emailLogsMeta() {
+        return ResponseEntity.ok(Map.of(
+                "retentionDays", emailDeliveryLogService.getRetentionDays()
+        ));
+    }
+
+    // GET /api/admin/email-logs/{id}
+    @GetMapping("/email-logs/{id}")
+    public ResponseEntity<?> getEmailLog(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(emailDeliveryLogService.getById(id));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }
