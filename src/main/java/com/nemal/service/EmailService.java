@@ -22,17 +22,20 @@ public class EmailService {
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
+    private final EmailDeliveryLogService emailDeliveryLogService;
     private final boolean emailEnabled;
     private final String fromAddress;
     private final String frontendUrl;
 
     public EmailService(
             JavaMailSender mailSender,
+            EmailDeliveryLogService emailDeliveryLogService,
             @Value("${notification.email.enabled:true}") boolean emailEnabled,
             @Value("${spring.mail.username:}") String fromAddress,
             @Value("${app.frontend.url:}") String frontendUrl
     ) {
         this.mailSender = mailSender;
+        this.emailDeliveryLogService = emailDeliveryLogService;
         this.emailEnabled = emailEnabled;
         this.fromAddress = fromAddress;
         this.frontendUrl = frontendUrl;
@@ -47,19 +50,38 @@ public class EmailService {
             return;
         }
 
+        String safeSubject = subject != null ? subject : "";
+        String safeBody = message != null ? message : "";
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
             helper.setTo(toEmail);
-            helper.setSubject(subject);
-            helper.setText(buildHtmlBody(toName, subject, message), true);
+            helper.setSubject(safeSubject);
+            helper.setText(buildHtmlBody(toName, safeSubject, safeBody), true);
             if (fromAddress != null && !fromAddress.isBlank()) {
                 helper.setFrom(fromAddress);
             }
 
             mailSender.send(mimeMessage);
+            emailDeliveryLogService.logNotificationDelivery(
+                    toEmail.trim(),
+                    toName,
+                    safeSubject,
+                    safeBody,
+                    EmailDeliveryLogService.STATUS_SENT,
+                    null
+            );
         } catch (MessagingException | MailException ex) {
             logger.warn("Failed to send notification email to {}: {}", toEmail, ex.getMessage());
+            emailDeliveryLogService.logNotificationDelivery(
+                    toEmail.trim(),
+                    toName,
+                    safeSubject,
+                    safeBody,
+                    EmailDeliveryLogService.STATUS_FAILED,
+                    ex.getMessage()
+            );
         }
     }
 
