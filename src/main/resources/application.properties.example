@@ -77,3 +77,8 @@ notification.reminder.lead-minutes=60
 notification.reminder.cron=0 */15 * * * *
 notification.retention.days=15
 notification.retention.cron=0 0 12 * * *
+notification.email.enabled=true
+
+# Outbound email delivery logs (admin audit trail)
+email.log.retention.days=15
+email.log.retention.cron=0 0 12 * * *
