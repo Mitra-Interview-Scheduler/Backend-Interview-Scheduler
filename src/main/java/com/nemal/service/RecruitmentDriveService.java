@@ -10,6 +10,7 @@ import com.google.api.services.drive.model.Permission;
 import com.google.api.services.drive.model.PermissionList;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,19 +22,25 @@ import java.io.InputStream;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * Backend Drive access for the org-owned "Mitra Recruitment" Shared Drive, using a
- * <b>service-account</b> identity (not a per-user OAuth token). The service account is a
- * Manager member of the Shared Drive; files it creates are owned by the Shared Drive
- * (the organisation), so they survive any employee leaving.
+ * <b>service-account</b> identity (not a per-user OAuth token). Files created in the Shared
+ * Drive are owned by the organisation, so they survive any employee leaving.
+ *
+ * <p>Two membership modes are supported:
+ * <ul>
+ *   <li>Direct: the service account is a Manager on the Shared Drive.</li>
+ *   <li>Domain-wide delegation: when Workspace only allows {@code @company.com} members,
+ *       set {@code google.recruitment.impersonate-user} to a Manager on the Shared Drive.
+ *       The SA then acts as that user (Admin Console must authorize Drive scope for the SA).</li>
+ * </ul>
  *
  * <p>Provides the low-level primitives — create folder, upload file, list/grant/revoke
  * folder readers. All calls set {@code supportsAllDrives(true)} as required for Shared
- * Drives. Every method degrades gracefully (logs + returns null/empty) when the service
- * account isn't configured yet, so the app still boots before the Workspace admin has
- * provisioned the SA + Shared Drive.
+ * Drives. Every method degrades gracefully (logs + returns null/empty) when not configured.
  */
 @Service
 public class RecruitmentDriveService {
@@ -45,16 +52,19 @@ public class RecruitmentDriveService {
     private final String serviceAccountKeyPath;
     private final String serviceAccountKeyBase64;
     private final String sharedDriveId;
+    private final String impersonateUser;
 
     private volatile Drive cachedClient;
 
     public RecruitmentDriveService(
             @Value("${google.recruitment.service-account-key-path:}") String serviceAccountKeyPath,
             @Value("${google.recruitment.service-account-key-base64:}") String serviceAccountKeyBase64,
-            @Value("${google.recruitment.shared-drive-id:}") String sharedDriveId) {
+            @Value("${google.recruitment.shared-drive-id:}") String sharedDriveId,
+            @Value("${google.recruitment.impersonate-user:}") String impersonateUser) {
         this.serviceAccountKeyPath = serviceAccountKeyPath;
         this.serviceAccountKeyBase64 = serviceAccountKeyBase64;
         this.sharedDriveId = sharedDriveId;
+        this.impersonateUser = normalizeEmail(impersonateUser);
     }
 
     /** Whether the Recruitment Drive integration is configured and usable. */
@@ -206,17 +216,31 @@ public class RecruitmentDriveService {
         }
         synchronized (this) {
             if (cachedClient == null) {
-                GoogleCredentials credentials = loadCredentials()
-                        .createScoped(List.of(DriveScopes.DRIVE));
+                GoogleCredentials credentials = buildCredentials();
                 cachedClient = new Drive.Builder(
                         GoogleNetHttpTransport.newTrustedTransport(),
                         GsonFactory.getDefaultInstance(),
                         new HttpCredentialsAdapter(credentials))
                         .setApplicationName(APP_NAME)
                         .build();
+                if (hasText(impersonateUser)) {
+                    logger.info("Recruitment Drive client using domain-wide delegation as {}", impersonateUser);
+                }
             }
             return cachedClient;
         }
+    }
+
+    private GoogleCredentials buildCredentials() throws Exception {
+        GoogleCredentials credentials = loadCredentials().createScoped(List.of(DriveScopes.DRIVE));
+        if (!hasText(impersonateUser)) {
+            return credentials;
+        }
+        if (!(credentials instanceof ServiceAccountCredentials serviceAccountCredentials)) {
+            throw new IllegalStateException(
+                    "google.recruitment.impersonate-user requires a service-account JSON key");
+        }
+        return serviceAccountCredentials.createDelegated(impersonateUser);
     }
 
     private GoogleCredentials loadCredentials() throws Exception {
@@ -229,6 +253,13 @@ public class RecruitmentDriveService {
         try (InputStream in = new FileInputStream(serviceAccountKeyPath)) {
             return GoogleCredentials.fromStream(in);
         }
+    }
+
+    private static String normalizeEmail(String email) {
+        if (!hasText(email)) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean hasText(String s) {
