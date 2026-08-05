@@ -128,6 +128,12 @@
             <artifactId>google-oauth-client-jetty</artifactId>
             <version>1.36.0</version>
         </dependency>
+        <!-- Service-account credentials for the Recruitment Shared Drive (backend identity) -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+            <version>1.30.1</version>
+        </dependency>
         <!-- Hibernate types for JSON mapping -->
         <dependency>
             <groupId>com.vladmihalcea</groupId>
