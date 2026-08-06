@@ -230,9 +230,10 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
-    // Path avoids "email" so browser privacy/ad blockers do not strip Authorization.
+    // Path avoids "email" in the primary URL (some blockers interfere).
+    // Keep /email-logs aliases so older frontends/deploys still resolve.
     // GET /api/admin/delivery-logs
-    @GetMapping("/delivery-logs")
+    @GetMapping({"/delivery-logs", "/email-logs"})
     public ResponseEntity<PaginatedResponseDto<EmailDeliveryLogDto>> listEmailLogs(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
@@ -243,7 +244,7 @@ public class AdminController {
     }
 
     // GET /api/admin/delivery-logs/meta
-    @GetMapping("/delivery-logs/meta")
+    @GetMapping({"/delivery-logs/meta", "/email-logs/meta"})
     public ResponseEntity<Map<String, Object>> emailLogsMeta() {
         return ResponseEntity.ok(Map.of(
                 "retentionDays", emailDeliveryLogService.getRetentionDays()
@@ -251,7 +252,7 @@ public class AdminController {
     }
 
     // GET /api/admin/delivery-logs/{id}
-    @GetMapping("/delivery-logs/{id}")
+    @GetMapping({"/delivery-logs/{id}", "/email-logs/{id}"})
     public ResponseEntity<?> getEmailLog(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(emailDeliveryLogService.getById(id));

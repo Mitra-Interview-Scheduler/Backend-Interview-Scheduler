@@ -47,6 +47,7 @@ class InterviewRequestServiceCalendarValidationTest {
     @Mock private CalendarSyncService calendarSyncService;
     @Mock private PanelInterviewService panelInterviewService;
     @Mock private InterviewTypeService interviewTypeService;
+    @Mock private CandidateFolderAccessService candidateFolderAccessService;
 
     private InterviewRequestService interviewRequestService;
 
@@ -69,7 +70,8 @@ class InterviewRequestServiceCalendarValidationTest {
                 candidatePipelineAuditService,
                 calendarSyncService,
                 panelInterviewService,
-                interviewTypeService
+                interviewTypeService,
+                candidateFolderAccessService
         );
     }
 
