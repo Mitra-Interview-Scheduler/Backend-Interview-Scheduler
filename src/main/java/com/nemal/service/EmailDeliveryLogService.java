@@ -29,6 +29,7 @@ public class EmailDeliveryLogService {
     public static final String STATUS_FAILED = "FAILED";
     public static final String SOURCE_NOTIFICATION = "NOTIFICATION";
     public static final String SOURCE_CALENDAR_INVITE = "CALENDAR_INVITE";
+    public static final String SOURCE_WELCOME = "WELCOME";
 
     private static final Logger logger = LoggerFactory.getLogger(EmailDeliveryLogService.class);
     private static final int GROUP_MERGE_WINDOW_MINUTES = 2;
@@ -76,6 +77,18 @@ public class EmailDeliveryLogService {
                 SOURCE_CALENDAR_INVITE,
                 meetingLink
         );
+    }
+
+    @Transactional
+    public void logWelcomeDelivery(
+            String recipients,
+            String recipientName,
+            String subject,
+            String body,
+            String status,
+            String errorMessage
+    ) {
+        logDelivery(recipients, recipientName, subject, body, status, errorMessage, SOURCE_WELCOME, null);
     }
 
     @Transactional
