@@ -1,5 +1,7 @@
 package com.nemal.service;
 
+import com.nemal.entity.User;
+import com.nemal.enums.Role;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
@@ -15,6 +17,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class EmailService {
@@ -79,6 +83,71 @@ public class EmailService {
                     toName,
                     safeSubject,
                     safeBody,
+                    EmailDeliveryLogService.STATUS_FAILED,
+                    ex.getMessage()
+            );
+        }
+    }
+
+    /**
+     * Welcome email for Admin / HR / Interviewer accounts only.
+     * When {@code temporaryPassword} is set (admin-provisioned local users), credentials are included.
+     */
+    @Async
+    public void sendStaffWelcomeEmail(User user, String temporaryPassword) {
+        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
+            return;
+        }
+
+        String roleLabel = formatRoles(user.getRoles());
+        StringBuilder message = new StringBuilder();
+        message.append("Welcome to Mitra Interview Scheduler. Your account is ready.\n");
+        appendDetail(message, "Email", user.getEmail());
+        appendDetail(message, "Role", roleLabel);
+        if (temporaryPassword != null && !temporaryPassword.isBlank()) {
+            appendDetail(message, "Temporary password", temporaryPassword);
+            message.append("\nPlease sign in and change your password after your first login.");
+        } else {
+            message.append("\nYou can sign in anytime with your account credentials.");
+        }
+
+        String subject = "Welcome to Mitra Interview Scheduler";
+        String body = message.toString().trim();
+        String logBody = redactSecret(body, temporaryPassword);
+        sendWelcomeEmail(user.getEmail(), user.getFullName(), subject, body, logBody);
+    }
+
+    private void sendWelcomeEmail(String toEmail, String toName, String subject, String body, String logBody) {
+        if (!emailEnabled || toEmail == null || toEmail.isBlank()) {
+            return;
+        }
+
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
+            helper.setTo(toEmail.trim());
+            helper.setSubject(subject);
+            helper.setText(buildHtmlBody(toName, subject, body), true);
+            if (fromAddress != null && !fromAddress.isBlank()) {
+                helper.setFrom(fromAddress);
+            }
+
+            mailSender.send(mimeMessage);
+            emailDeliveryLogService.logWelcomeDelivery(
+                    toEmail.trim(),
+                    toName,
+                    subject,
+                    logBody,
+                    EmailDeliveryLogService.STATUS_SENT,
+                    null
+            );
+        } catch (MessagingException | MailException ex) {
+            logger.warn("Failed to send welcome email to {}: {}", toEmail, ex.getMessage());
+            emailDeliveryLogService.logWelcomeDelivery(
+                    toEmail.trim(),
+                    toName,
+                    subject,
+                    logBody,
                     EmailDeliveryLogService.STATUS_FAILED,
                     ex.getMessage()
             );
@@ -221,11 +290,41 @@ public class EmailService {
                 || normalized.equals("interviewer")
                 || normalized.equals("reason")
                 || normalized.equals("preferred time")
-                || normalized.equals("interview type")) {
+                || normalized.equals("interview type")
+                || normalized.equals("email")
+                || normalized.equals("role")
+                || normalized.equals("temporary password")) {
             return true;
         }
         // Avoid treating normal sentences as labels ("Reminder: You have...").
         return !label.contains(" ");
+    }
+
+    private static void appendDetail(StringBuilder message, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        if (!message.isEmpty()) {
+            message.append("\n");
+        }
+        message.append(label).append(": ").append(value.trim());
+    }
+
+    private static String formatRoles(Set<Role> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return "User";
+        }
+        return roles.stream()
+                .map(Enum::name)
+                .sorted()
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String redactSecret(String body, String secret) {
+        if (body == null || secret == null || secret.isBlank()) {
+            return body;
+        }
+        return body.replace(secret, "********");
     }
 
     private String escapeHtml(String value) {

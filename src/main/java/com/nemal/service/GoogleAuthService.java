@@ -29,14 +29,21 @@ public class GoogleAuthService {
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final UserSettingsService userSettingsService;
+    private final EmailService emailService;
 
     @Value("${google.client.id}")
     private String googleClientId;
 
-    public GoogleAuthService(UserRepository userRepository, JwtService jwtService, UserSettingsService userSettingsService) {
+    public GoogleAuthService(
+            UserRepository userRepository,
+            JwtService jwtService,
+            UserSettingsService userSettingsService,
+            EmailService emailService
+    ) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.userSettingsService = userSettingsService;
+        this.emailService = emailService;
     }
 
     public LoginResponse authenticateGoogleUser(String idTokenString, String browserTimezone) {
@@ -62,8 +69,11 @@ public class GoogleAuthService {
 //                throw new BadCredentialsException("Invalid Google token");
 //            }
 
-            User user = userRepository.findByEmail(email)
-                    .orElseGet(() -> registerNewGoogleUser(payload));
+            User user = userRepository.findByEmail(email).orElse(null);
+            if (user == null) {
+                user = registerNewGoogleUser(payload);
+                emailService.sendStaffWelcomeEmail(user, null);
+            }
 
             userSettingsService.ensureSettingsOnFirstLogin(user, browserTimezone);
 
