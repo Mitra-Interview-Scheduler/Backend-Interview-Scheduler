@@ -1,6 +1,5 @@
 package com.nemal.service;
 
-import com.nemal.entity.Candidate;
 import com.nemal.entity.User;
 import com.nemal.enums.Role;
 import jakarta.mail.MessagingException;
@@ -122,40 +121,6 @@ public class EmailService {
                 body,
                 logBody,
                 EmailAudience.STAFF
-        );
-    }
-
-    /** Welcome email for newly created candidates (no Mitra login). */
-    @Async
-    public void sendCandidateWelcomeEmail(Candidate candidate) {
-        if (candidate == null || candidate.getEmail() == null || candidate.getEmail().isBlank()) {
-            return;
-        }
-
-        String position = candidate.getTargetDesignation() != null
-                && candidate.getTargetDesignation().getName() != null
-                && !candidate.getTargetDesignation().getName().isBlank()
-                ? candidate.getTargetDesignation().getName().trim()
-                : "the open role";
-
-        StringBuilder message = new StringBuilder();
-        message.append("Thank you for your interest. We have received your application and our team will be in touch about next steps.\n");
-        appendDetail(message, "Position", position);
-        if (candidate.getCoordinatedHr() != null
-                && candidate.getCoordinatedHr().getFullName() != null
-                && !candidate.getCoordinatedHr().getFullName().isBlank()) {
-            appendDetail(message, "Coordinator", candidate.getCoordinatedHr().getFullName().trim());
-        }
-
-        String subject = "Welcome — we received your application";
-        String body = message.toString().trim();
-        sendWelcomeEmail(
-                candidate.getEmail(),
-                candidate.getName(),
-                subject,
-                body,
-                body,
-                EmailAudience.CANDIDATE
         );
     }
 
