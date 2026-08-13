@@ -3,13 +3,18 @@ package com.nemal.controller;
 import com.nemal.dto.*;
 import com.nemal.entity.User;
 import com.nemal.service.DepartmentService;
+import com.nemal.service.ExcelImportExportService;
 import com.nemal.service.ProfileService;
+import com.nemal.util.ExcelHelper;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -18,10 +23,16 @@ public class ProfileController {
 
     private final ProfileService profileService;
     private final DepartmentService departmentService;
+    private final ExcelImportExportService excelImportExportService;
 
-    public ProfileController(ProfileService profileService, DepartmentService departmentService) {
+    public ProfileController(
+            ProfileService profileService,
+            DepartmentService departmentService,
+            ExcelImportExportService excelImportExportService
+    ) {
         this.profileService = profileService;
         this.departmentService = departmentService;
+        this.excelImportExportService = excelImportExportService;
     }
 
     @GetMapping("/profile")
@@ -83,6 +94,21 @@ public class ProfileController {
     public ResponseEntity<DepartmentDto> createDepartment(@RequestBody CreateDepartmentDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(departmentService.createDepartment(dto));
+    }
+
+    @GetMapping("/departments/export")
+    public ResponseEntity<byte[]> exportDepartments() {
+        return ExcelHelper.downloadResponse(excelImportExportService.exportDepartments(), "departments.xlsx");
+    }
+
+    @PostMapping(value = "/departments/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importDepartments(@RequestParam("file") MultipartFile file) {
+        try {
+            ExcelImportResultDto result = excelImportExportService.importDepartments(file);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
     // Note: Designations are now in DesignationController at /api/designations

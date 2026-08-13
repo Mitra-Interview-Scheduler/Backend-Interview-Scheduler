@@ -2,17 +2,21 @@ package com.nemal.controller;
 
 import com.nemal.dto.*;
 import com.nemal.entity.User;
+import com.nemal.service.ExcelImportExportService;
 import com.nemal.service.FeedbackService;
+import com.nemal.util.ExcelHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 // HttpStatus and ResponseEntity already imported above
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 @RestController
@@ -22,9 +26,11 @@ public class FeedbackController {
 
     private static final Logger logger = LoggerFactory.getLogger(FeedbackController.class);
     private final FeedbackService feedbackService;
+    private final ExcelImportExportService excelImportExportService;
 
-    public FeedbackController(FeedbackService feedbackService) {
+    public FeedbackController(FeedbackService feedbackService, ExcelImportExportService excelImportExportService) {
         this.feedbackService = feedbackService;
+        this.excelImportExportService = excelImportExportService;
     }
 
     @GetMapping("/questions")
@@ -169,6 +175,26 @@ public class FeedbackController {
         } catch (Exception e) {
             logger.error("Failed to list obligatory questions: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @GetMapping("/obligatory-questions/export")
+    public ResponseEntity<byte[]> exportObligatoryQuestions() {
+        return ExcelHelper.downloadResponse(
+                excelImportExportService.exportObligatoryQuestions(),
+                "obligatory-questions.xlsx"
+        );
+    }
+
+    @PreAuthorize("hasAnyRole('HR','ADMIN')")
+    @PostMapping(value = "/obligatory-questions/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importObligatoryQuestions(@RequestParam("file") MultipartFile file) {
+        try {
+            ExcelImportResultDto result = excelImportExportService.importObligatoryQuestions(file);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 

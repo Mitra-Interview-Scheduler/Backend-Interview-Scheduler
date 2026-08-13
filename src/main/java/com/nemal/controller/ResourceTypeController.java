@@ -2,11 +2,16 @@ package com.nemal.controller;
 
 import com.nemal.dto.CatalogTypeDto;
 import com.nemal.dto.CreateCatalogTypeDto;
+import com.nemal.dto.ExcelImportResultDto;
 import com.nemal.dto.UpdateCatalogTypeDto;
+import com.nemal.service.ExcelImportExportService;
 import com.nemal.service.ResourceTypeService;
+import com.nemal.util.ExcelHelper;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -17,9 +22,14 @@ import java.util.Map;
 public class ResourceTypeController {
 
     private final ResourceTypeService resourceTypeService;
+    private final ExcelImportExportService excelImportExportService;
 
-    public ResourceTypeController(ResourceTypeService resourceTypeService) {
+    public ResourceTypeController(
+            ResourceTypeService resourceTypeService,
+            ExcelImportExportService excelImportExportService
+    ) {
         this.resourceTypeService = resourceTypeService;
+        this.excelImportExportService = excelImportExportService;
     }
 
     @GetMapping
@@ -30,6 +40,21 @@ public class ResourceTypeController {
     @GetMapping("/all")
     public ResponseEntity<List<CatalogTypeDto>> listAll() {
         return ResponseEntity.ok(resourceTypeService.listAll());
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export() {
+        return ExcelHelper.downloadResponse(excelImportExportService.exportResourceTypes(), "resource-types.xlsx");
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importTypes(@RequestParam("file") MultipartFile file) {
+        try {
+            ExcelImportResultDto result = excelImportExportService.importResourceTypes(file);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
     @PostMapping

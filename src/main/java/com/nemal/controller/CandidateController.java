@@ -7,6 +7,7 @@ import com.nemal.dto.CandidateTechnologyDto;
 import com.nemal.dto.CloseCandidateDto;
 import com.nemal.dto.CreateCandidateDto;
 import com.nemal.dto.DepartmentUserDto;
+import com.nemal.dto.ExcelImportResultDto;
 import com.nemal.dto.PaginatedResponseDto;
 import com.nemal.dto.UpdateCandidateDto;
 import com.nemal.dto.UpdateCandidateTechnologyDto;
@@ -16,6 +17,8 @@ import com.nemal.enums.MasterStatus;
 import com.nemal.service.CandidateClosureService;
 import com.nemal.service.CandidateService;
 import com.nemal.service.CandidateTechnologyService;
+import com.nemal.service.ExcelImportExportService;
+import com.nemal.util.ExcelHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -39,13 +43,16 @@ public class CandidateController {
     private final CandidateService candidateService;
     private final CandidateClosureService candidateClosureService;
     private final CandidateTechnologyService candidateTechnologyService;
+    private final ExcelImportExportService excelImportExportService;
 
     public CandidateController(CandidateService candidateService,
                                CandidateClosureService candidateClosureService,
-                               CandidateTechnologyService candidateTechnologyService) {
+                               CandidateTechnologyService candidateTechnologyService,
+                               ExcelImportExportService excelImportExportService) {
         this.candidateService = candidateService;
         this.candidateClosureService = candidateClosureService;
         this.candidateTechnologyService = candidateTechnologyService;
+        this.excelImportExportService = excelImportExportService;
     }
 
     @GetMapping("/statuses")
@@ -86,6 +93,24 @@ public class CandidateController {
                     candidateService.findWithFilters(departmentId, status, search, coordinatedHrId));
         }
         return ResponseEntity.ok(candidateService.getAllCandidates());
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportCandidates() {
+        return ExcelHelper.downloadResponse(excelImportExportService.exportCandidates(), "candidates.xlsx");
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importCandidates(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal User user
+    ) {
+        try {
+            ExcelImportResultDto result = excelImportExportService.importCandidates(file, user);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}")

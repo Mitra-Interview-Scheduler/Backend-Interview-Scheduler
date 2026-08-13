@@ -67,6 +67,8 @@ public class SecurityConfig {
 
                         // Candidates: HR/ADMIN for lists, documents, mutations, close; single GET for interviewers
                         .requestMatchers(HttpMethod.GET, "/api/candidates/coordinated-hr-options").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/export").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/candidates/import").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates/search").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/candidates/department/**").hasAnyRole("HR", "ADMIN")
@@ -93,7 +95,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/availability/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
 
                         // Master data writes: ADMIN for updates/deletes; create allowed for interviewers
-                        .requestMatchers(HttpMethod.POST, "/api/departments").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/departments", "/api/departments/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/designations", "/api/designations/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/designations/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/designations/**").hasRole("ADMIN")
@@ -155,6 +157,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/feedback/candidateforms").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/feedback/obligatory-questions", "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/feedback/obligatory-questions").hasAnyRole("HR", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/feedback/obligatory-questions/import").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/feedback/obligatory-questions/**").hasAnyRole("HR", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/feedback/responses").hasAnyRole("INTERVIEWER", "HR", "ADMIN")

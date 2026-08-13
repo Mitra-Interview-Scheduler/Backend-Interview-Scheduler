@@ -1,16 +1,21 @@
 package com.nemal.controller;
 
 import com.nemal.dto.CreateInterviewTypeDto;
+import com.nemal.dto.ExcelImportResultDto;
 import com.nemal.dto.InterviewTypeDeletePreviewDto;
 import com.nemal.dto.InterviewTypeDeleteResultDto;
 import com.nemal.dto.InterviewTypeDto;
 import com.nemal.dto.UpdateInterviewTypeDto;
+import com.nemal.service.ExcelImportExportService;
 import com.nemal.service.InterviewTypeService;
+import com.nemal.util.ExcelHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -22,9 +27,14 @@ public class InterviewTypeController {
 
     private static final Logger logger = LoggerFactory.getLogger(InterviewTypeController.class);
     private final InterviewTypeService interviewTypeService;
+    private final ExcelImportExportService excelImportExportService;
 
-    public InterviewTypeController(InterviewTypeService interviewTypeService) {
+    public InterviewTypeController(
+            InterviewTypeService interviewTypeService,
+            ExcelImportExportService excelImportExportService
+    ) {
         this.interviewTypeService = interviewTypeService;
+        this.excelImportExportService = excelImportExportService;
     }
 
     @GetMapping
@@ -33,6 +43,21 @@ public class InterviewTypeController {
         return ResponseEntity.ok(activeOnly
                 ? interviewTypeService.getActive()
                 : interviewTypeService.getAll());
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export() {
+        return ExcelHelper.downloadResponse(excelImportExportService.exportInterviewTypes(), "interview-types.xlsx");
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> importTypes(@RequestParam("file") MultipartFile file) {
+        try {
+            ExcelImportResultDto result = excelImportExportService.importInterviewTypes(file);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
     @PostMapping
