@@ -27,6 +27,11 @@ public class QuestionCategoryController {
         return ResponseEntity.ok(categoryService.getActiveCategories(forForms));
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<QuestionCategoryDto>> getAllCategoriesIncludingInactive() {
+        return ResponseEntity.ok(categoryService.getAllCategoriesIncludingInactive());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<QuestionCategoryDto> getCategoryById(@PathVariable Long id) {
         return ResponseEntity.ok(categoryService.getCategoryById(id));

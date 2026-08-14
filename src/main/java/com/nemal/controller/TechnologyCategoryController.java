@@ -25,6 +25,11 @@ public class TechnologyCategoryController {
         return ResponseEntity.ok(categoryService.getActiveCategories());
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<TechnologyCategoryDto>> getAllCategoriesIncludingInactive() {
+        return ResponseEntity.ok(categoryService.getAllCategoriesIncludingInactive());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<TechnologyCategoryDto> getCategoryById(@PathVariable Long id) {
         return ResponseEntity.ok(categoryService.getCategoryById(id));

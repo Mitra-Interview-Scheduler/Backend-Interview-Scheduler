@@ -37,6 +37,13 @@ public class TechnologyService {
     }
 
     @Transactional(readOnly = true)
+    public List<TechnologyDto> getAllTechnologiesIncludingInactive() {
+        return technologyRepository.findAll().stream()
+                .map(TechnologyDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public TechnologyDto getTechnologyById(Long id) {
         Technology technology = technologyRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Technology not found"));

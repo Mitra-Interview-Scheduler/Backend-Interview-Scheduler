@@ -28,6 +28,13 @@ public class QuestionCategoryService {
     }
 
     @Transactional(readOnly = true)
+    public List<QuestionCategoryDto> getAllCategoriesIncludingInactive() {
+        return categoryRepository.findAll().stream()
+                .map(QuestionCategoryDto::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public QuestionCategoryDto getCategoryById(Long id) {
         QuestionCategory category = categoryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question category not found"));
