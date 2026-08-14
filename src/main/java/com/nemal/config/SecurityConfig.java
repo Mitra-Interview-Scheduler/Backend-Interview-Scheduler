@@ -94,6 +94,9 @@ public class SecurityConfig {
 
                         // Master data writes: ADMIN for updates/deletes; create allowed for interviewers
                         .requestMatchers(HttpMethod.POST, "/api/departments").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/departments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/departments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/departments", "/api/departments/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/designations", "/api/designations/**").hasAnyRole("INTERVIEWER", "HR", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/designations/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/designations/**").hasRole("ADMIN")

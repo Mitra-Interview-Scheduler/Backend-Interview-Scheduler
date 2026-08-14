@@ -2,6 +2,7 @@ package com.nemal.service;
 
 import com.nemal.dto.CreateDepartmentDto;
 import com.nemal.dto.DepartmentDto;
+import com.nemal.dto.UpdateDepartmentDto;
 import com.nemal.entity.Department;
 import com.nemal.repository.DepartmentRepository;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,13 @@ public class DepartmentService {
     }
 
     public List<DepartmentDto> getAllDepartments() {
+        return departmentRepository.findByIsActiveTrue().stream()
+                .sorted(Comparator.comparing(Department::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(DepartmentDto::from)
+                .collect(Collectors.toList());
+    }
+
+    public List<DepartmentDto> getAllDepartmentsIncludingInactive() {
         return departmentRepository.findAll().stream()
                 .sorted(Comparator.comparing(Department::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(DepartmentDto::from)
@@ -54,9 +62,46 @@ public class DepartmentService {
         Department department = Department.builder()
                 .name(name)
                 .code(code)
+                .isActive(true)
                 .build();
 
         return DepartmentDto.from(departmentRepository.save(department));
+    }
+
+    @Transactional
+    public DepartmentDto updateDepartment(Long id, UpdateDepartmentDto dto) {
+        Department department = departmentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+
+        if (dto.name() != null && !dto.name().isBlank()) {
+            String name = dto.name().trim();
+            Department existing = departmentRepository.findByNameIgnoreCase(name);
+            if (existing != null && !existing.getId().equals(id)) {
+                throw new IllegalArgumentException("Department already exists: " + name);
+            }
+            department.setName(name);
+        }
+        if (dto.code() != null && !dto.code().isBlank()) {
+            String code = dto.code().trim().toUpperCase();
+            if ((department.getCode() == null || !code.equalsIgnoreCase(department.getCode()))
+                    && departmentRepository.existsByCodeIgnoreCase(code)) {
+                throw new IllegalArgumentException("Department code already exists: " + code);
+            }
+            department.setCode(code);
+        }
+        if (dto.isActive() != null) {
+            department.setActive(dto.isActive());
+        }
+
+        return DepartmentDto.from(departmentRepository.save(department));
+    }
+
+    @Transactional
+    public void deleteDepartment(Long id) {
+        Department department = departmentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+        department.setActive(false);
+        departmentRepository.save(department);
     }
 
     private String resolveDepartmentCode(String requestedCode, String name) {
