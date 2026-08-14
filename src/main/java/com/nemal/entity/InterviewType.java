@@ -126,19 +126,21 @@ public class InterviewType {
     @Builder.Default
     private InterviewerFilterMode technologyFilterMode = InterviewerFilterMode.SAME_AS_CANDIDATE;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    // LAZY: multiple EAGER element collections make unique lookups
+    // (findByCode / findById) fail with a cartesian product / bag-fetch error.
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "interview_type_fixed_domains", joinColumns = @JoinColumn(name = "interview_type_id"))
     @Column(name = "domain_id")
     @Builder.Default
     private Set<Long> fixedDomainIds = new HashSet<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "interview_type_fixed_categories", joinColumns = @JoinColumn(name = "interview_type_id"))
     @Column(name = "category_id")
     @Builder.Default
     private Set<Long> fixedCategoryIds = new HashSet<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "interview_type_fixed_technologies", joinColumns = @JoinColumn(name = "interview_type_id"))
     @Column(name = "technology_id")
     @Builder.Default

@@ -85,6 +85,13 @@ public class InterviewTypeController {
         }
     }
 
+    @GetMapping("/resolve-filters")
+    public ResponseEntity<?> resolveFiltersByQuery(
+            @RequestParam String code,
+            @RequestParam Long candidateId) {
+        return resolveFilters(code, candidateId);
+    }
+
     @GetMapping("/{code}/resolve-filters")
     public ResponseEntity<?> resolveFilters(
             @PathVariable String code,
@@ -93,7 +100,11 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.resolveInterviewerFilters(code, candidateId));
         } catch (Exception e) {
             logger.warn("Failed to resolve filters for type {} / candidate {}: {}", code, candidateId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            String message = e.getMessage();
+            if (message == null || message.isBlank()) {
+                message = e.getClass().getSimpleName();
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
         }
     }
 }
