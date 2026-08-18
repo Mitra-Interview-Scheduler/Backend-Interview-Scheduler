@@ -56,7 +56,6 @@ public class CandidateService {
     private final NotificationService notificationService;
     private final RecruitmentDriveService recruitmentDriveService;
     private final CandidateFolderAccessService candidateFolderAccessService;
-    private final EmailService emailService;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -84,9 +83,7 @@ public class CandidateService {
             EntityDomainService entityDomainService,
             NotificationService notificationService,
             RecruitmentDriveService recruitmentDriveService,
-            CandidateFolderAccessService candidateFolderAccessService,
-            EmailService emailService
-
+            CandidateFolderAccessService candidateFolderAccessService
     ) {
         this.candidateRepository = candidateRepository;
         this.candidateDocumentRepository = candidateDocumentRepository;
@@ -103,7 +100,6 @@ public class CandidateService {
         this.notificationService = notificationService;
         this.recruitmentDriveService = recruitmentDriveService;
         this.candidateFolderAccessService = candidateFolderAccessService;
-        this.emailService = emailService;
     }
 
     /**
@@ -421,7 +417,6 @@ public class CandidateService {
                 createdBy,
                 null);
         notificationService.sendCandidateCoordinatorAssignedNotification(candidate);
-        emailService.sendCandidateWelcomeEmail(candidate);
 
         // Provision the candidate's Drive folder and grant the creator + coordinator access.
         ensureCandidateFolder(candidate);
