@@ -8,7 +8,6 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -28,17 +27,33 @@ public class UserChannelInterceptor implements ChannelInterceptor {
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             String authToken = accessor.getFirstNativeHeader("Authorization");
-            if (authToken != null && authToken.startsWith("Bearer ")) {
-                String jwt = authToken.substring(7);
+            if (authToken == null || !authToken.startsWith("Bearer ")) {
+                return null;
+            }
+
+            try {
+                String jwt = authToken.substring(7).trim();
                 String email = jwtService.extractUsername(jwt);
-                User user = userRepository.findByEmail(email)
-                        .orElseThrow(() -> new AuthenticationException("User not found") {});
+                if (email == null || email.isBlank()) {
+                    return null;
+                }
+                User user = userRepository.findByEmail(email).orElse(null);
+                if (user == null || !user.isEnabled() || !jwtService.isTokenValid(jwt, user)) {
+                    return null;
+                }
+
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                        email,
+                        user,
                         null,
                         user.getAuthorities());
                 accessor.setUser(auth);
-            } else {
+            } catch (RuntimeException ex) {
+                return null;
+            }
+        } else if (StompCommand.SEND.equals(accessor.getCommand())
+                || StompCommand.SUBSCRIBE.equals(accessor.getCommand())
+                || StompCommand.UNSUBSCRIBE.equals(accessor.getCommand())) {
+            if (accessor.getUser() == null) {
                 return null;
             }
         }
