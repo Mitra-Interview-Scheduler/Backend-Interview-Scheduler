@@ -25,6 +25,8 @@ import java.util.Set;
 @Service
 public class UserService {
 
+    public static final String DEFAULT_TEMPORARY_PASSWORD = "ChangeMe123!";
+
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
@@ -33,7 +35,6 @@ public class UserService {
     private final AuthenticationManager authenticationManager;
     private final UserSettingsService userSettingsService;
     private final EmailService emailService;
-    private static final String DEFAULT_TEMPORARY_PASSWORD = "ChangeMe123!";
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,

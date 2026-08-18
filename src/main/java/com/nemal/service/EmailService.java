@@ -1,5 +1,6 @@
 package com.nemal.service;
 
+import com.nemal.entity.Candidate;
 import com.nemal.entity.User;
 import com.nemal.enums.Role;
 import jakarta.mail.MessagingException;
@@ -62,7 +63,7 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
             helper.setTo(toEmail);
             helper.setSubject(safeSubject);
-            helper.setText(buildHtmlBody(toName, safeSubject, safeBody), true);
+            helper.setText(buildHtmlBody(toName, safeSubject, safeBody, EmailAudience.STAFF), true);
             if (fromAddress != null && !fromAddress.isBlank()) {
                 helper.setFrom(fromAddress);
             }
@@ -90,8 +91,8 @@ public class EmailService {
     }
 
     /**
-     * Welcome email for Admin / HR / Interviewer accounts only.
-     * When {@code temporaryPassword} is set (admin-provisioned local users), credentials are included.
+     * Welcome email for staff accounts. When {@code temporaryPassword} is set (admin-provisioned
+     * local users), credentials are included; otherwise this is a simple onboarding note.
      */
     @Async
     public void sendStaffWelcomeEmail(User user, String temporaryPassword) {
@@ -114,11 +115,62 @@ public class EmailService {
         String subject = "Welcome to Mitra Interview Scheduler";
         String body = message.toString().trim();
         String logBody = redactSecret(body, temporaryPassword);
-        sendWelcomeEmail(user.getEmail(), user.getFullName(), subject, body, logBody);
+        sendWelcomeEmail(
+                user.getEmail(),
+                user.getFullName(),
+                subject,
+                body,
+                logBody,
+                EmailAudience.STAFF
+        );
     }
 
-    private void sendWelcomeEmail(String toEmail, String toName, String subject, String body, String logBody) {
-        if (!emailEnabled || toEmail == null || toEmail.isBlank()) {
+    /** Welcome email for newly created candidates (no Mitra login). */
+    @Async
+    public void sendCandidateWelcomeEmail(Candidate candidate) {
+        if (candidate == null || candidate.getEmail() == null || candidate.getEmail().isBlank()) {
+            return;
+        }
+
+        String position = candidate.getTargetDesignation() != null
+                && candidate.getTargetDesignation().getName() != null
+                && !candidate.getTargetDesignation().getName().isBlank()
+                ? candidate.getTargetDesignation().getName().trim()
+                : "the open role";
+
+        StringBuilder message = new StringBuilder();
+        message.append("Thank you for your interest. We have received your application and our team will be in touch about next steps.\n");
+        appendDetail(message, "Position", position);
+        if (candidate.getCoordinatedHr() != null
+                && candidate.getCoordinatedHr().getFullName() != null
+                && !candidate.getCoordinatedHr().getFullName().isBlank()) {
+            appendDetail(message, "Coordinator", candidate.getCoordinatedHr().getFullName().trim());
+        }
+
+        String subject = "Welcome — we received your application";
+        String body = message.toString().trim();
+        sendWelcomeEmail(
+                candidate.getEmail(),
+                candidate.getName(),
+                subject,
+                body,
+                body,
+                EmailAudience.CANDIDATE
+        );
+    }
+
+    private void sendWelcomeEmail(
+            String toEmail,
+            String toName,
+            String subject,
+            String body,
+            String logBody,
+            EmailAudience audience
+    ) {
+        if (!emailEnabled) {
+            return;
+        }
+        if (toEmail == null || toEmail.isBlank()) {
             return;
         }
 
@@ -127,7 +179,7 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
             helper.setTo(toEmail.trim());
             helper.setSubject(subject);
-            helper.setText(buildHtmlBody(toName, subject, body), true);
+            helper.setText(buildHtmlBody(toName, subject, body, audience), true);
             if (fromAddress != null && !fromAddress.isBlank()) {
                 helper.setFrom(fromAddress);
             }
@@ -154,7 +206,7 @@ public class EmailService {
         }
     }
 
-    private String buildHtmlBody(String toName, String subject, String message) {
+    private String buildHtmlBody(String toName, String subject, String message, EmailAudience audience) {
         String greetingName = (toName != null && !toName.isBlank()) ? toName : "there";
         ParsedMessage parsed = parseMessage(message);
 
@@ -196,15 +248,21 @@ public class EmailService {
                     + "</table>";
         }
 
-        String ctaButton = (frontendUrl != null && !frontendUrl.isBlank())
-                ? String.format(
-                        "<tr><td style=\"padding:8px 32px 8px 32px;\">"
-                                + "<a href=\"%s\" style=\"display:inline-block;background-color:#4f46e5;color:#ffffff;"
-                                + "text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;\">"
-                                + "Open Mitra Interview Scheduler</a></td></tr>",
-                        frontendUrl
-                )
-                : "";
+        String ctaButton = "";
+        if (audience == EmailAudience.STAFF && frontendUrl != null && !frontendUrl.isBlank()) {
+            ctaButton = String.format(
+                    "<tr><td style=\"padding:8px 32px 8px 32px;\">"
+                            + "<a href=\"%s\" style=\"display:inline-block;background-color:#4f46e5;color:#ffffff;"
+                            + "text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;\">"
+                            + "Open Mitra Interview Scheduler</a></td></tr>",
+                    frontendUrl
+            );
+        }
+
+        String footer = audience == EmailAudience.CANDIDATE
+                ? "You're receiving this because an application was submitted with this email address."
+                : "You're receiving this because you have an account on Mitra Interview Scheduler. "
+                        + "You can manage email preferences in Settings.";
 
         return "<!DOCTYPE html>"
                 + "<html><body style=\"margin:0;padding:0;background-color:#f4f4f7;font-family:Arial,Helvetica,sans-serif;\">"
@@ -224,8 +282,7 @@ public class EmailService {
                 + ctaButton
                 + "<tr><td style=\"padding:20px 32px 28px 32px;\">"
                 + "<p style=\"margin:0;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#9ca3af;\">"
-                + "You're receiving this because you have an account on Mitra Interview Scheduler. "
-                + "You can manage email preferences in Settings.</p>"
+                + footer + "</p>"
                 + "</td></tr>"
                 + "</table></td></tr></table></body></html>";
     }
@@ -293,7 +350,8 @@ public class EmailService {
                 || normalized.equals("interview type")
                 || normalized.equals("email")
                 || normalized.equals("role")
-                || normalized.equals("temporary password")) {
+                || normalized.equals("temporary password")
+                || normalized.equals("coordinator")) {
             return true;
         }
         // Avoid treating normal sentences as labels ("Reminder: You have...").
@@ -336,6 +394,11 @@ public class EmailService {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    private enum EmailAudience {
+        STAFF,
+        CANDIDATE
     }
 
     private record ParsedMessage(List<String> introParagraphs, Map<String, String> details) {}

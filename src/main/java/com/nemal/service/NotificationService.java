@@ -245,6 +245,32 @@ public class NotificationService {
                 .build());
     }
 
+    public void sendCandidateCoordinatorUnassignedNotification(Candidate candidate, User previousCoordinator) {
+        if (previousCoordinator == null) {
+            return;
+        }
+
+        String designation = candidate.getTargetDesignation() != null
+                ? candidate.getTargetDesignation().getName()
+                : "Not specified";
+
+        deliver(Notification.builder()
+                .recipient(previousCoordinator)
+                .subject("Candidate Coordinator Reassigned")
+                .message(buildInterviewDetailsMessage(
+                        "You are no longer the candidate coordinator for this candidate.",
+                        candidate.getName(),
+                        null,
+                        designation,
+                        null
+                ))
+                .type("CANDIDATE_COORDINATOR_UNASSIGNED")
+                .relatedEntityId(candidate.getId())
+                .relatedEntityType("CANDIDATE")
+                .read(false)
+                .build());
+    }
+
     public void sendCoordinatedHrInterviewScheduledNotification(InterviewRequest request) {
         Candidate candidate = request.getCandidate();
         if (candidate == null || candidate.getCoordinatedHr() == null) {
