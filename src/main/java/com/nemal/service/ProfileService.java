@@ -242,7 +242,7 @@ public class ProfileService {
     }
 
     public List<DepartmentDto> getAllDepartments() {
-        return departmentRepository.findAll().stream()
+        return departmentRepository.findByIsActiveTrue().stream()
                 .map(DepartmentDto::from)
                 .collect(Collectors.toList());
     }

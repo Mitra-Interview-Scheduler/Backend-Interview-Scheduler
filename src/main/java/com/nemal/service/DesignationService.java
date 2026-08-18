@@ -36,6 +36,12 @@ public class DesignationService {
                 .collect(Collectors.toList());
     }
 
+    public List<DesignationDto> getAllDesignationsIncludingInactive() {
+        return designationRepository.findAll().stream()
+                .map(DesignationDto::from)
+                .collect(Collectors.toList());
+    }
+
     public List<DesignationDto> getDesignationsByDepartment(Long departmentId) {
         return designationRepository.findByDepartmentIdAndIsActiveTrue(departmentId).stream()
                 .map(DesignationDto::from)
