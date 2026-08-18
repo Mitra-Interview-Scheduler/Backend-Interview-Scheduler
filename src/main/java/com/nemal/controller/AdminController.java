@@ -220,14 +220,30 @@ public class AdminController {
         }
     }
 
-    // DELETE /api/admin/users/{id}
+    // DELETE /api/admin/users/{id} — soft-deactivates the user (does not hard-delete)
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        if (!userRepository.existsById(id)) {
+    public ResponseEntity<AdminUserDto> deleteUser(@PathVariable Long id) {
+        User user = userRepository.findById(id)
+                .orElse(null);
+        if (user == null) {
             return ResponseEntity.notFound().build();
         }
-        userRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
+        if (user.isActive()) {
+            // Prevent deactivating the last active ADMIN
+            if (user.getRoles().contains(Role.ADMIN)) {
+                long otherActiveAdmins = userRepository.findAll().stream()
+                        .filter(u -> !u.getId().equals(id)
+                                && u.isActive()
+                                && u.getRoles().contains(Role.ADMIN))
+                        .count();
+                if (otherActiveAdmins == 0) {
+                    throw new RuntimeException("Cannot deactivate the last active admin user");
+                }
+            }
+            user.setActive(false);
+            userRepository.save(user);
+        }
+        return ResponseEntity.ok(toAdminUserDto(user));
     }
 
     // Path avoids "email" in the primary URL (some blockers interfere).
