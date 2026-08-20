@@ -249,6 +249,45 @@ public class AssessmentService {
         return toDto(schedule);
     }
 
+    @Transactional
+    public AssessmentScheduleDto removeReviewer(User actor, Long scheduleId, Long reviewerUserId) {
+        requireHrOrAdmin(actor);
+        InterviewSchedule schedule = requireAssessmentSchedule(scheduleId);
+        if (reviewerUserId == null) {
+            throw new RuntimeException("Reviewer id is required");
+        }
+        if (schedule.getAssessmentPhase() == AssessmentPhase.COMPLETED
+                || schedule.getStatus() == InterviewStatus.COMPLETED) {
+            throw new RuntimeException("Cannot remove reviewers from a completed assessment");
+        }
+        if (schedule.getStatus() == InterviewStatus.CANCELLED) {
+            throw new RuntimeException("Cannot remove reviewers from a cancelled assessment");
+        }
+
+        AssessmentReviewer assignment = assessmentReviewerRepository
+                .findByInterviewScheduleIdAndReviewerId(scheduleId, reviewerUserId)
+                .orElseThrow(() -> new RuntimeException("Reviewer is not assigned to this assessment"));
+
+        boolean hasFeedback = feedbackResponseRepository
+                .findByInterviewScheduleIdAndInterviewerId(scheduleId, reviewerUserId)
+                .isPresent();
+        if (hasFeedback) {
+            throw new RuntimeException("Cannot remove a reviewer who has already submitted feedback");
+        }
+
+        assessmentReviewerRepository.delete(assignment);
+
+        List<AssessmentReviewer> remaining = assessmentReviewerRepository
+                .findByInterviewScheduleIdOrderByAssignedAtAsc(scheduleId);
+        if (remaining.isEmpty()
+                && schedule.getAssessmentPhase() == AssessmentPhase.UNDER_REVIEW) {
+            schedule.setAssessmentPhase(AssessmentPhase.RECEIVED);
+            schedule = interviewScheduleRepository.save(schedule);
+        }
+
+        return toDto(schedule);
+    }
+
     @Transactional(readOnly = true)
     public List<AssessmentReviewerDto> listReviewers(Long scheduleId) {
         requireAssessmentSchedule(scheduleId);
