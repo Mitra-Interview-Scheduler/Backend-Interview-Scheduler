@@ -16,10 +16,13 @@ import com.nemal.entity.MasterStep;
 import com.nemal.entity.User;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
+import com.nemal.enums.Role;
 import com.nemal.repository.CandidateDocumentRepository;
 import com.nemal.repository.CandidateRepository;
 import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
+import com.nemal.repository.InterviewRequestRepository;
+import com.nemal.repository.InterviewScheduleRepository;
 import com.nemal.repository.MasterStepRepository;
 import com.nemal.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -27,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.util.Comparator;
@@ -56,6 +61,8 @@ public class CandidateService {
     private final NotificationService notificationService;
     private final RecruitmentDriveService recruitmentDriveService;
     private final CandidateFolderAccessService candidateFolderAccessService;
+    private final InterviewRequestRepository interviewRequestRepository;
+    private final InterviewScheduleRepository interviewScheduleRepository;
     private static final long MAX_DOCUMENT_BYTES = 10L * 1024L * 1024L;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
@@ -83,7 +90,9 @@ public class CandidateService {
             EntityDomainService entityDomainService,
             NotificationService notificationService,
             RecruitmentDriveService recruitmentDriveService,
-            CandidateFolderAccessService candidateFolderAccessService
+            CandidateFolderAccessService candidateFolderAccessService,
+            InterviewRequestRepository interviewRequestRepository,
+            InterviewScheduleRepository interviewScheduleRepository
     ) {
         this.candidateRepository = candidateRepository;
         this.candidateDocumentRepository = candidateDocumentRepository;
@@ -100,6 +109,8 @@ public class CandidateService {
         this.notificationService = notificationService;
         this.recruitmentDriveService = recruitmentDriveService;
         this.candidateFolderAccessService = candidateFolderAccessService;
+        this.interviewRequestRepository = interviewRequestRepository;
+        this.interviewScheduleRepository = interviewScheduleRepository;
     }
 
     /**
@@ -156,6 +167,26 @@ public class CandidateService {
                 domains,
                 resolveProfilePictureDocumentId(id)
         );
+    }
+
+    public void assertCanReadCandidate(User user, Long candidateId) {
+        if (user == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+        if (user.hasRole(Role.HR) || user.hasRole(Role.ADMIN)) {
+            return;
+        }
+        if (isAssignedInterviewer(user.getId(), candidateId)) {
+            return;
+        }
+        throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "You can only access candidates assigned to your interviews");
+    }
+
+    private boolean isAssignedInterviewer(Long interviewerId, Long candidateId) {
+        return interviewRequestRepository.existsActiveAssignmentForCandidate(candidateId, interviewerId)
+                || interviewScheduleRepository.existsActiveScheduleForCandidate(candidateId, interviewerId);
     }
 
     @Transactional(readOnly = true)

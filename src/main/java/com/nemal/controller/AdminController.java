@@ -12,6 +12,7 @@ import com.nemal.repository.UserRepository;
 import com.nemal.service.EmailDeliveryLogService;
 import com.nemal.service.EntityDomainService;
 import com.nemal.service.ProfileService;
+import com.nemal.service.RefreshTokenService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,17 +35,20 @@ public class AdminController {
     private final ProfileService profileService;
     private final EntityDomainService entityDomainService;
     private final EmailDeliveryLogService emailDeliveryLogService;
+    private final RefreshTokenService refreshTokenService;
 
     public AdminController(
             UserRepository userRepository,
             ProfileService profileService,
             EntityDomainService entityDomainService,
-            EmailDeliveryLogService emailDeliveryLogService
+            EmailDeliveryLogService emailDeliveryLogService,
+            RefreshTokenService refreshTokenService
     ) {
         this.userRepository = userRepository;
         this.profileService = profileService;
         this.entityDomainService = entityDomainService;
         this.emailDeliveryLogService = emailDeliveryLogService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     // GET /api/admin/users
@@ -144,6 +148,9 @@ public class AdminController {
                 .orElseThrow(() -> new RuntimeException("User not found: " + id));
         user.setActive(!user.isActive());
         userRepository.save(user);
+        if (!user.isActive()) {
+            refreshTokenService.revokeAllForUser(user);
+        }
         return ResponseEntity.ok(toAdminUserDto(user));
     }
 
@@ -242,6 +249,7 @@ public class AdminController {
             }
             user.setActive(false);
             userRepository.save(user);
+            refreshTokenService.revokeAllForUser(user);
         }
         return ResponseEntity.ok(toAdminUserDto(user));
     }

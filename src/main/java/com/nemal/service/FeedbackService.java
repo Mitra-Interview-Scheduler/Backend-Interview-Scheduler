@@ -343,6 +343,7 @@ public class FeedbackService {
 
         InterviewSchedule schedule = interviewScheduleRepository.findById(dto.interviewScheduleId())
                 .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + dto.interviewScheduleId()));
+        assertCanSubmitFeedback(schedule, interviewer);
 
         FeedbackForm form;
         if (dto.feedbackFormId() != null) {
@@ -454,29 +455,54 @@ public class FeedbackService {
 
     @Transactional(readOnly = true)
     public FeedbackResponseDto getFeedbackForInterview(Long interviewScheduleId, User user) {
-        InterviewSchedule schedule = interviewScheduleRepository.findById(interviewScheduleId)
-                .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + interviewScheduleId));
-
-        boolean isHr = user.getRoles().contains(Role.HR);
-        boolean isAssignedInterviewer = schedule.getInterviewer() != null
-                && schedule.getInterviewer().getId().equals(user.getId());
-        boolean isPanelPeer = !isAssignedInterviewer && isPanelInterviewerForSchedule(user, schedule);
-
-        if (!isHr && !isAssignedInterviewer && !isPanelPeer) {
-            throw new RuntimeException("You are not allowed to view feedback for this interview");
-        }
-
+        assertCanViewFeedback(interviewScheduleId, user);
         return getFeedbackForInterview(interviewScheduleId);
     }
 
     @Transactional(readOnly = true)
     public FeedbackInterviewViewDto getFeedbackViewForInterview(Long interviewScheduleId, User user) {
-        FeedbackResponseDto response = getFeedbackForInterview(interviewScheduleId, user);
-        FeedbackFormDto form = null;
-        if (response.feedbackFormId() != null) {
-            form = getFormById(response.feedbackFormId());
+        assertCanViewFeedback(interviewScheduleId, user);
+        Optional<FeedbackResponseDto> response = findFeedbackForInterview(interviewScheduleId);
+        if (response.isEmpty()) {
+            return new FeedbackInterviewViewDto(null, null);
         }
-        return new FeedbackInterviewViewDto(response, form);
+        FeedbackFormDto form = null;
+        if (response.get().feedbackFormId() != null) {
+            form = getFormById(response.get().feedbackFormId());
+        }
+        return new FeedbackInterviewViewDto(response.get(), form);
+    }
+
+    private void assertCanSubmitFeedback(InterviewSchedule schedule, User user) {
+        if (!isAssignedInterviewerForSchedule(user, schedule)) {
+            throw new RuntimeException("You are not allowed to submit feedback for this interview");
+        }
+    }
+
+    private void assertCanViewFeedback(Long interviewScheduleId, User user) {
+        InterviewSchedule schedule = interviewScheduleRepository.findById(interviewScheduleId)
+                .orElseThrow(() -> new RuntimeException("Interview schedule not found: " + interviewScheduleId));
+
+        boolean isHr = user.getRoles().contains(Role.HR);
+        boolean isAssignedInterviewer = isAssignedInterviewerForSchedule(user, schedule);
+        boolean isPanelPeer = !isAssignedInterviewer && isPanelInterviewerForSchedule(user, schedule);
+
+        if (!isHr && !isAssignedInterviewer && !isPanelPeer) {
+            throw new RuntimeException("You are not allowed to view feedback for this interview");
+        }
+    }
+
+    private boolean isAssignedInterviewerForSchedule(User user, InterviewSchedule schedule) {
+        if (user == null || schedule == null) {
+            return false;
+        }
+        if (schedule.getInterviewer() != null && schedule.getInterviewer().getId().equals(user.getId())) {
+            return true;
+        }
+        InterviewRequest request = schedule.getRequest();
+        return request != null
+                && request.getAssignedInterviewer() != null
+                && request.getAssignedInterviewer().getId().equals(user.getId());
     }
 
     private Optional<FeedbackResponseDto> findPanelFeedbackForSchedule(Long interviewScheduleId) {

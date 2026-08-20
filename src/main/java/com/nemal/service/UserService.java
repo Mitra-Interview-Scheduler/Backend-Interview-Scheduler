@@ -35,11 +35,13 @@ public class UserService {
     private final AuthenticationManager authenticationManager;
     private final UserSettingsService userSettingsService;
     private final EmailService emailService;
+    private final RefreshTokenService refreshTokenService;
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,
                        JwtService jwtService, AuthenticationManager authenticationManager,
-                       UserSettingsService userSettingsService, EmailService emailService) {
+                       UserSettingsService userSettingsService, EmailService emailService,
+                       RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
@@ -48,6 +50,7 @@ public class UserService {
         this.authenticationManager = authenticationManager;
         this.userSettingsService = userSettingsService;
         this.emailService = emailService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
@@ -103,6 +106,7 @@ public class UserService {
         User user = userRepository.findById(id).orElseThrow();
         user.setIsActive(false);
         userRepository.save(user);
+        refreshTokenService.revokeAllForUser(user);
     }
 
     public User updateProfile(User user, ProfileUpdateDto dto) {

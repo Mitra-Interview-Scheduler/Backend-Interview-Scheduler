@@ -73,6 +73,8 @@ public class GoogleAuthService {
             if (user == null) {
                 user = registerNewGoogleUser(payload);
                 emailService.sendStaffWelcomeEmail(user, null);
+            } else if (!user.isEnabled()) {
+                throw new BadCredentialsException("Account is disabled");
             }
 
             userSettingsService.ensureSettingsOnFirstLogin(user, browserTimezone);

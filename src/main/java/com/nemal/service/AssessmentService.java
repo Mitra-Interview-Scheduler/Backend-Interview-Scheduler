@@ -363,19 +363,20 @@ public class AssessmentService {
             String interviewType = schedule.getInterviewType() != null
                     ? schedule.getInterviewType()
                     : "ASSESSMENT";
-            candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
-
             String statusKey = candidate.getMasterStep() != null
                     ? candidate.getMasterStep().getStatusKey()
                     : interviewTypeService.roundStatusKey(interviewType);
             String label = interviewTypeService.labelForCode(interviewType);
+            Long candidateId = candidate.getId();
+
             candidatePipelineAuditService.recordStatusChange(
-                    candidate.getId(),
+                    candidateId,
                     statusKey,
                     statusKey,
                     PipelineAuditActionType.ASSESSMENT_COMPLETED,
                     actor,
                     label + " assessment completed — " + reasonSuffix);
+            candidateStepPipelineService.completeInterviewRoundStep(candidateId, interviewType);
         }
         return true;
     }
