@@ -35,5 +35,6 @@ build/
 # Secrets — never commit
 .env
 .env.local
+deploy/railway-dryrun.env
 src/main/resources/application.properties
 !src/main/resources/application.properties.example
