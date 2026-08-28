@@ -726,15 +726,17 @@ public class InterviewRequestService {
             logger.info("Interview schedule {} marked COMPLETED by user {}", scheduleId, user.getId());
         }
 
-        Candidate candidate = request.getCandidate();
-        if (candidate != null) {
+        // Map DTO before the pipeline bulk-update clears the persistence context.
+        InterviewRequestDto result = InterviewRequestDto.from(request);
+
+        if (result.candidateId() != null) {
             String interviewType = schedule.getInterviewType() != null
                     ? schedule.getInterviewType()
                     : InterviewTypeService.DEFAULT_CODE;
-            candidateStepPipelineService.completeInterviewRoundStep(candidate.getId(), interviewType);
+            candidateStepPipelineService.completeInterviewRoundStep(result.candidateId(), interviewType);
         }
 
-        return InterviewRequestDto.from(request);
+        return result;
     }
 
     private InterviewRequest resolveInterviewRequest(InterviewSchedule schedule, Long scheduleId) {

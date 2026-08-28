@@ -90,6 +90,20 @@ public class AssessmentController {
         }
     }
 
+    @DeleteMapping("/{scheduleId}/reviewers/{reviewerUserId}")
+    public ResponseEntity<?> removeReviewer(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long scheduleId,
+            @PathVariable Long reviewerUserId) {
+        try {
+            return ResponseEntity.ok(assessmentService.removeReviewer(user, scheduleId, reviewerUserId));
+        } catch (Exception e) {
+            logger.warn("Failed to remove reviewer {} from assessment {}: {}",
+                    reviewerUserId, scheduleId, e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @GetMapping("/{scheduleId}/reviewers")
     public ResponseEntity<?> listReviewers(@PathVariable Long scheduleId) {
         try {

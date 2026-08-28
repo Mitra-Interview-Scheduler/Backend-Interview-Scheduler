@@ -216,6 +216,13 @@ public class FeedbackController {
         try {
             FeedbackResponseDto response = feedbackService.submitFeedback(dto, user);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().contains("not allowed")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+            }
+            logger.error("Failed to submit feedback: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             logger.error("Failed to submit feedback: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
