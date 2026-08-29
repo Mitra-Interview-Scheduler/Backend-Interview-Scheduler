@@ -65,7 +65,7 @@ A filled local file **`deploy/railway-dryrun.env`** (gitignored) can be generate
 | `AUTH_REFRESH_TOKEN_EXPIRATION_MS` | `auth.refresh-token.expiration-ms` |
 | `AUTH_REFRESH_TOKEN_COOKIE_NAME` | `auth.refresh-token.cookie-name` |
 | `AUTH_REFRESH_TOKEN_COOKIE_SECURE` | `true` (HTTPS on Railway) |
-| `AUTH_REFRESH_TOKEN_COOKIE_SAMESITE` | `Strict` |
+| `AUTH_REFRESH_TOKEN_COOKIE_SAMESITE` | `None` (split-site SPA; keep `Secure=true`) |
 | `NOTIFICATION_EMAIL_ENABLED` | `notification.email.enabled` |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | `native` |
 
@@ -75,7 +75,7 @@ A filled local file **`deploy/railway-dryrun.env`** (gitignored) can be generate
 2. Set:
    - `GOOGLE_CALENDAR_REDIRECT_URI` = `https://<your-backend>/api/integrations/google-calendar/callback`
    - Add the same backend origin to Google Cloud OAuth **Authorized redirect URIs**
-3. Set `APP_FRONTEND_URL` and `APP_CORS_ALLOWED_ORIGINS` to your frontend URL when you host it
+3. Set `APP_FRONTEND_URL` and `APP_CORS_ALLOWED_ORIGINS` to your frontend URL when you host it (include `https://frontend-interview-scheduler.vercel.app` with no trailing slash).
 
 ### Google service account (Shared Drive)
 
