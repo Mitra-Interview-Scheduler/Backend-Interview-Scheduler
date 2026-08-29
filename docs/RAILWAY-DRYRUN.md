@@ -120,6 +120,7 @@ To bulk-set variables from your local gitignored file:
 1. **Health**: `GET https://<backend>/actuator/health/liveness` → `{"status":"UP"}`
 2. **API**: `GET https://<backend>/api/auth/csrf` → should return CSRF token JSON
 3. **Logs**: Railway → Backend → Deployments → View logs (Flyway migrations should succeed)
+4. After a frontend deploy, Google sign-in `POST /api/auth/google` must return **401** for a fake token (invalid Google token), never **403 Access denied**. 403 means an old CSRF build is still running — redeploy this branch.
 
 ## 7. Connect frontend (later)
 

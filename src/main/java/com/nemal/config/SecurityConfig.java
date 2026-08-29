@@ -75,17 +75,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                        // Login/register/google send credentials in the JSON body. Requiring the
-                        // XSRF cookie there 403s a split-site SPA (Vercel → Railway): SameSite=Strict
-                        // cookies are not sent on cross-site POSTs, and Chrome may still block
-                        // third-party cookies even with SameSite=None.
-                        .ignoringRequestMatchers(
-                                "/ws/**",
-                                "/ws",
-                                "/api/auth/login",
-                                "/api/auth/register",
-                                "/api/auth/google"
-                        )
+                        // Cookie CSRF cannot work for this split-site SPA (Vercel → Railway).
+                        // The XSRF cookie is third-party, so browsers do not send it on POSTs
+                        // and Spring returns 403 {"message":"Access denied"} for /auth/google
+                        // and /auth/refresh. Auth is Bearer JWT + CORS; refresh is an HttpOnly
+                        // cookie. Keep issuing the token so the frontend GET /auth/csrf still works.
+                        .requireCsrfProtectionMatcher(request -> false)
                 )
                 .headers(headers -> headers
                         .contentSecurityPolicy(csp -> csp.policyDirectives(cspPolicy))
