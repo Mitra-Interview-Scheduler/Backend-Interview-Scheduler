@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.InterviewRequestDto;
 import com.nemal.entity.User;
 import com.nemal.service.InterviewRequestService;
@@ -41,7 +42,7 @@ public class InterviewerDashboardController {
         } catch (Exception e) {
             logger.error("Failed to get upcoming interviews for interviewer {}: {}", user.getId(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -56,7 +57,7 @@ public class InterviewerDashboardController {
         } catch (Exception e) {
             logger.error("Failed to get interviews for interviewer {}: {}", user.getId(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -75,7 +76,7 @@ public class InterviewerDashboardController {
         } catch (Exception e) {
             logger.error("Failed to respond to request {}: {}", requestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

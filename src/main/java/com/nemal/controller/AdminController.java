@@ -146,6 +146,17 @@ public class AdminController {
     public ResponseEntity<AdminUserDto> toggleUserStatus(@PathVariable Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found: " + id));
+        // Prevent deactivating the last active ADMIN (same rule as DELETE /users/{id})
+        if (user.isActive() && user.getRoles().contains(Role.ADMIN)) {
+            long otherActiveAdmins = userRepository.findAll().stream()
+                    .filter(u -> !u.getId().equals(id)
+                            && u.isActive()
+                            && u.getRoles().contains(Role.ADMIN))
+                    .count();
+            if (otherActiveAdmins == 0) {
+                throw new RuntimeException("Cannot deactivate the last active admin user");
+            }
+        }
         user.setActive(!user.isActive());
         userRepository.save(user);
         if (!user.isActive()) {

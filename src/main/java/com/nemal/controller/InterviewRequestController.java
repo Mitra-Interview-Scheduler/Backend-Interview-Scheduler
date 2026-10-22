@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.ConflictCheckRequestDto;
 import com.nemal.dto.CreateInterviewRequestDto;
 import com.nemal.dto.GoogleCalendarExternalEventDto;
@@ -48,7 +49,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to create interview request: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -89,7 +90,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to check scheduling conflicts: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -110,7 +111,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to get requests for user {}: {}", user.getId(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -125,7 +126,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to get requests for candidate {}: {}", candidateId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -139,7 +140,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to cancel request {}: {}", requestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -155,7 +156,7 @@ public class InterviewRequestController {
         } catch (Exception e) {
             logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.CreateInterviewTypeDto;
 import com.nemal.dto.InterviewTypeDeletePreviewDto;
 import com.nemal.dto.InterviewTypeDeleteResultDto;
@@ -41,7 +42,7 @@ public class InterviewTypeController {
             return ResponseEntity.status(HttpStatus.CREATED).body(interviewTypeService.create(dto));
         } catch (Exception e) {
             logger.warn("Failed to create interview type: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -51,7 +52,7 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.update(id, dto));
         } catch (Exception e) {
             logger.warn("Failed to update interview type {}: {}", id, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -61,7 +62,7 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.reactivate(id));
         } catch (Exception e) {
             logger.warn("Failed to reactivate interview type {}: {}", id, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -71,7 +72,7 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.getDeletePreview(id));
         } catch (Exception e) {
             logger.warn("Failed to load delete preview for interview type {}: {}", id, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -81,7 +82,7 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.delete(id));
         } catch (Exception e) {
             logger.warn("Failed to delete interview type {}: {}", id, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -100,11 +101,7 @@ public class InterviewTypeController {
             return ResponseEntity.ok(interviewTypeService.resolveInterviewerFilters(code, candidateId));
         } catch (Exception e) {
             logger.warn("Failed to resolve filters for type {} / candidate {}: {}", code, candidateId, e.getMessage());
-            String message = e.getMessage();
-            if (message == null || message.isBlank()) {
-                message = e.getClass().getSimpleName();
-            }
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

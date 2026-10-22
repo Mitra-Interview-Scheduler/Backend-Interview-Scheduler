@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.AssessmentReviewerDto;
 import com.nemal.dto.AssessmentScheduleDto;
 import com.nemal.dto.AssignAssessmentReviewersDto;
@@ -36,7 +37,7 @@ public class AssessmentController {
             return ResponseEntity.ok(assessmentService.getAssessment(scheduleId));
         } catch (Exception e) {
             logger.warn("Failed to load assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -49,7 +50,7 @@ public class AssessmentController {
             return ResponseEntity.ok(assessmentService.uploadAssessmentFile(user, scheduleId, file));
         } catch (Exception e) {
             logger.warn("Failed to upload assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -61,7 +62,7 @@ public class AssessmentController {
             return assessmentService.downloadAssessmentFile(user, scheduleId);
         } catch (Exception e) {
             logger.warn("Failed to download assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -73,7 +74,7 @@ public class AssessmentController {
             return ResponseEntity.ok(assessmentService.markReceived(user, scheduleId));
         } catch (Exception e) {
             logger.warn("Failed to mark assessment {} received: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -86,7 +87,7 @@ public class AssessmentController {
             return ResponseEntity.ok(assessmentService.assignReviewers(user, scheduleId, dto));
         } catch (Exception e) {
             logger.warn("Failed to assign reviewers for assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -100,7 +101,7 @@ public class AssessmentController {
         } catch (Exception e) {
             logger.warn("Failed to remove reviewer {} from assessment {}: {}",
                     reviewerUserId, scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -111,7 +112,7 @@ public class AssessmentController {
             return ResponseEntity.ok(reviewers);
         } catch (Exception e) {
             logger.warn("Failed to list reviewers for assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

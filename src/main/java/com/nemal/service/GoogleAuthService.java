@@ -11,9 +11,12 @@ import com.nemal.enums.AuthProvider;
 import com.nemal.enums.Role;
 import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
+import com.nemal.security.WorkspaceDomainPolicy;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Collections;
 import java.util.Set;
@@ -30,6 +33,7 @@ public class GoogleAuthService {
     private final JwtService jwtService;
     private final UserSettingsService userSettingsService;
     private final EmailService emailService;
+    private final WorkspaceDomainPolicy workspaceDomainPolicy;
 
     @Value("${google.client.id}")
     private String googleClientId;
@@ -38,12 +42,14 @@ public class GoogleAuthService {
             UserRepository userRepository,
             JwtService jwtService,
             UserSettingsService userSettingsService,
-            EmailService emailService
+            EmailService emailService,
+            WorkspaceDomainPolicy workspaceDomainPolicy
     ) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.userSettingsService = userSettingsService;
         this.emailService = emailService;
+        this.workspaceDomainPolicy = workspaceDomainPolicy;
     }
 
     public LoginResponse authenticateGoogleUser(String idTokenString, String browserTimezone) {
@@ -64,6 +70,10 @@ public class GoogleAuthService {
             }
             if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
                 throw new BadCredentialsException("Invalid Google token");
+            }
+            if (!workspaceDomainPolicy.isAllowedGoogleAccount(email, payload.getHostedDomain())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Please sign in with your @" + workspaceDomainPolicy.domain() + " Google account");
             }
 //            if (!TRUSTED_GOOGLE_ISSUERS.contains(payload.getIssuer())) {
 //                throw new BadCredentialsException("Invalid Google token");
@@ -92,6 +102,9 @@ public class GoogleAuthService {
         } catch (Exception ex) {
             if (ex instanceof BadCredentialsException badCredentialsException) {
                 throw badCredentialsException;
+            }
+            if (ex instanceof ResponseStatusException responseStatusException) {
+                throw responseStatusException;
             }
             throw new BadCredentialsException("Invalid Google token");
         }

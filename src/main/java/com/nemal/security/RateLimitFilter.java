@@ -27,19 +27,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final long WINDOW_MS = 60_000L;
 
     private final int authRequestsPerMinute;
+    private final int sessionRequestsPerMinute;
     private final int sensitiveWritesPerMinute;
     private final boolean trustForwardedFor;
     private final Map<String, Deque<Long>> hits = new ConcurrentHashMap<>();
 
     public RateLimitFilter(
             @Value("${security.rate-limit.auth-requests-per-minute:20}") int authRequestsPerMinute,
+            @Value("${security.rate-limit.session-requests-per-minute:60}") int sessionRequestsPerMinute,
             @Value("${security.rate-limit.sensitive-writes-per-minute:120}") int sensitiveWritesPerMinute,
             @Value("${security.rate-limit.trust-forwarded-for:false}") boolean trustForwardedFor
     ) {
         this.authRequestsPerMinute = authRequestsPerMinute;
+        this.sessionRequestsPerMinute = sessionRequestsPerMinute;
         this.sensitiveWritesPerMinute = sensitiveWritesPerMinute;
         this.trustForwardedFor = trustForwardedFor;
     }
+
+    private record Limit(String bucket, int perMinute) {}
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -53,15 +58,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         String path = servletPath(request);
-        int limit = limitFor(request.getMethod(), path);
-        if (limit <= 0) {
+        Limit limit = limitFor(request.getMethod(), path);
+        if (limit == null || limit.perMinute() <= 0) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String bucket = (limit == authRequestsPerMinute ? "auth:" : "write:") + clientIp(request);
+        String bucket = limit.bucket() + ":" + clientIp(request);
         long now = System.currentTimeMillis();
-        long retryAfterSeconds = recordAndRetryAfter(bucket, now, limit);
+        long retryAfterSeconds = recordAndRetryAfter(bucket, now, limit.perMinute());
         if (retryAfterSeconds > 0) {
             response.setStatus(429);
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
@@ -73,14 +78,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private int limitFor(String method, String path) {
+    private Limit limitFor(String method, String path) {
         if (path.startsWith("/api/auth/")) {
-            return authRequestsPerMinute;
+            if (!HttpMethod.POST.matches(method)) {
+                // GET /api/auth/csrf and /verify run on every page load; never throttle them.
+                return null;
+            }
+            if (path.equals("/api/auth/refresh") || path.equals("/api/auth/logout")) {
+                return new Limit("session", sessionRequestsPerMinute);
+            }
+            // Credential endpoints: login, google, register.
+            return new Limit("auth", authRequestsPerMinute);
         }
         if (isSensitiveWrite(method, path)) {
-            return sensitiveWritesPerMinute;
+            return new Limit("write", sensitiveWritesPerMinute);
         }
-        return 0;
+        return null;
     }
 
     private boolean isSensitiveWrite(String method, String path) {
@@ -117,10 +130,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private String clientIp(HttpServletRequest request) {
         if (trustForwardedFor) {
+            // Use the right-most entry: it is appended by our own reverse proxy. Left-most
+            // entries come from the client and can be forged to dodge the limit.
             String forwarded = request.getHeader("X-Forwarded-For");
             if (forwarded != null && !forwarded.isBlank()) {
-                int comma = forwarded.indexOf(',');
-                return (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+                String[] hops = forwarded.split(",");
+                String lastHop = hops[hops.length - 1].trim();
+                if (!lastHop.isEmpty()) {
+                    return lastHop;
+                }
             }
         }
         String remote = request.getRemoteAddr();

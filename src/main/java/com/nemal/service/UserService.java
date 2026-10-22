@@ -14,6 +14,7 @@ import com.nemal.repository.DepartmentRepository;
 import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
+import com.nemal.security.WorkspaceDomainPolicy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -36,12 +37,14 @@ public class UserService {
     private final UserSettingsService userSettingsService;
     private final EmailService emailService;
     private final RefreshTokenService refreshTokenService;
+    private final WorkspaceDomainPolicy workspaceDomainPolicy;
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,
                        JwtService jwtService, AuthenticationManager authenticationManager,
                        UserSettingsService userSettingsService, EmailService emailService,
-                       RefreshTokenService refreshTokenService) {
+                       RefreshTokenService refreshTokenService, WorkspaceDomainPolicy workspaceDomainPolicy) {
+        this.workspaceDomainPolicy = workspaceDomainPolicy;
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
@@ -54,6 +57,13 @@ public class UserService {
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
+        if (!workspaceDomainPolicy.isAllowedEmail(dto.email())) {
+            throw new IllegalArgumentException(
+                    "Registration is limited to @" + workspaceDomainPolicy.domain() + " email addresses");
+        }
+        if (dto.password() == null || dto.password().isBlank()) {
+            throw new IllegalArgumentException("Password is required");
+        }
         if (userRepository.findByEmail(dto.email()).isPresent()) {
             throw new IllegalArgumentException("Email already registered");
         }

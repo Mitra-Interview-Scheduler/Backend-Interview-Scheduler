@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.CatalogTypeDto;
 import com.nemal.dto.CreateCatalogTypeDto;
 import com.nemal.dto.UpdateCatalogTypeDto;
@@ -37,7 +38,7 @@ public class ResourceTypeController {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(resourceTypeService.create(dto));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -46,9 +47,9 @@ public class ResourceTypeController {
         try {
             return ResponseEntity.ok(resourceTypeService.update(id, dto));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -58,7 +59,7 @@ public class ResourceTypeController {
             resourceTypeService.delete(id);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

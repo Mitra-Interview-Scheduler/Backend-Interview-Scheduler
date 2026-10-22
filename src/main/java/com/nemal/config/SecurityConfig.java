@@ -1,6 +1,7 @@
 package com.nemal.config;
 
 import com.nemal.repository.UserRepository;
+import com.nemal.security.AuthRequestHeaderFilter;
 import com.nemal.security.CsrfCookieFilter;
 import com.nemal.security.JwtAuthenticationFilter;
 import com.nemal.security.JwtService;
@@ -80,6 +81,7 @@ public class SecurityConfig {
                         // and Spring returns 403 {"message":"Access denied"} for /auth/google
                         // and /auth/refresh. Auth is Bearer JWT + CORS; refresh is an HttpOnly
                         // cookie. Keep issuing the token so the frontend GET /auth/csrf still works.
+                        // Cookie-driven auth POSTs are protected by AuthRequestHeaderFilter instead.
                         .requireCsrfProtectionMatcher(request -> false)
                 )
                 .headers(headers -> headers
@@ -243,6 +245,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new AuthRequestHeaderFilter(), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter(userDetailsService()), UsernamePasswordAuthenticationFilter.class);
 
