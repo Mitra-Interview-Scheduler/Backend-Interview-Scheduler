@@ -20,6 +20,20 @@ public class EmailNotificationService {
     @Async
     @Transactional(readOnly = true)
     public void notifyAsync(Long recipientId, String recipientEmail, String recipientName, String subject, String message) {
+        notifyAsync(recipientId, recipientEmail, recipientName, subject, message, null, null);
+    }
+
+    @Async
+    @Transactional(readOnly = true)
+    public void notifyAsync(
+            Long recipientId,
+            String recipientEmail,
+            String recipientName,
+            String subject,
+            String message,
+            String ctaPath,
+            String ctaLabel
+    ) {
         boolean enabled = userSettingsRepository.findByUserId(recipientId)
                 .map(UserSettings::isEmailNotificationsEnabled)
                 .orElse(true);
@@ -28,6 +42,7 @@ public class EmailNotificationService {
             return;
         }
 
-        emailService.sendNotificationEmail(recipientEmail, recipientName, subject, message);
+        emailService.sendNotificationEmail(
+                recipientEmail, recipientName, subject, message, ctaPath, ctaLabel);
     }
 }

@@ -593,6 +593,21 @@ public class NotificationService {
                 .build());
     }
 
+    public void sendFeedbackNudgeNotification(User interviewer, String candidateName, Long scheduleId) {
+        if (interviewer == null) {
+            return;
+        }
+        deliver(Notification.builder()
+                .recipient(interviewer)
+                .subject("Feedback Reminder")
+                .message("Please submit feedback for candidate: " + candidateName)
+                .type("FEEDBACK_NUDGE")
+                .relatedEntityId(scheduleId)
+                .relatedEntityType("INTERVIEW_SCHEDULE")
+                .read(false)
+                .build());
+    }
+
     public void sendAssessmentReviewAssignedNotification(InterviewSchedule schedule, User reviewer) {
         if (schedule == null || reviewer == null) {
             return;
@@ -669,8 +684,34 @@ public class NotificationService {
                 saved.getRecipient().getEmail(),
                 saved.getRecipient().getFullName(),
                 saved.getSubject(),
-                saved.getMessage()
+                saved.getMessage(),
+                ctaPathFor(saved),
+                ctaLabelFor(saved)
         );
+    }
+
+    private String ctaPathFor(Notification notification) {
+        if (notification == null || notification.getRelatedEntityId() == null) {
+            return null;
+        }
+        if ("FEEDBACK_NUDGE".equals(notification.getType())
+                || "ASSESSMENT_REVIEW_ASSIGNED".equals(notification.getType())) {
+            return "/interviewer/feedback/" + notification.getRelatedEntityId();
+        }
+        return null;
+    }
+
+    private String ctaLabelFor(Notification notification) {
+        if (notification == null) {
+            return null;
+        }
+        if ("FEEDBACK_NUDGE".equals(notification.getType())) {
+            return "Open feedback form";
+        }
+        if ("ASSESSMENT_REVIEW_ASSIGNED".equals(notification.getType())) {
+            return "Open assessment review";
+        }
+        return null;
     }
 
     private String buildInterviewDetailsMessage(
