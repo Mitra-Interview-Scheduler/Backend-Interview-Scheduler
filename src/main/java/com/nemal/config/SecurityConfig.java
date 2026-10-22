@@ -26,6 +26,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.InvalidCsrfTokenException;
+import org.springframework.security.web.csrf.MissingCsrfTokenException;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -73,7 +75,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                        .ignoringRequestMatchers("/ws/**", "/ws")
+                        // Cookie CSRF cannot work for this split-site SPA (Vercel → Railway).
+                        // The XSRF cookie is third-party, so browsers do not send it on POSTs
+                        // and Spring returns 403 {"message":"Access denied"} for /auth/google
+                        // and /auth/refresh. Auth is Bearer JWT + CORS; refresh is an HttpOnly
+                        // cookie. Keep issuing the token so the frontend GET /auth/csrf still works.
+                        .requireCsrfProtectionMatcher(request -> false)
                 )
                 .headers(headers -> headers
                         .contentSecurityPolicy(csp -> csp.policyDirectives(cspPolicy))
@@ -222,7 +229,14 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                             response.setContentType("application/json");
-                            response.getWriter().write("{\"message\":\"Access denied\"}");
+                            boolean csrfFailure = accessDeniedException instanceof InvalidCsrfTokenException
+                                    || accessDeniedException instanceof MissingCsrfTokenException
+                                    || (accessDeniedException.getCause() instanceof InvalidCsrfTokenException)
+                                    || (accessDeniedException.getCause() instanceof MissingCsrfTokenException);
+                            String message = csrfFailure
+                                    ? "Invalid or missing CSRF token"
+                                    : "Access denied";
+                            response.getWriter().write("{\"message\":\"" + message + "\"}");
                         })
                 )
                 .sessionManagement(session ->
@@ -244,10 +258,12 @@ public class SecurityConfig {
 
     private CookieCsrfTokenRepository csrfTokenRepository() {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        boolean partitioned = cookieSecure && "None".equalsIgnoreCase(cookieSameSite);
         repository.setCookieCustomizer(cookie -> cookie
                 .sameSite(cookieSameSite)
                 .secure(cookieSecure)
-                .path("/"));
+                .path("/")
+                .partitioned(partitioned));
         return repository;
     }
 

@@ -51,6 +51,7 @@ public class RefreshTokenCookieWriter {
                 .path("/api/auth")
                 .maxAge(maxAge)
                 .sameSite(sameSite)
+                .partitioned(secure && "None".equalsIgnoreCase(sameSite))
                 .build();
     }
 }
