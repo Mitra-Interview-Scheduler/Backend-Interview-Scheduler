@@ -2,9 +2,9 @@ package com.nemal.service;
 
 import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
+import com.nemal.dto.InterviewRequestDto;
 import com.nemal.entity.*;
 import com.nemal.enums.InterviewStatus;
-import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PipelineAuditActionType;
 import com.nemal.enums.RequestStatus;
 import com.nemal.enums.Role;
@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -44,6 +45,7 @@ public class PanelInterviewService {
     private final InterviewRequestService interviewRequestService;
     private final InterviewTypeService interviewTypeService;
     private final CandidateFolderAccessService candidateFolderAccessService;
+    private final FeedbackResponseRepository feedbackResponseRepository;
 
     public PanelInterviewService(
             InterviewPanelRepository panelRepository,
@@ -62,7 +64,8 @@ public class PanelInterviewService {
             CalendarSyncService calendarSyncService,
             @Lazy InterviewRequestService interviewRequestService,
             InterviewTypeService interviewTypeService,
-            CandidateFolderAccessService candidateFolderAccessService) {
+            CandidateFolderAccessService candidateFolderAccessService,
+            FeedbackResponseRepository feedbackResponseRepository) {
         this.panelRepository = panelRepository;
         this.slotRepository = slotRepository;
         this.requestRepository = requestRepository;
@@ -80,6 +83,7 @@ public class PanelInterviewService {
         this.interviewRequestService = interviewRequestService;
         this.interviewTypeService = interviewTypeService;
         this.candidateFolderAccessService = candidateFolderAccessService;
+        this.feedbackResponseRepository = feedbackResponseRepository;
     }
 
     @Transactional
@@ -378,8 +382,49 @@ public class PanelInterviewService {
 
     @Transactional(readOnly = true)
     public List<InterviewPanelDto> getPanelsByCandidateId(Long candidateId) {
-        return panelRepository.findByCandidateId(candidateId)
-                .stream().map(InterviewPanelDto::from).collect(Collectors.toList());
+        List<InterviewPanel> panels = panelRepository.findByCandidateId(candidateId);
+        Set<Long> scheduleIds = panels.stream()
+                .filter(p -> p.getPanelRequests() != null)
+                .flatMap(p -> p.getPanelRequests().stream())
+                .map(InterviewRequest::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(InterviewSchedule::getId)
+                .collect(Collectors.toSet());
+        Set<Long> withFeedback = scheduleIds.isEmpty()
+                ? Set.of()
+                : new HashSet<>(feedbackResponseRepository.findScheduleIdsWithFeedback(scheduleIds));
+        return panels.stream()
+                .map(panel -> toPanelDto(panel, withFeedback))
+                .collect(Collectors.toList());
+    }
+
+    private InterviewPanelDto toPanelDto(InterviewPanel panel, Set<Long> scheduleIdsWithFeedback) {
+        List<InterviewRequestDto> requests = panel.getPanelRequests() != null
+                ? panel.getPanelRequests().stream()
+                .map(request -> {
+                    InterviewSchedule schedule = request.getInterviewSchedule();
+                    boolean submitted = schedule != null
+                            && scheduleIdsWithFeedback.contains(schedule.getId());
+                    return InterviewRequestDto.from(request, submitted);
+                })
+                .collect(Collectors.toList())
+                : List.of();
+        return new InterviewPanelDto(
+                panel.getId(),
+                panel.getCandidate() != null ? panel.getCandidate().getId() : null,
+                panel.getCandidateName(),
+                panel.getStartDateTime(),
+                panel.getEndDateTime(),
+                requests,
+                panel.isUrgent(),
+                panel.getNotes(),
+                panel.getRequestedBy() != null ? panel.getRequestedBy().getId() : null,
+                panel.getRequestedBy() != null ? panel.getRequestedBy().getFullName() : null,
+                panel.getInterviewCoordinator() != null ? panel.getInterviewCoordinator().getFullName().trim() : null,
+                panel.getCreatedAt(),
+                panel.getMeetingLink(),
+                panel.getGoogleCalendarEventId()
+        );
     }
 
     @Transactional(readOnly = true)
