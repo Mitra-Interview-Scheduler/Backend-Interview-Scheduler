@@ -290,7 +290,8 @@ public class SecurityConfig {
                 "X-Timezone",
                 "X-XSRF-TOKEN"
         ));
-        configuration.setExposedHeaders(List.of("Authorization"));
+        // Retry-After lets the frontend tell users how long to wait after a 429.
+        configuration.setExposedHeaders(List.of("Authorization", "Retry-After"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
