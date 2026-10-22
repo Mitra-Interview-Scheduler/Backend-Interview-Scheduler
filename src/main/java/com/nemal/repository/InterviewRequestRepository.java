@@ -58,6 +58,18 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
 
     List<InterviewRequest> findByAssignedInterviewerId(Long interviewerId);
 
+    @Query("""
+            SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END
+            FROM InterviewRequest r
+            WHERE r.candidate.id = :candidateId
+              AND r.assignedInterviewer.id = :interviewerId
+              AND r.status <> com.nemal.enums.RequestStatus.CANCELLED
+              AND r.status <> com.nemal.enums.RequestStatus.REJECTED
+            """)
+    boolean existsActiveAssignmentForCandidate(
+            @Param("candidateId") Long candidateId,
+            @Param("interviewerId") Long interviewerId);
+
     /**
      * Upcoming interviews for an interviewer — excludes CANCELLED so the
      * interviewer dashboard immediately reflects cancellations.

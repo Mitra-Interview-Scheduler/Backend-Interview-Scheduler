@@ -79,10 +79,29 @@ public class ProfileController {
         return ResponseEntity.ok(departmentService.getAllDepartments());
     }
 
+    @GetMapping("/departments/all")
+    public ResponseEntity<List<DepartmentDto>> getAllDepartmentsIncludingInactive() {
+        return ResponseEntity.ok(departmentService.getAllDepartmentsIncludingInactive());
+    }
+
     @PostMapping("/departments")
     public ResponseEntity<DepartmentDto> createDepartment(@RequestBody CreateDepartmentDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(departmentService.createDepartment(dto));
+    }
+
+    @PutMapping("/departments/{id}")
+    public ResponseEntity<DepartmentDto> updateDepartment(
+            @PathVariable Long id,
+            @RequestBody UpdateDepartmentDto dto
+    ) {
+        return ResponseEntity.ok(departmentService.updateDepartment(id, dto));
+    }
+
+    @DeleteMapping("/departments/{id}")
+    public ResponseEntity<Void> deleteDepartment(@PathVariable Long id) {
+        departmentService.deleteDepartment(id);
+        return ResponseEntity.noContent().build();
     }
 
     // Note: Designations are now in DesignationController at /api/designations

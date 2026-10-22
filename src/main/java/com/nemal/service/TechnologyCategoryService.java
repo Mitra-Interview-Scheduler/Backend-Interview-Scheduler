@@ -28,6 +28,13 @@ public class TechnologyCategoryService {
     }
 
     @Transactional(readOnly = true)
+    public List<TechnologyCategoryDto> getAllCategoriesIncludingInactive() {
+        return categoryRepository.findAll().stream()
+                .map(TechnologyCategoryDto::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public TechnologyCategoryDto getCategoryById(Long id) {
         TechnologyCategory category = categoryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Technology category not found"));

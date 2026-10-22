@@ -25,6 +25,8 @@ import java.util.Set;
 @Service
 public class UserService {
 
+    public static final String DEFAULT_TEMPORARY_PASSWORD = "ChangeMe123!";
+
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final DesignationRepository designationRepository;
@@ -32,11 +34,14 @@ public class UserService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final UserSettingsService userSettingsService;
+    private final EmailService emailService;
+    private final RefreshTokenService refreshTokenService;
 
     public UserService(UserRepository userRepository, DepartmentRepository departmentRepository,
                        DesignationRepository designationRepository, PasswordEncoder passwordEncoder,
                        JwtService jwtService, AuthenticationManager authenticationManager,
-                       UserSettingsService userSettingsService) {
+                       UserSettingsService userSettingsService, EmailService emailService,
+                       RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.designationRepository = designationRepository;
@@ -44,6 +49,8 @@ public class UserService {
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
         this.userSettingsService = userSettingsService;
+        this.emailService = emailService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     public LoginResponse register(UserRegistrationDto dto) {
@@ -59,6 +66,7 @@ public class UserService {
                 .authProvider(AuthProvider.LOCAL)
                 .build();
         userRepository.save(user);
+        emailService.sendStaffWelcomeEmail(user, null);
         String token = jwtService.generateToken(user);
         return LoginResponse.from(token, user);
     }
@@ -87,9 +95,10 @@ public class UserService {
                 .lastName(dto.lastName())
                 .roles(Set.of(role))
                 .authProvider(AuthProvider.LOCAL)
-                .passwordHash(passwordEncoder.encode("ChangeMe123!"))
+                .passwordHash(passwordEncoder.encode(DEFAULT_TEMPORARY_PASSWORD))
                 .build();
         userRepository.save(user);
+        emailService.sendStaffWelcomeEmail(user, DEFAULT_TEMPORARY_PASSWORD);
         return UserDto.from(user);
     }
 
@@ -97,6 +106,7 @@ public class UserService {
         User user = userRepository.findById(id).orElseThrow();
         user.setIsActive(false);
         userRepository.save(user);
+        refreshTokenService.revokeAllForUser(user);
     }
 
     public User updateProfile(User user, ProfileUpdateDto dto) {

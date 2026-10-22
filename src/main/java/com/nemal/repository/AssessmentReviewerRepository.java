@@ -18,6 +18,8 @@ public interface AssessmentReviewerRepository extends JpaRepository<AssessmentRe
 
     void deleteByInterviewScheduleId(Long interviewScheduleId);
 
+    void deleteByInterviewScheduleIdAndReviewerId(Long interviewScheduleId, Long reviewerId);
+
     @Query("""
             SELECT ar FROM AssessmentReviewer ar
             JOIN FETCH ar.interviewSchedule s

@@ -26,6 +26,11 @@ public class DesignationController {
         return ResponseEntity.ok(designationService.getAllDesignations());
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<DesignationDto>> getAllDesignationsIncludingInactive() {
+        return ResponseEntity.ok(designationService.getAllDesignationsIncludingInactive());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<DesignationDto> getDesignationById(@PathVariable Long id) {
         return ResponseEntity.ok(designationService.getDesignationById(id));

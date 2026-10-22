@@ -26,6 +26,11 @@ public class TierController {
         return ResponseEntity.ok(tierService.getAllTiers());
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<TierDto>> getAllTiersIncludingInactive() {
+        return ResponseEntity.ok(tierService.getAllTiersIncludingInactive());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<TierDto> getTierById(@PathVariable Long id) {
         return ResponseEntity.ok(tierService.getTierById(id));

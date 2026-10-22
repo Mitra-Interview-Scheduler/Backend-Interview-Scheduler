@@ -27,6 +27,11 @@ public class TechnologyController {
         return ResponseEntity.ok(technologyService.getAllTechnologies());
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<TechnologyDto>> getAllTechnologiesIncludingInactive() {
+        return ResponseEntity.ok(technologyService.getAllTechnologiesIncludingInactive());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<TechnologyDto> getTechnologyById(@PathVariable Long id) {
         return ResponseEntity.ok(technologyService.getTechnologyById(id));

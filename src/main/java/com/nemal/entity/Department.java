@@ -19,4 +19,8 @@ public class Department {
 
     @Column(unique = true)
     private String code;
+
+    @Column(name = "is_active", nullable = false)
+    @Builder.Default
+    private boolean isActive = true;
 }

@@ -68,4 +68,15 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
     boolean existsByInterviewTypeIgnoreCase(String interviewType);
 
     long countByInterviewTypeIgnoreCase(String interviewType);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END
+            FROM InterviewSchedule s
+            WHERE s.request.candidate.id = :candidateId
+              AND s.interviewer.id = :interviewerId
+              AND s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+            """)
+    boolean existsActiveScheduleForCandidate(
+            @Param("candidateId") Long candidateId,
+            @Param("interviewerId") Long interviewerId);
 }

@@ -35,6 +35,9 @@ public class ProductionEnvironmentValidator {
 
         List<String> missing = new ArrayList<>();
         for (String key : REQUIRED_ENV_VARS) {
+            if ("SPRING_DATASOURCE_URL".equals(key) && hasDatabaseUrlConfigured()) {
+                continue;
+            }
             String value = System.getenv(key);
             if (value == null || value.isBlank()) {
                 missing.add(key);
@@ -46,5 +49,13 @@ public class ProductionEnvironmentValidator {
                     "Missing required production environment variables: " + String.join(", ", missing)
             );
         }
+    }
+
+    private boolean hasDatabaseUrlConfigured() {
+        return isSet(System.getenv("DATABASE_URL")) || isSet(System.getenv("DATABASE_PRIVATE_URL"));
+    }
+
+    private static boolean isSet(String value) {
+        return value != null && !value.isBlank();
     }
 }

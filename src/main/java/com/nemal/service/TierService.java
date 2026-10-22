@@ -30,6 +30,12 @@ public class TierService {
                 .collect(Collectors.toList());
     }
 
+    public List<TierDto> getAllTiersIncludingInactive() {
+        return tierRepository.findAll().stream()
+                .map(TierDto::from)
+                .collect(Collectors.toList());
+    }
+
     public List<TierDto> getTiersByDepartment(Long departmentId) {
         return tierRepository.findByDepartmentIdAndIsActiveTrueOrderByTierOrderAsc(departmentId).stream()
                 .map(TierDto::from)

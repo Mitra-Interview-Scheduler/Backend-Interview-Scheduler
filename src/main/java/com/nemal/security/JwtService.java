@@ -21,15 +21,22 @@ public class JwtService {
     @Value("${jwt.secret}")
     private String secretKey;
 
-    @Value("${jwt.expiration-ms}")
+    @Value("${jwt.access-expiration-ms:${jwt.expiration-ms:900000}}")
     private long jwtExpiration;
 
     public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
+        final Claims claims = extractAllClaims(token);
+        if (claims == null) {
+            throw new IllegalArgumentException("JWT claims are missing");
+        }
+        return claims.getSubject();
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
+        if (claims == null) {
+            throw new IllegalArgumentException("JWT claims are missing");
+        }
         return claimsResolver.apply(claims);
     }
 
@@ -57,7 +64,12 @@ public class JwtService {
     }
 
     private Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
+        return extractClaim(token, claims -> {
+            if (claims == null) {
+                throw new IllegalArgumentException("JWT claims are missing");
+            }
+            return claims.getExpiration();
+        });
     }
 
     private Claims extractAllClaims(String token) {

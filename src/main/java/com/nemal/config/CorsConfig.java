@@ -37,7 +37,8 @@ public class CorsConfig implements WebMvcConfigurer {
                         "Accept",
                         "Origin",
                         "X-Requested-With",
-                        "X-Timezone"
+                        "X-Timezone",
+                        "X-XSRF-TOKEN"
                 )
                 .exposedHeaders("Authorization")
                 .allowCredentials(true)
