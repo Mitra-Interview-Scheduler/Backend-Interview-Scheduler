@@ -58,7 +58,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(ex)));
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -72,12 +72,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
-        String detail = ex.getMessage();
-        if (detail == null || detail.isBlank()) {
-            detail = ex.getClass().getSimpleName();
-        }
         return ResponseEntity.internalServerError()
-                .body(Map.of("message", "An error occurred: " + detail));
+                .body(Map.of("message", ApiErrors.safeMessage(ex)));
     }
 
     @ExceptionHandler(BadCredentialsException.class)

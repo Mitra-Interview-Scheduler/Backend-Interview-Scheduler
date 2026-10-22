@@ -89,12 +89,20 @@ public class CandidateController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<CandidateDto> getCandidateById(@PathVariable Long id) {
+    public ResponseEntity<CandidateDto> getCandidateById(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id
+    ) {
+        candidateService.assertCanReadCandidate(user, id);
         return ResponseEntity.ok(candidateService.getCandidateById(id));
     }
 
     @GetMapping("/{id}/technologies")
-    public ResponseEntity<List<CandidateTechnologyDto>> getCandidateTechnologies(@PathVariable Long id) {
+    public ResponseEntity<List<CandidateTechnologyDto>> getCandidateTechnologies(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id
+    ) {
+        candidateService.assertCanReadCandidate(user, id);
         return ResponseEntity.ok(candidateTechnologyService.getCandidateTechnologies(id));
     }
 
@@ -128,7 +136,11 @@ public class CandidateController {
     }
 
     @GetMapping("/{id}/documents")
-    public ResponseEntity<List<CandidateDocumentDto>> getCandidateDocuments(@PathVariable Long id) {
+    public ResponseEntity<List<CandidateDocumentDto>> getCandidateDocuments(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long id
+    ) {
+        candidateService.assertCanReadCandidate(user, id);
         return ResponseEntity.ok(candidateService.getCandidateDocuments(id));
     }
 
@@ -154,9 +166,11 @@ public class CandidateController {
 
     @GetMapping("/{id}/documents/{documentId}/download")
     public ResponseEntity<?> downloadCandidateDocument(
+            @AuthenticationPrincipal User user,
             @PathVariable Long id,
             @PathVariable Long documentId
     ) {
+        candidateService.assertCanReadCandidate(user, id);
         CandidateDocument document = candidateService.getCandidateDocumentFile(id, documentId);
 
         // Drive-backed (source of truth): redirect the caller to the file in the Shared Drive.

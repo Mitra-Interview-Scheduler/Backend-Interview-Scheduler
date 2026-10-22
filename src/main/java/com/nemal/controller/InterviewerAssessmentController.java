@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.entity.User;
 import com.nemal.service.AssessmentService;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ public class InterviewerAssessmentController {
             return ResponseEntity.ok(assessmentService.listAssignedAssessments(user));
         } catch (Exception e) {
             logger.warn("Failed to list assessments for user {}: {}", user != null ? user.getId() : null, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -43,7 +44,7 @@ public class InterviewerAssessmentController {
             return response;
         } catch (Exception e) {
             logger.warn("Failed to download assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -62,7 +63,7 @@ public class InterviewerAssessmentController {
             return ResponseEntity.ok(assessmentService.getAssessment(scheduleId));
         } catch (Exception e) {
             logger.warn("Failed to load assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -74,7 +75,7 @@ public class InterviewerAssessmentController {
             return ResponseEntity.ok(assessmentService.markCompletedByReviewer(user, scheduleId));
         } catch (Exception e) {
             logger.warn("Failed to complete assessment {}: {}", scheduleId, e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

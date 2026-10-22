@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.ApproveInterviewPostponeRequestDto;
 import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.RejectInterviewPostponeRequestDto;
@@ -48,7 +49,7 @@ public class InterviewPostponeRequestController {
         } catch (Exception e) {
             logger.error("Failed to list pending postpone requests: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -69,7 +70,7 @@ public class InterviewPostponeRequestController {
         } catch (Exception e) {
             logger.error("Failed to get postpone request for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -87,7 +88,7 @@ public class InterviewPostponeRequestController {
         } catch (Exception e) {
             logger.error("Failed to get postpone history for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -105,7 +106,7 @@ public class InterviewPostponeRequestController {
         } catch (Exception e) {
             logger.error("Failed to reject postpone request {}: {}", postponeRequestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -123,7 +124,7 @@ public class InterviewPostponeRequestController {
         } catch (Exception e) {
             logger.error("Failed to approve postpone request {}: {}", postponeRequestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

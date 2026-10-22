@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.GoogleCalendarAvailabilitySyncDto;
 import com.nemal.dto.GoogleCalendarConnectDto;
 import com.nemal.dto.GoogleCalendarExternalEventDto;
@@ -76,7 +77,7 @@ public class GoogleCalendarIntegrationController {
         try {
             return new RedirectView(oauthService.handleCallback(code, state));
         } catch (Exception e) {
-            return new RedirectView(oauthService.buildFailureRedirectUrl(e.getMessage()));
+            return new RedirectView(oauthService.buildFailureRedirectUrl(ApiErrors.safeMessage(e)));
         }
     }
 
@@ -202,6 +203,6 @@ public class GoogleCalendarIntegrationController {
         if (e instanceof IOException || lower.contains("401") || lower.contains("403")) {
             return "Google Calendar access was denied. Disconnect and reconnect from Settings.";
         }
-        return "Failed to list Google calendars: " + message;
+        return "Failed to list Google calendars: " + ApiErrors.safeMessage(e);
     }
 }

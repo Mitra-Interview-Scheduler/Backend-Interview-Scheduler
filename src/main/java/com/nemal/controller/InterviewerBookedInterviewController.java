@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.CreateInterviewPostponeRequestDto;
 import com.nemal.dto.InterviewPostponeRequestDto;
 import com.nemal.dto.InterviewRequestDto;
@@ -8,6 +9,7 @@ import com.nemal.dto.PanelCommonFreeWindowDto;
 import com.nemal.dto.PanelMemberSimpleDto;
 import com.nemal.entity.InterviewRequest;
 import com.nemal.entity.User;
+import com.nemal.enums.Role;
 import com.nemal.repository.InterviewRequestRepository;
 import com.nemal.service.InterviewPostponeRequestService;
 import com.nemal.service.InterviewRequestService;
@@ -47,10 +49,16 @@ public class InterviewerBookedInterviewController {
 
     @GetMapping("/bookedInterviews/{interviewScheduleId}")
     @Transactional(readOnly = true)
-    public ResponseEntity<?> getMyBookedInterview(@PathVariable Long interviewScheduleId)
+    public ResponseEntity<?> getMyBookedInterview(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long interviewScheduleId)
     {
         try {
             List<InterviewRequest> requests = interviewRequestService.getBookedInterviewSchedule(interviewScheduleId);
+            if (!canViewBookedInterview(user, requests)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "You can only view interviews assigned to you"));
+            }
             List<InterviewRequestSimpleDto> dtos = requests.stream()
                     .map(request -> {
                         InterviewRequestSimpleDto dto = InterviewRequestSimpleDto.from(request);
@@ -69,9 +77,24 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to get requests for Booked Slot If {}: {}", interviewScheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
 
+    }
+
+    private boolean canViewBookedInterview(User user, List<InterviewRequest> requests) {
+        if (user == null) {
+            return false;
+        }
+        if (user.hasRole(Role.HR) || user.hasRole(Role.ADMIN)) {
+            return true;
+        }
+        return requests.stream().anyMatch(request ->
+                (request.getAssignedInterviewer() != null
+                        && user.getId().equals(request.getAssignedInterviewer().getId()))
+                || (request.getInterviewSchedule() != null
+                        && request.getInterviewSchedule().getInterviewer() != null
+                        && user.getId().equals(request.getInterviewSchedule().getInterviewer().getId())));
     }
 
     private List<PanelMemberSimpleDto> loadPanelMembers(Long panelId) {
@@ -110,7 +133,7 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to complete interview schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -130,7 +153,7 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to list panel common windows for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -150,7 +173,7 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to create postpone request for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -171,7 +194,7 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to get pending postpone for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -188,7 +211,7 @@ public class InterviewerBookedInterviewController {
         } catch (Exception e) {
             logger.error("Failed to withdraw postpone request {}: {}", postponeRequestId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

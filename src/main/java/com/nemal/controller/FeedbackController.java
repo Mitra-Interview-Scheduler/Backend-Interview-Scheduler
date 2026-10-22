@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.*;
 import com.nemal.entity.User;
 import com.nemal.service.FeedbackService;
@@ -35,7 +36,7 @@ public class FeedbackController {
         } catch (Exception e) {
             logger.error("Failed to load feedback questions: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -47,7 +48,7 @@ public class FeedbackController {
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (Exception e) {
             logger.error("Failed to create feedback form: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -58,7 +59,7 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.listAllForms());
         } catch (Exception e) {
             logger.error("Failed to list feedback forms: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -73,7 +74,7 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.listFilteredFormsByDepartmentAndDesignation(dto));
         } catch (Exception e) {
             logger.error("Failed to list feedback forms: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -84,7 +85,7 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.getFormById(id));
         } catch (Exception e) {
             logger.error("Failed to get feedback form {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -96,7 +97,7 @@ public class FeedbackController {
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             logger.error("Failed to update feedback form {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -108,7 +109,7 @@ public class FeedbackController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             logger.error("Failed to delete feedback form {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -121,7 +122,7 @@ public class FeedbackController {
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             logger.error("Failed to update feedback form status {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -133,7 +134,7 @@ public class FeedbackController {
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (Exception e) {
             logger.error("Failed to create feedback question: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -145,7 +146,7 @@ public class FeedbackController {
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             logger.error("Failed to update feedback question {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -157,7 +158,7 @@ public class FeedbackController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             logger.error("Failed to delete feedback question {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -168,7 +169,7 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.listObligatoryQuestions());
         } catch (Exception e) {
             logger.error("Failed to list obligatory questions: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -180,7 +181,7 @@ public class FeedbackController {
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (Exception e) {
             logger.error("Failed to create obligatory question: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -193,7 +194,7 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.updateObligatoryQuestion(id, dto));
         } catch (Exception e) {
             logger.error("Failed to update obligatory question {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -205,7 +206,7 @@ public class FeedbackController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             logger.error("Failed to delete obligatory question {}: {}", id, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -218,15 +219,15 @@ public class FeedbackController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().contains("not allowed")) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", ApiErrors.safeMessage(e)));
             }
             logger.error("Failed to submit feedback: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (Exception e) {
             logger.error("Failed to submit feedback: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -238,12 +239,12 @@ public class FeedbackController {
             return ResponseEntity.ok(feedbackService.getFeedbackViewForInterview(interviewScheduleId, user));
         } catch (RuntimeException e) {
             if (e.getMessage() != null && e.getMessage().contains("not allowed")) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", ApiErrors.safeMessage(e)));
             }
             if (e.getMessage() != null && e.getMessage().contains("not found")) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", ApiErrors.safeMessage(e)));
             }
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

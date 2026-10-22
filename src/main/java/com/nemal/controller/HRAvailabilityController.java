@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.AvailabilityFilterDto;
 import com.nemal.dto.InterviewerAvailabilityDto;
 import com.nemal.dto.InterviewerMatchRequestDto;
@@ -71,7 +72,7 @@ public class HRAvailabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Failed to fetch availability",
-                            "message", e.getMessage(),
+                            "message", ApiErrors.safeMessage(e),
                             "timestamp", System.currentTimeMillis()
                     ));
         }
@@ -89,7 +90,7 @@ public class HRAvailabilityController {
             logger.warn("Invalid match request: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Invalid match request",
-                    "message", e.getMessage(),
+                    "message", ApiErrors.safeMessage(e),
                     "timestamp", System.currentTimeMillis()
             ));
         } catch (Exception e) {
@@ -97,7 +98,7 @@ public class HRAvailabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Failed to match interviewers",
-                            "message", e.getMessage(),
+                            "message", ApiErrors.safeMessage(e),
                             "timestamp", System.currentTimeMillis()
                     ));
         }
@@ -121,7 +122,7 @@ public class HRAvailabilityController {
             logger.warn("Invalid interviewer slots request: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Invalid slots request",
-                    "message", e.getMessage(),
+                    "message", ApiErrors.safeMessage(e),
                     "timestamp", System.currentTimeMillis()
             ));
         } catch (Exception e) {
@@ -129,7 +130,7 @@ public class HRAvailabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Failed to fetch interviewer slots",
-                            "message", e.getMessage(),
+                            "message", ApiErrors.safeMessage(e),
                             "timestamp", System.currentTimeMillis()
                     ));
         }
@@ -149,7 +150,7 @@ public class HRAvailabilityController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Failed to fetch availability",
-                            "message", e.getMessage(),
+                            "message", ApiErrors.safeMessage(e),
                             "timestamp", System.currentTimeMillis()
                     ));
         }
@@ -161,7 +162,7 @@ public class HRAvailabilityController {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                         "error", "Internal server error",
-                        "message", e.getMessage(),
+                        "message", ApiErrors.safeMessage(e),
                         "timestamp", System.currentTimeMillis()
                 ));
     }

@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.CreatePanelInterviewDto;
 import com.nemal.dto.InterviewPanelDto;
 import com.nemal.entity.User;
@@ -40,7 +41,7 @@ public class PanelInterviewController {
         } catch (Exception e) {
             logger.error("Failed to create panel interview: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -54,7 +55,7 @@ public class PanelInterviewController {
         } catch (Exception e) {
             logger.error("Failed to cancel panel interview {}: {}", panelId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -66,7 +67,7 @@ public class PanelInterviewController {
         } catch (Exception e) {
             logger.error("Failed to get panels for candidate {}: {}", candidateId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -85,7 +86,7 @@ public class PanelInterviewController {
         } catch (Exception e) {
             logger.error("Failed to get panels for user {}: {}", user.getId(), e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

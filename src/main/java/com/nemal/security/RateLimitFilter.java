@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -19,7 +20,18 @@ import java.util.Deque;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
+/**
+ * Sliding-window rate limits (per minute):
+ * - login/register: per client IP, low, to slow password guessing;
+ * - Google sign-in: per client IP, higher — Google verifies the token, so it cannot be
+ *   brute-forced, and a whole office signing in at 9am shares one IP;
+ * - refresh/logout: per client IP, generous (page loads and token renewal);
+ * - sensitive writes: per signed-in user, falling back to IP, so colleagues behind the
+ *   same office IP do not use up each other's allowance.
+ * GET requests to /api/auth/** (csrf, verify) are never limited.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -27,19 +39,44 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final long WINDOW_MS = 60_000L;
 
     private final int authRequestsPerMinute;
+    private final int googleRequestsPerMinute;
+    private final int sessionRequestsPerMinute;
     private final int sensitiveWritesPerMinute;
     private final boolean trustForwardedFor;
+    /** Maps a bearer token to its verified subject (email), or null when invalid. */
+    private final Function<String, String> bearerSubjectResolver;
     private final Map<String, Deque<Long>> hits = new ConcurrentHashMap<>();
 
+    @Autowired
     public RateLimitFilter(
             @Value("${security.rate-limit.auth-requests-per-minute:20}") int authRequestsPerMinute,
+            @Value("${security.rate-limit.google-requests-per-minute:60}") int googleRequestsPerMinute,
+            @Value("${security.rate-limit.session-requests-per-minute:120}") int sessionRequestsPerMinute,
             @Value("${security.rate-limit.sensitive-writes-per-minute:120}") int sensitiveWritesPerMinute,
-            @Value("${security.rate-limit.trust-forwarded-for:false}") boolean trustForwardedFor
+            @Value("${security.rate-limit.trust-forwarded-for:false}") boolean trustForwardedFor,
+            JwtService jwtService
+    ) {
+        this(authRequestsPerMinute, googleRequestsPerMinute, sessionRequestsPerMinute,
+                sensitiveWritesPerMinute, trustForwardedFor, token -> verifiedSubject(jwtService, token));
+    }
+
+    RateLimitFilter(
+            int authRequestsPerMinute,
+            int googleRequestsPerMinute,
+            int sessionRequestsPerMinute,
+            int sensitiveWritesPerMinute,
+            boolean trustForwardedFor,
+            Function<String, String> bearerSubjectResolver
     ) {
         this.authRequestsPerMinute = authRequestsPerMinute;
+        this.googleRequestsPerMinute = googleRequestsPerMinute;
+        this.sessionRequestsPerMinute = sessionRequestsPerMinute;
         this.sensitiveWritesPerMinute = sensitiveWritesPerMinute;
         this.trustForwardedFor = trustForwardedFor;
+        this.bearerSubjectResolver = bearerSubjectResolver;
     }
+
+    private record Limit(String bucket, int perMinute, boolean perUser) {}
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -53,34 +90,46 @@ public class RateLimitFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         String path = servletPath(request);
-        int limit = limitFor(request.getMethod(), path);
-        if (limit <= 0) {
+        Limit limit = limitFor(request.getMethod(), path);
+        if (limit == null || limit.perMinute() <= 0) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String bucket = (limit == authRequestsPerMinute ? "auth:" : "write:") + clientIp(request);
+        String bucket = limit.bucket() + ":" + clientKey(request, limit.perUser());
         long now = System.currentTimeMillis();
-        long retryAfterSeconds = recordAndRetryAfter(bucket, now, limit);
+        long retryAfterSeconds = recordAndRetryAfter(bucket, now, limit.perMinute());
         if (retryAfterSeconds > 0) {
             response.setStatus(429);
             response.setHeader("Retry-After", String.valueOf(retryAfterSeconds));
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.getWriter().write("{\"message\":\"Too many requests\"}");
+            response.getWriter().write("{\"message\":\"Too many requests. Please try again in "
+                    + retryAfterSeconds + " seconds.\",\"retryAfterSeconds\":" + retryAfterSeconds + "}");
             return;
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private int limitFor(String method, String path) {
+    private Limit limitFor(String method, String path) {
         if (path.startsWith("/api/auth/")) {
-            return authRequestsPerMinute;
+            if (!HttpMethod.POST.matches(method)) {
+                // GET /api/auth/csrf and /verify run on every page load; never throttle them.
+                return null;
+            }
+            if (path.equals("/api/auth/refresh") || path.equals("/api/auth/logout")) {
+                return new Limit("session", sessionRequestsPerMinute, false);
+            }
+            if (path.equals("/api/auth/google")) {
+                return new Limit("google", googleRequestsPerMinute, false);
+            }
+            // Password endpoints: login, register (and any other auth POST).
+            return new Limit("auth", authRequestsPerMinute, false);
         }
         if (isSensitiveWrite(method, path)) {
-            return sensitiveWritesPerMinute;
+            return new Limit("write", sensitiveWritesPerMinute, true);
         }
-        return 0;
+        return null;
     }
 
     private boolean isSensitiveWrite(String method, String path) {
@@ -115,12 +164,49 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    private String clientKey(HttpServletRequest request, boolean perUser) {
+        if (perUser) {
+            String subject = bearerSubject(request);
+            if (subject != null) {
+                return "user:" + subject.toLowerCase();
+            }
+        }
+        return "ip:" + clientIp(request);
+    }
+
+    private String bearerSubject(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            return null;
+        }
+        String token = authHeader.substring(7).trim();
+        if (token.isEmpty() || bearerSubjectResolver == null) {
+            return null;
+        }
+        String subject = bearerSubjectResolver.apply(token);
+        return subject == null || subject.isBlank() ? null : subject;
+    }
+
+    private static String verifiedSubject(JwtService jwtService, String token) {
+        try {
+            // Signature and expiry are checked here, so a forged token cannot pick its own bucket.
+            return jwtService.extractUsername(token);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
     private String clientIp(HttpServletRequest request) {
         if (trustForwardedFor) {
+            // Use the right-most entry: it is appended by our own reverse proxy. Left-most
+            // entries come from the client and can be forged to dodge the limit.
             String forwarded = request.getHeader("X-Forwarded-For");
             if (forwarded != null && !forwarded.isBlank()) {
-                int comma = forwarded.indexOf(',');
-                return (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+                String[] hops = forwarded.split(",");
+                String lastHop = hops[hops.length - 1].trim();
+                if (!lastHop.isEmpty()) {
+                    return lastHop;
+                }
             }
         }
         String remote = request.getRemoteAddr();
