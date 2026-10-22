@@ -78,4 +78,6 @@ public interface EmailDeliveryLogRepository extends JpaRepository<EmailDeliveryL
     @Modifying
     @Query("DELETE FROM EmailDeliveryLog e WHERE e.sentAt < :cutoff")
     int deleteBySentAtBefore(@Param("cutoff") LocalDateTime cutoff);
+
+    long countByStatusAndSentAtAfter(String status, LocalDateTime sentAt);
 }

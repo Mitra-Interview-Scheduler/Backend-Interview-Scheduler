@@ -84,9 +84,26 @@ public class GoogleCalendarIntegrationController {
     public ResponseEntity<GoogleCalendarStatusDto> status(@AuthenticationPrincipal User user) {
         boolean required = calendarRequired && user.hasInterviewerRole();
         return tokenService.findCredentials(user)
-                .map(credentials -> ResponseEntity.ok(
-                        new GoogleCalendarStatusDto(true, credentials.getGoogleAccountEmail(), required)))
-                .orElseGet(() -> ResponseEntity.ok(new GoogleCalendarStatusDto(false, null, required)));
+                .map(credentials -> {
+                    // Access tokens last ~1h; the navbar warning is about the OAuth grant
+                    // (Google "Testing" refresh tokens expire 7 days after consent/reconnect).
+                    var authorizedAt = credentials.getAuthorizedAt() != null
+                            ? credentials.getAuthorizedAt()
+                            : credentials.getConnectedAt();
+                    var grantExpiresAt = authorizedAt != null
+                            ? authorizedAt.plusDays(7)
+                            : null;
+                    var now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+                    // Show warning only when expiry is within 2 days (or already expired).
+                    boolean expiringSoon = grantExpiresAt != null
+                            && !grantExpiresAt.isAfter(now.plusDays(2));
+                    return ResponseEntity.ok(GoogleCalendarStatusDto.connected(
+                            credentials.getGoogleAccountEmail(),
+                            required,
+                            grantExpiresAt,
+                            expiringSoon));
+                })
+                .orElseGet(() -> ResponseEntity.ok(GoogleCalendarStatusDto.disconnected(required)));
     }
 
     @PostMapping("/sync-availability")

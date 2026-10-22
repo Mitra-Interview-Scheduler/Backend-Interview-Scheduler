@@ -57,6 +57,14 @@ public class UserGoogleCalendarCredentials {
     @Column(name = "app_calendar_id", length = 255)
     private String appCalendarId;
 
+    /**
+     * Last successful Google OAuth consent / reconnect. Used for the 7-day
+     * refresh-token warning (Google "Testing" clients expire grants after 7 days).
+     * Distinct from {@link #tokenExpiresAt}, which is the short-lived access token.
+     */
+    @Column(name = "authorized_at", nullable = false)
+    private LocalDateTime authorizedAt;
+
     @CreatedDate
     @Column(name = "connected_at", nullable = false, updatable = false)
     private LocalDateTime connectedAt;

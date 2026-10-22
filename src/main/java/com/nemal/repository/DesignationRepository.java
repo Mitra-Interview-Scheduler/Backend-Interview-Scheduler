@@ -31,4 +31,22 @@ public interface DesignationRepository extends JpaRepository<Designation, Long> 
     List<Designation> findByIsActiveTrue();
     List<Designation> findByDepartmentIdAndIsActiveTrue(Long departmentId);
     List<Designation> findByTierIdAndIsActiveTrueOrderByLevelOrderAsc(Long tierId);
+
+    @Query("""
+            SELECT d FROM Designation d
+            LEFT JOIN FETCH d.department
+            WHERE d.isActive = true
+              AND NOT EXISTS (
+                    SELECT 1 FROM User u
+                    WHERE u.currentDesignation.id = d.id
+                      AND u.isActive = true
+                      AND :interviewerRole MEMBER OF u.roles
+              )
+            ORDER BY d.name
+            """)
+    List<Designation> findActiveWithoutInterviewers(@org.springframework.data.repository.query.Param("interviewerRole") com.nemal.enums.Role interviewerRole);
+
+    default List<Designation> findActiveWithoutInterviewers() {
+        return findActiveWithoutInterviewers(com.nemal.enums.Role.INTERVIEWER);
+    }
 }

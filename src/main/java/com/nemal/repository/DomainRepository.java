@@ -12,4 +12,13 @@ public interface DomainRepository extends JpaRepository<Domain, Long> {
     Optional<Domain> findByNameIgnoreCase(String name);
 
     Optional<Domain> findByCodeIgnoreCase(String code);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT d FROM Domain d
+            WHERE d.isActive = true
+              AND NOT EXISTS (SELECT 1 FROM CandidateDomain cd WHERE cd.domain.id = d.id)
+              AND NOT EXISTS (SELECT 1 FROM UserDomain ud WHERE ud.domain.id = d.id)
+            ORDER BY d.name
+            """)
+    List<Domain> findUnusedActiveDomains();
 }

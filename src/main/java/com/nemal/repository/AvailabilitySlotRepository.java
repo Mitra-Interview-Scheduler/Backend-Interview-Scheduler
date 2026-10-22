@@ -276,4 +276,89 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             Long interviewerId,
             String recurrenceGroupId,
             LocalDateTime startDateTime);
+
+    @Query("""
+            SELECT FUNCTION('DATE', s.startDateTime),
+                   i.department.id,
+                   i.department.name,
+                   SUM(CASE WHEN s.status = com.nemal.enums.SlotStatus.AVAILABLE THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN s.status = com.nemal.enums.SlotStatus.BOOKED THEN 1 ELSE 0 END)
+            FROM AvailabilitySlot s
+            JOIN s.interviewer i
+            LEFT JOIN i.department
+            WHERE s.isActive = true
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (s.status = com.nemal.enums.SlotStatus.AVAILABLE OR s.status = com.nemal.enums.SlotStatus.BOOKED)
+            GROUP BY FUNCTION('DATE', s.startDateTime), i.department.id, i.department.name
+            ORDER BY FUNCTION('DATE', s.startDateTime)
+            """)
+    List<Object[]> countCapacityByDayAndDepartment(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT COUNT(s) FROM AvailabilitySlot s
+            WHERE s.interviewer.id = :interviewerId
+              AND s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    long countOpenSlotsBetween(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT COUNT(s) FROM AvailabilitySlot s
+            WHERE s.interviewer.id = :interviewerId
+              AND s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.BOOKED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    long countBookedSlotsBetween(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT MAX(s.endDateTime) FROM AvailabilitySlot s
+            WHERE s.interviewer.id = :interviewerId
+              AND s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+            """)
+    Optional<LocalDateTime> findLastPublishedAvailableSlotEnd(@Param("interviewerId") Long interviewerId);
+
+    @Query("""
+            SELECT COUNT(DISTINCT s.interviewer.id) FROM AvailabilitySlot s
+            WHERE s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    long countInterviewersWithOpenSlotsBetween(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT COUNT(s) FROM AvailabilitySlot s
+            WHERE s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    long countAllOpenSlotsBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT DISTINCT s.interviewer.id FROM AvailabilitySlot s
+            WHERE s.isActive = true
+              AND s.status = com.nemal.enums.SlotStatus.AVAILABLE
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    List<Long> findInterviewerIdsWithOpenSlotsBetween(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
 }

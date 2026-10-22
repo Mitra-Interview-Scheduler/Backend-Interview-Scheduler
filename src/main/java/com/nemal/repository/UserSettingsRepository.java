@@ -9,5 +9,15 @@ public interface UserSettingsRepository extends JpaRepository<UserSettings, Long
     Optional<UserSettings> findByUserId(Long userId);
 
     boolean existsByUserId(Long userId);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COUNT(s) FROM UserSettings s WHERE s.emailNotificationsEnabled = false
+            """)
+    long countEmailOptedOut();
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COUNT(s) FROM UserSettings s
+            """)
+    long countAllSettings();
 }
 
