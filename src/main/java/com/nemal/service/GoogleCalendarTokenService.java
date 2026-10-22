@@ -119,7 +119,10 @@ public class GoogleCalendarTokenService {
         if (refreshToken != null && !refreshToken.isBlank()) {
             credentials.setEncryptedRefreshToken(tokenEncryptionService.encrypt(refreshToken));
         }
-        credentials.setTokenExpiresAt(LocalDateTime.now(ZoneOffset.UTC).plusSeconds(expiresInSeconds));
+        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
+        credentials.setTokenExpiresAt(nowUtc.plusSeconds(expiresInSeconds));
+        // Reset grant clock on every successful OAuth (including reconnect).
+        credentials.setAuthorizedAt(nowUtc);
         credentials.setScopes(String.join(",", CALENDAR_SCOPES));
         return credentialsRepository.save(credentials);
     }
