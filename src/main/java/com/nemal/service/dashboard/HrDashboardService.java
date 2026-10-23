@@ -19,6 +19,7 @@ import com.nemal.repository.*;
 import com.nemal.service.HRAvailabilityService;
 import com.nemal.service.InterviewTypeService;
 import com.nemal.service.NotificationService;
+import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,7 +106,7 @@ public class HrDashboardService {
             ZoneId zone
     ) {
         Long hrId = mineOnly && user != null ? user.getId() : null;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         int preview = DashboardPaging.previewSize(previewSize);
         int upcomingWindow = DashboardPaging.upcomingDays(upcomingDays);
         stalledDays = DashboardPaging.stalledDays(stalledDays);
@@ -125,7 +126,7 @@ public class HrDashboardService {
         LiveStatus liveStatus = new LiveStatus(
                 buildUpcomingInterviews(hrId, zone, now, upcomingWindow, 0, preview),
                 buildPipelineFunnel(hrId),
-                buildInterviewerCapacity(capacityDays, now),
+                buildInterviewerCapacity(capacityDays, now, zone),
                 List.of()
         );
 
@@ -152,7 +153,7 @@ public class HrDashboardService {
         stalledDays = DashboardPaging.stalledDays(stalledDays);
         feedbackOverdueHours = DashboardPaging.feedbackOverdueHours(feedbackOverdueHours);
         Long hrId = mineOnly && user != null ? user.getId() : null;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         String key = section == null ? "" : section.trim();
 
         return switch (key) {
@@ -195,7 +196,7 @@ public class HrDashboardService {
                     "You can only send reminders for candidates you coordinate");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         LocalDateTime cutoff = now.minusHours(DashboardPaging.DEFAULT_FEEDBACK_OVERDUE_HOURS);
         if (!isFeedbackOverdue(schedule, cutoff)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -395,7 +396,7 @@ public class HrDashboardService {
                     LocalDateTime lastChange = latest.getOrDefault(c.getId(),
                             c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt());
                     if (lastChange == null) lastChange = now;
-                    long days = ChronoUnit.DAYS.between(lastChange.toLocalDate(), now.toLocalDate());
+                    long days = DashboardClock.localDaysBetween(lastChange, now, zone);
                     return new AbstractMap.SimpleEntry<>(c, new AbstractMap.SimpleEntry<>(lastChange, days));
                 })
                 .filter(e -> e.getValue().getValue() >= threshold)
@@ -460,7 +461,7 @@ public class HrDashboardService {
             InterviewSchedule s, int reviewerCount, ZoneId zone, LocalDateTime now) {
         Candidate c = s.getRequest() != null ? s.getRequest().getCandidate() : null;
         LocalDateTime due = s.getEndDateTime() != null ? s.getEndDateTime() : s.getStartDateTime();
-        long aging = due != null ? Math.max(0, ChronoUnit.DAYS.between(due.toLocalDate(), now.toLocalDate())) : 0;
+        long aging = due != null ? Math.max(0, DashboardClock.localDaysBetween(due, now, zone)) : 0;
         String nextAction;
         if (s.getAssessmentPhase() == AssessmentPhase.AWAITING) {
             nextAction = "Mark as received";
@@ -497,7 +498,7 @@ public class HrDashboardService {
                     LocalDateTime entered = latest.getOrDefault(c.getId(),
                             c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt());
                     long days = entered != null
-                            ? ChronoUnit.DAYS.between(entered.toLocalDate(), now.toLocalDate()) : 0;
+                            ? DashboardClock.localDaysBetween(entered, now, zone) : 0;
                     return new OfferPendingItem(
                             c.getId(),
                             c.getName(),
@@ -519,7 +520,7 @@ public class HrDashboardService {
                 .map(c -> {
                     LocalDateTime applied = c.getAppliedAt() != null ? c.getAppliedAt() : c.getCreatedAt();
                     long days = applied != null
-                            ? ChronoUnit.DAYS.between(applied.toLocalDate(), now.toLocalDate()) : 0;
+                            ? DashboardClock.localDaysBetween(applied, now, zone) : 0;
                     return new ScreeningBacklogItem(
                             c.getId(),
                             c.getName(),
@@ -535,8 +536,8 @@ public class HrDashboardService {
 
     private CountedList<UpcomingInterviewItem> buildUpcomingInterviews(
             Long hrId, ZoneId zone, LocalDateTime now, int upcomingDays, int page, int size) {
-        LocalDateTime from = now.toLocalDate().atStartOfDay();
-        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, upcomingDays);
+        LocalDateTime from = DashboardClock.startOfLocalDayUtc(now, zone, 0);
+        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, upcomingDays, zone);
         List<InterviewSchedule> all = interviewScheduleRepository.findUpcomingInRange(from, to).stream()
                 .filter(s -> matchesHrSchedule(s, hrId))
                 .filter(s -> s.getStatus() == InterviewStatus.SCHEDULED)
@@ -589,14 +590,14 @@ public class HrDashboardService {
                 .toList();
     }
 
-    private List<CapacityDay> buildInterviewerCapacity(int capacityDays, LocalDateTime now) {
-        LocalDateTime from = now.toLocalDate().atStartOfDay();
-        LocalDateTime to = from.plusDays(Math.max(1, capacityDays));
+    private List<CapacityDay> buildInterviewerCapacity(int capacityDays, LocalDateTime now, ZoneId zone) {
+        LocalDateTime from = DashboardClock.startOfLocalDayUtc(now, zone, 0);
+        LocalDateTime to = DashboardClock.startOfLocalDayUtc(now, zone, Math.max(1, capacityDays));
         List<AvailabilitySlot> slots = availabilitySlotRepository.findAllActiveSlotsForHRByDateRange(from, to);
         Map<String, CapacityDay> map = new LinkedHashMap<>();
         for (AvailabilitySlot slot : slots) {
             if (slot.getStartDateTime() == null) continue;
-            String date = slot.getStartDateTime().toLocalDate().toString();
+            String date = DashboardClock.localDate(slot.getStartDateTime(), zone).toString();
             Department dept = slot.getInterviewer() != null ? slot.getInterviewer().getDepartment() : null;
             Long deptId = dept != null ? dept.getId() : null;
             String deptName = dept != null ? dept.getName() : null;

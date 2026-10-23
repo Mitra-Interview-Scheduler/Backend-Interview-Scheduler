@@ -1,6 +1,9 @@
 package com.nemal.dto.dashboard;
 
+import com.nemal.util.DashboardClock;
+
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 public final class DashboardPaging {
@@ -70,10 +73,13 @@ public final class DashboardPaging {
         return DEFAULT_UPCOMING_DAYS;
     }
 
-    /** Exclusive end of the upcoming window: start of today + N calendar days. */
-    public static LocalDateTime upcomingWindowEnd(LocalDateTime now, int days) {
-        LocalDateTime moment = now == null ? LocalDateTime.now() : now;
-        return moment.toLocalDate().plusDays(upcomingDays(days)).atStartOfDay();
+    /**
+     * Exclusive end of the upcoming window, in UTC: start of the viewer's today + N calendar days
+     * (days counted on the viewer's calendar).
+     */
+    public static LocalDateTime upcomingWindowEnd(LocalDateTime nowUtc, int days, ZoneId zone) {
+        LocalDateTime moment = nowUtc == null ? DashboardClock.nowUtc() : nowUtc;
+        return DashboardClock.startOfLocalDayUtc(moment, zone, upcomingDays(days));
     }
 
     public static <T> List<T> slice(List<T> all, int page, int size) {

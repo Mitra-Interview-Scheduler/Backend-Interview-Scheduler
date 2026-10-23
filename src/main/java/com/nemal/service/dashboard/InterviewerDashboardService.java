@@ -12,6 +12,7 @@ import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.PostponeRequestStatus;
 import com.nemal.enums.Role;
 import com.nemal.repository.*;
+import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,7 +74,7 @@ public class InterviewerDashboardService {
     @Transactional(readOnly = true)
     public InterviewerDashboardResponse getDashboard(
             User user, int previewSize, int upcomingDays, int coverageDays, ZoneId zone) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         Long interviewerId = user.getId();
         int preview = DashboardPaging.previewSize(previewSize);
         int upcomingWindow = DashboardPaging.upcomingDays(upcomingDays);
@@ -92,7 +93,7 @@ public class InterviewerDashboardService {
                 buildAvailabilityCoverage(interviewerId, zone, now, coverageWindow)
         );
 
-        Trends trends = buildTrends(interviewerId, now);
+        Trends trends = buildTrends(interviewerId, now, zone);
 
         return new InterviewerDashboardResponse(
                 actionQueue, liveStatus, trends, TimeZoneMapper.fromUtc(now, zone));
@@ -101,7 +102,7 @@ public class InterviewerDashboardService {
     @Transactional(readOnly = true)
     public AvailabilityCoverage getAvailabilityCoverage(User user, int coverageDays, ZoneId zone) {
         return buildAvailabilityCoverage(
-                user.getId(), zone, LocalDateTime.now(), DashboardPaging.upcomingDays(coverageDays));
+                user.getId(), zone, DashboardClock.nowUtc(), DashboardPaging.upcomingDays(coverageDays));
     }
 
     @Transactional(readOnly = true)
@@ -110,7 +111,7 @@ public class InterviewerDashboardService {
         int page = DashboardPaging.page(pageRaw);
         int size = DashboardPaging.size(sizeRaw);
         int upcomingWindow = DashboardPaging.upcomingDays(upcomingDays);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         Long interviewerId = user.getId();
         String key = section == null ? "" : section.trim();
 
@@ -188,7 +189,7 @@ public class InterviewerDashboardService {
             }
             Candidate c = s.getRequest() != null ? s.getRequest().getCandidate() : null;
             LocalDateTime due = s.getEndDateTime() != null ? s.getEndDateTime() : s.getStartDateTime();
-            long aging = due != null ? Math.max(0, ChronoUnit.DAYS.between(due.toLocalDate(), now.toLocalDate())) : 0;
+            long aging = due != null ? Math.max(0, DashboardClock.localDaysBetween(due, now, zone)) : 0;
             int reviewerCount = assessmentReviewerRepository
                     .findByInterviewScheduleIdOrderByAssignedAtAsc(s.getId()).size();
             all.add(new AssessmentWaitingItem(
@@ -232,9 +233,9 @@ public class InterviewerDashboardService {
 
     private CountedList<PanelFeedbackSharedItem> buildPanelFeedbackShared(
             Long interviewerId, ZoneId zone, int page, int size) {
-        LocalDateTime from = LocalDateTime.now().minusDays(30);
+        LocalDateTime from = DashboardClock.nowUtc().minusDays(30);
         List<InterviewSchedule> upcoming = interviewScheduleRepository.findUpcomingForInterviewer(
-                interviewerId, from, LocalDateTime.now().plusDays(1));
+                interviewerId, from, DashboardClock.nowUtc().plusDays(1));
         Set<Long> panelIds = new LinkedHashSet<>();
         Map<Long, InterviewSchedule> mySchedulesByPanel = new HashMap<>();
         for (InterviewSchedule s : upcoming) {
@@ -244,7 +245,7 @@ public class InterviewerDashboardService {
                 mySchedulesByPanel.put(panelId, s);
             }
         }
-        List<InterviewSchedule> overdue = interviewScheduleRepository.findFeedbackOverdue(LocalDateTime.now());
+        List<InterviewSchedule> overdue = interviewScheduleRepository.findFeedbackOverdue(DashboardClock.nowUtc());
         for (InterviewSchedule s : overdue) {
             if (s.getInterviewer() != null && interviewerId.equals(s.getInterviewer().getId())
                     && s.getRequest() != null && s.getRequest().getPanel() != null) {
@@ -288,7 +289,7 @@ public class InterviewerDashboardService {
     private CountedList<UpcomingWithPrepItem> buildUpcomingWithPrep(
             User user, ZoneId zone, LocalDateTime now, int upcomingDays, int page, int size) {
         LocalDateTime from = now;
-        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, upcomingDays);
+        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, upcomingDays, zone);
         List<InterviewSchedule> schedules = interviewScheduleRepository
                 .findUpcomingForInterviewer(user.getId(), from, to).stream()
                 .filter(s -> s.getStatus() == InterviewStatus.SCHEDULED)
@@ -416,7 +417,7 @@ public class InterviewerDashboardService {
     private AvailabilityCoverage buildAvailabilityCoverage(
             Long interviewerId, ZoneId zone, LocalDateTime now, int coverageDays) {
         LocalDateTime from = now;
-        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, coverageDays);
+        LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, coverageDays, zone);
         long myOpen = availabilitySlotRepository.countOpenSlotsBetween(interviewerId, from, to);
         long myBooked = availabilitySlotRepository.countBookedSlotsBetween(interviewerId, from, to);
         long totalOpen = availabilitySlotRepository.countAllOpenSlotsBetween(from, to);
@@ -441,12 +442,13 @@ public class InterviewerDashboardService {
         );
     }
 
-    private Trends buildTrends(Long interviewerId, LocalDateTime now) {
-        LocalDate monthStart = now.toLocalDate().withDayOfMonth(1);
-        LocalDateTime monthFrom = monthStart.atStartOfDay();
-        int month = now.getMonthValue();
-        int quarterStartMonth = ((month - 1) / 3) * 3 + 1;
-        LocalDateTime quarterFrom = LocalDate.of(now.getYear(), quarterStartMonth, 1).atStartOfDay();
+    private Trends buildTrends(Long interviewerId, LocalDateTime now, ZoneId zone) {
+        // "This month" / "this quarter" follow the viewer's calendar, converted to UTC for queries.
+        LocalDate localToday = DashboardClock.localDate(now, zone);
+        LocalDateTime monthFrom = DashboardClock.startOfLocalDateUtc(localToday.withDayOfMonth(1), zone);
+        int quarterStartMonth = ((localToday.getMonthValue() - 1) / 3) * 3 + 1;
+        LocalDateTime quarterFrom = DashboardClock.startOfLocalDateUtc(
+                LocalDate.of(localToday.getYear(), quarterStartMonth, 1), zone);
 
         long thisMonth = interviewScheduleRepository.countCompletedByInterviewerBetween(
                 interviewerId, monthFrom, now.plusDays(1));

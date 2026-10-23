@@ -9,6 +9,7 @@ import com.nemal.dto.dashboard.DashboardPaging;
 import com.nemal.entity.*;
 import com.nemal.enums.Role;
 import com.nemal.repository.*;
+import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,7 +75,7 @@ public class AdminDashboardService {
 
     @Transactional(readOnly = true)
     public AdminDashboardResponse getDashboard(int trendDays, int previewSize, ZoneId zone) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DashboardClock.nowUtc();
         LocalDateTime trendFrom = now.minusDays(DashboardPaging.trendDays(trendDays));
         int preview = DashboardPaging.previewSize(previewSize);
         AlertLists alerts = collectAlerts(now);
@@ -91,7 +92,7 @@ public class AdminDashboardService {
     public DashboardItemsResponse getDashboardItems(String section, Integer pageRaw, Integer sizeRaw) {
         int page = DashboardPaging.page(pageRaw);
         int size = DashboardPaging.size(sizeRaw);
-        AlertLists alerts = collectAlerts(LocalDateTime.now());
+        AlertLists alerts = collectAlerts(DashboardClock.nowUtc());
         String key = section == null ? "" : section.trim();
         return switch (key) {
             case "interviewersWithoutCalendar" ->
@@ -254,9 +255,9 @@ public class AdminDashboardService {
     }
 
     private LiveStatus buildLiveStatus(LocalDateTime now, ZoneId zone) {
-        LocalDate today = now.toLocalDate();
-        LocalDateTime dayStart = today.atStartOfDay();
-        LocalDateTime dayEnd = today.plusDays(1).atStartOfDay();
+        // "Today" is the viewer's calendar day, converted to UTC for the queries.
+        LocalDateTime dayStart = DashboardClock.startOfLocalDayUtc(now, zone, 0);
+        LocalDateTime dayEnd = DashboardClock.startOfLocalDayUtc(now, zone, 1);
 
         ActivityToday activity = new ActivityToday(
                 interviewScheduleRepository.countScheduledBetween(dayStart, dayEnd),

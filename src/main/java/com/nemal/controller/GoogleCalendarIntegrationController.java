@@ -101,7 +101,7 @@ public class GoogleCalendarIntegrationController {
                     return ResponseEntity.ok(GoogleCalendarStatusDto.connected(
                             credentials.getGoogleAccountEmail(),
                             required,
-                            grantExpiresAt,
+                            grantExpiresAt != null ? grantExpiresAt.atOffset(java.time.ZoneOffset.UTC) : null,
                             expiringSoon));
                 })
                 .orElseGet(() -> ResponseEntity.ok(GoogleCalendarStatusDto.disconnected(required)));
