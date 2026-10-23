@@ -51,8 +51,11 @@ public final class DashboardPaging {
         return Math.min(max, Math.max(min, v));
     }
 
+    /** Highest page number accepted; keeps SQL offsets (page * size) far below Integer.MAX_VALUE. */
+    public static final int MAX_PAGE = 10_000;
+
     public static int page(Integer page) {
-        return page == null ? 0 : Math.max(0, page);
+        return page == null ? 0 : Math.min(MAX_PAGE, Math.max(0, page));
     }
 
     public static int size(Integer size) {
