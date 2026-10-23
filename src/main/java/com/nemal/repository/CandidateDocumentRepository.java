@@ -35,4 +35,13 @@ public interface CandidateDocumentRepository extends JpaRepository<CandidateDocu
             ORDER BY d.updatedAt DESC
             """)
     List<CandidateDocument> findCvDocumentsByCandidateId(@Param("candidateId") Long candidateId);
+
+    /** CV document ids for several candidates, newest first: (candidateId, documentId). No file data loaded. */
+    @Query("""
+            SELECT d.candidate.id, d.id FROM CandidateDocument d
+            WHERE d.candidate.id IN :candidateIds
+              AND UPPER(d.documentType) IN ('CV', 'RESUME')
+            ORDER BY d.updatedAt DESC
+            """)
+    List<Object[]> findCvDocumentIdsByCandidateIds(@Param("candidateIds") Collection<Long> candidateIds);
 }

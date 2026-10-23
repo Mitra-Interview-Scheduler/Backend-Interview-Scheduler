@@ -17,6 +17,16 @@ public interface CandidateTechnologyRepository extends JpaRepository<CandidateTe
 
     List<CandidateTechnology> findByCandidateIdAndIsActiveTrue(Long candidateId);
 
+    /** Active technology names for several candidates: (candidateId, technologyName). */
+    @Query("""
+            SELECT ct.candidate.id, t.name FROM CandidateTechnology ct
+            JOIN ct.technology t
+            WHERE ct.candidate.id IN :candidateIds
+              AND ct.isActive = true
+            """)
+    List<Object[]> findActiveTechnologyNamesByCandidateIds(
+            @org.springframework.data.repository.query.Param("candidateIds") Collection<Long> candidateIds);
+
     boolean existsByCandidateIdAndTechnologyId(Long candidateId, Long technologyId);
 
     @Query("""

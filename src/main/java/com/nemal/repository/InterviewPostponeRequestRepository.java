@@ -105,6 +105,8 @@ public interface InterviewPostponeRequestRepository extends JpaRepository<Interv
 
     long countByRequestedById(Long requestedById);
 
+    long countByRequestedByIdAndCreatedAtGreaterThanEqual(Long requestedById, LocalDateTime from);
+
     @Query("""
             SELECT COUNT(p) FROM InterviewPostponeRequest p
             WHERE p.createdAt >= :from

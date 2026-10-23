@@ -42,6 +42,7 @@ public class InterviewerDashboardService {
     private final CandidateDocumentRepository candidateDocumentRepository;
     private final NotificationRepository notificationRepository;
     private final FeedbackFormRepository feedbackFormRepository;
+    private final InterviewRequestRepository interviewRequestRepository;
 
     public InterviewerDashboardService(
             InterviewScheduleRepository interviewScheduleRepository,
@@ -56,8 +57,10 @@ public class InterviewerDashboardService {
             InterviewerTechnologyRepository interviewerTechnologyRepository,
             CandidateDocumentRepository candidateDocumentRepository,
             NotificationRepository notificationRepository,
-            FeedbackFormRepository feedbackFormRepository
+            FeedbackFormRepository feedbackFormRepository,
+            InterviewRequestRepository interviewRequestRepository
     ) {
+        this.interviewRequestRepository = interviewRequestRepository;
         this.interviewScheduleRepository = interviewScheduleRepository;
         this.feedbackResponseRepository = feedbackResponseRepository;
         this.assessmentReviewerRepository = assessmentReviewerRepository;
@@ -179,23 +182,25 @@ public class InterviewerDashboardService {
 
     private CountedList<AssessmentWaitingItem> buildAssessmentsToReview(
             Long interviewerId, ZoneId zone, LocalDateTime now, int page, int size) {
+        // Phase and "not yet reviewed by me" are filtered in SQL; reviewer counts in one grouped query.
         List<AssessmentReviewer> assignments =
-                assessmentReviewerRepository.findByReviewerIdWithSchedule(interviewerId);
-        List<AssessmentWaitingItem> all = new ArrayList<>();
-        for (AssessmentReviewer ar : assignments) {
-            InterviewSchedule s = ar.getInterviewSchedule();
-            if (s == null || s.getAssessmentPhase() == null) continue;
-            if (s.getAssessmentPhase() != AssessmentPhase.RECEIVED
-                    && s.getAssessmentPhase() != AssessmentPhase.UNDER_REVIEW) continue;
-            if (feedbackResponseRepository.existsByInterviewScheduleIdAndInterviewerId(s.getId(), interviewerId)) {
-                continue;
+                assessmentReviewerRepository.findOpenAssignmentsForReviewer(interviewerId);
+        List<AssessmentReviewer> pageRows = DashboardPaging.slice(assignments, page, size);
+        Map<Long, Integer> reviewerCounts = new HashMap<>();
+        List<Long> pageScheduleIds = pageRows.stream().map(ar -> ar.getInterviewSchedule().getId()).toList();
+        if (!pageScheduleIds.isEmpty()) {
+            for (Object[] row : assessmentReviewerRepository.countByScheduleIds(pageScheduleIds)) {
+                reviewerCounts.put((Long) row[0], ((Number) row[1]).intValue());
             }
+        }
+        List<AssessmentWaitingItem> items = new ArrayList<>();
+        for (AssessmentReviewer ar : pageRows) {
+            InterviewSchedule s = ar.getInterviewSchedule();
             Candidate c = s.getRequest() != null ? s.getRequest().getCandidate() : null;
             LocalDateTime due = s.getEndDateTime() != null ? s.getEndDateTime() : s.getStartDateTime();
             long aging = due != null ? Math.max(0, DashboardClock.localDaysBetween(due, now, zone)) : 0;
-            int reviewerCount = assessmentReviewerRepository
-                    .findByInterviewScheduleIdOrderByAssignedAtAsc(s.getId()).size();
-            all.add(new AssessmentWaitingItem(
+            int reviewerCount = reviewerCounts.getOrDefault(s.getId(), 0);
+            items.add(new AssessmentWaitingItem(
                     s.getId(),
                     c != null ? c.getId() : null,
                     resolveCandidateName(s),
@@ -206,7 +211,7 @@ public class InterviewerDashboardService {
                     reviewerCount
             ));
         }
-        return CountedList.page(all, page, size);
+        return CountedList.fromPage(items, assignments.size(), page, size);
     }
 
     private CountedList<MyPostponeItem> buildMyPostponeProposals(
@@ -329,8 +334,39 @@ public class InterviewerDashboardService {
                 .filter(Objects::nonNull)
                 .toList();
 
+        // Prep data and panel members for every interview on the page in a few batch queries
+        // (was: 3 queries per interview plus lazy panel loads).
+        List<InterviewSchedule> pageRows = DashboardPaging.slice(schedules, page, size);
+        Set<Long> candidateIds = new HashSet<>();
+        Set<Long> panelIds = new HashSet<>();
+        for (InterviewSchedule s : pageRows) {
+            InterviewRequest req = s.getRequest();
+            if (req != null && req.getCandidate() != null) candidateIds.add(req.getCandidate().getId());
+            if (req != null && req.getPanel() != null) panelIds.add(req.getPanel().getId());
+        }
+        Map<Long, List<String>> skillsByCandidate = new HashMap<>();
+        Map<Long, List<String>> domainsByCandidate = new HashMap<>();
+        Map<Long, Long> cvByCandidate = new HashMap<>();
+        if (!candidateIds.isEmpty()) {
+            for (Object[] row : candidateTechnologyRepository.findActiveTechnologyNamesByCandidateIds(candidateIds)) {
+                skillsByCandidate.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add((String) row[1]);
+            }
+            for (Object[] row : candidateDomainRepository.findDomainNamesByCandidateIds(candidateIds)) {
+                domainsByCandidate.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add((String) row[1]);
+            }
+            for (Object[] row : candidateDocumentRepository.findCvDocumentIdsByCandidateIds(candidateIds)) {
+                cvByCandidate.putIfAbsent((Long) row[0], (Long) row[1]); // newest first
+            }
+        }
+        Map<Long, List<String>> panelMemberNames = new HashMap<>();
+        if (!panelIds.isEmpty()) {
+            for (Object[] row : interviewRequestRepository.findActivePanelMemberNames(panelIds)) {
+                panelMemberNames.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add(row[1] + " " + row[2]);
+            }
+        }
+
         List<UpcomingWithPrepItem> items = new ArrayList<>();
-        for (InterviewSchedule s : DashboardPaging.slice(schedules, page, size)) {
+        for (InterviewSchedule s : pageRows) {
             InterviewRequest req = s.getRequest();
             Candidate c = req != null ? req.getCandidate() : null;
             Long candidateId = c != null ? c.getId() : null;
@@ -339,35 +375,16 @@ public class InterviewerDashboardService {
 
             List<String> interviewerNames = new ArrayList<>();
             List<String> panelMembers = new ArrayList<>();
-            if (isPanel && req.getPanel().getPanelRequests() != null) {
-                for (InterviewRequest pr : req.getPanel().getPanelRequests()) {
-                    if (pr.getAssignedInterviewer() != null) {
-                        String name = pr.getAssignedInterviewer().getFullName();
-                        interviewerNames.add(name);
-                        panelMembers.add(name);
-                    }
-                }
+            if (isPanel) {
+                interviewerNames.addAll(panelMemberNames.getOrDefault(panelId, List.of()));
+                panelMembers.addAll(panelMemberNames.getOrDefault(panelId, List.of()));
             } else if (s.getInterviewer() != null) {
                 interviewerNames.add(s.getInterviewer().getFullName());
             }
 
-            List<String> skills = List.of();
-            List<String> domains = List.of();
-            Long cvDocId = null;
-            if (candidateId != null) {
-                skills = candidateTechnologyRepository.findByCandidateIdAndIsActiveTrue(candidateId).stream()
-                        .map(ct -> ct.getTechnology() != null ? ct.getTechnology().getName() : null)
-                        .filter(Objects::nonNull)
-                        .toList();
-                domains = candidateDomainRepository.findByCandidateId(candidateId).stream()
-                        .map(cd -> cd.getDomain() != null ? cd.getDomain().getName() : null)
-                        .filter(Objects::nonNull)
-                        .toList();
-                List<CandidateDocument> cvs = candidateDocumentRepository.findCvDocumentsByCandidateId(candidateId);
-                if (!cvs.isEmpty()) {
-                    cvDocId = cvs.get(0).getId();
-                }
-            }
+            List<String> skills = candidateId != null ? skillsByCandidate.getOrDefault(candidateId, List.of()) : List.of();
+            List<String> domains = candidateId != null ? domainsByCandidate.getOrDefault(candidateId, List.of()) : List.of();
+            Long cvDocId = candidateId != null ? cvByCandidate.get(candidateId) : null;
 
             items.add(new UpcomingWithPrepItem(
                     s.getId(),
@@ -482,14 +499,16 @@ public class InterviewerDashboardService {
                         ((Number) row[1]).longValue()))
                 .toList();
 
-        List<FeedbackResponse> myFeedback = feedbackResponseRepository
-                .findByInterviewerSince(interviewerId, quarterFrom);
-        Double myMedian = medianTurnaround(myFeedback);
-        List<FeedbackResponse> teamFeedback = feedbackResponseRepository.findAllSubmittedSince(quarterFrom);
-        Double teamMedian = medianTurnaround(teamFeedback);
+        // Medians are computed by the database; only my own answers are loaded (for the recommendation mix).
+        Double myMedian = round2(feedbackResponseRepository.medianTurnaroundHoursForInterviewerSince(
+                interviewerId, quarterFrom));
+        Double teamMedian = round2(feedbackResponseRepository.medianTurnaroundHoursSince(quarterFrom));
 
-        List<RecommendationItem> recommendations = parseRecommendations(myFeedback);
-        long reschedules = postponeRequestRepository.countByRequestedById(interviewerId);
+        List<RecommendationItem> recommendations = parseRecommendations(
+                feedbackResponseRepository.findResponsesJsonByInterviewerSince(interviewerId, quarterFrom));
+        // Same window as the other trend figures: this quarter.
+        long reschedules = postponeRequestRepository
+                .countByRequestedByIdAndCreatedAtGreaterThanEqual(interviewerId, quarterFrom);
 
         return new Trends(
                 new InterviewsConducted(thisMonth, thisQuarter, byType),
@@ -499,27 +518,15 @@ public class InterviewerDashboardService {
         );
     }
 
-    private Double medianTurnaround(List<FeedbackResponse> responses) {
-        List<Double> hours = new ArrayList<>();
-        for (FeedbackResponse fr : responses) {
-            InterviewSchedule s = fr.getInterviewSchedule();
-            if (s == null || fr.getSubmittedAt() == null) continue;
-            LocalDateTime ended = s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime();
-            if (ended == null) continue;
-            double h = hoursBetween(ended, fr.getSubmittedAt());
-            if (h >= 0) hours.add(h);
-        }
-        if (hours.isEmpty()) return null;
-        hours.sort(Double::compareTo);
-        int idx = hours.size() / 2;
-        return Math.round(hours.get(idx) * 100.0) / 100.0;
+    private Double round2(Double value) {
+        return value == null ? null : Math.round(value * 100.0) / 100.0;
     }
 
-    private List<RecommendationItem> parseRecommendations(List<FeedbackResponse> responses) {
+    private List<RecommendationItem> parseRecommendations(List<JsonNode> responses) {
         Map<String, Long> counts = new LinkedHashMap<>();
         String[] keys = {"recommendation", "overallRecommendation", "hireRecommendation"};
-        for (FeedbackResponse fr : responses) {
-            JsonNode json = fr.getResponsesJson();
+        for (JsonNode answers : responses) {
+            JsonNode json = answers;
             if (json == null || !json.isObject()) continue;
             String value = null;
             for (String key : keys) {
