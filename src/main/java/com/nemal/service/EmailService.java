@@ -47,6 +47,18 @@ public class EmailService {
 
     @Async
     public void sendNotificationEmail(String toEmail, String toName, String subject, String message) {
+        sendNotificationEmail(toEmail, toName, subject, message, null, null);
+    }
+
+    @Async
+    public void sendNotificationEmail(
+            String toEmail,
+            String toName,
+            String subject,
+            String message,
+            String ctaPath,
+            String ctaLabel
+    ) {
         if (!emailEnabled) {
             return;
         }
@@ -62,7 +74,7 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
             helper.setTo(toEmail);
             helper.setSubject(safeSubject);
-            helper.setText(buildHtmlBody(toName, safeSubject, safeBody, EmailAudience.STAFF), true);
+            helper.setText(buildHtmlBody(toName, safeSubject, safeBody, EmailAudience.STAFF, ctaPath, ctaLabel), true);
             if (fromAddress != null && !fromAddress.isBlank()) {
                 helper.setFrom(fromAddress);
             }
@@ -173,6 +185,17 @@ public class EmailService {
     }
 
     private String buildHtmlBody(String toName, String subject, String message, EmailAudience audience) {
+        return buildHtmlBody(toName, subject, message, audience, null, null);
+    }
+
+    private String buildHtmlBody(
+            String toName,
+            String subject,
+            String message,
+            EmailAudience audience,
+            String ctaPath,
+            String ctaLabel
+    ) {
         String greetingName = (toName != null && !toName.isBlank()) ? toName : "there";
         ParsedMessage parsed = parseMessage(message);
 
@@ -216,12 +239,15 @@ public class EmailService {
 
         String ctaButton = "";
         if (audience == EmailAudience.STAFF && frontendUrl != null && !frontendUrl.isBlank()) {
+            String href = resolveCtaHref(ctaPath);
+            String label = (ctaLabel != null && !ctaLabel.isBlank()) ? ctaLabel : "Open Mitra Interview Scheduler";
             ctaButton = String.format(
                     "<tr><td style=\"padding:8px 32px 8px 32px;\">"
                             + "<a href=\"%s\" style=\"display:inline-block;background-color:#4f46e5;color:#ffffff;"
                             + "text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;\">"
-                            + "Open Mitra Interview Scheduler</a></td></tr>",
-                    frontendUrl
+                            + "%s</a></td></tr>",
+                    escapeHtml(href),
+                    escapeHtml(label)
             );
         }
 
@@ -349,6 +375,27 @@ public class EmailService {
             return body;
         }
         return body.replace(secret, "********");
+    }
+
+    private String resolveCtaHref(String ctaPath) {
+        String base = frontendUrl == null ? "" : frontendUrl.trim();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (ctaPath == null || ctaPath.isBlank()) {
+            return base;
+        }
+        String path = ctaPath.trim();
+        // Links in our emails must always point at our own app: an absolute URL is only kept
+        // when it is on the frontend origin, otherwise we fall back to the app home page.
+        if (path.regionMatches(true, 0, "http://", 0, 7) || path.regionMatches(true, 0, "https://", 0, 8)
+                || path.startsWith("//") || path.contains("\\")) {
+            return !base.isEmpty() && (path.equals(base) || path.startsWith(base + "/")) ? path : base;
+        }
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        return base + path;
     }
 
     private String escapeHtml(String value) {

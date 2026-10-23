@@ -1,12 +1,16 @@
 package com.nemal.repository;
 
 import com.nemal.entity.InterviewSchedule;
+import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.InterviewStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -79,4 +83,178 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
     boolean existsActiveScheduleForCandidate(
             @Param("candidateId") Long candidateId,
             @Param("interviewerId") Long interviewerId);
+
+    @Query("""
+            SELECT DISTINCT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH c.coordinatedHr
+            LEFT JOIN FETCH s.interviewer
+            LEFT JOIN FETCH r.panel p
+            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (s.interviewer.id = :interviewerId
+                   OR r.assignedInterviewer.id = :interviewerId
+                   OR EXISTS (
+                        SELECT 1 FROM InterviewRequest pr
+                        WHERE pr.panel = p AND pr.assignedInterviewer.id = :interviewerId
+                          AND pr.status <> com.nemal.enums.RequestStatus.CANCELLED
+                          AND pr.status <> com.nemal.enums.RequestStatus.REJECTED
+                   ))
+            ORDER BY s.startDateTime
+            """)
+    List<InterviewSchedule> findUpcomingForInterviewer(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    /** Scheduled interviews starting in [from, to), optionally for one coordinating HR. Paged in SQL. */
+    @Query("""
+            SELECT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH s.interviewer
+            LEFT JOIN FETCH r.panel
+            WHERE s.status = com.nemal.enums.InterviewStatus.SCHEDULED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            ORDER BY s.startDateTime ASC, s.id ASC
+            """)
+    List<InterviewSchedule> findScheduledInRangeForHr(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("hrId") Long hrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            LEFT JOIN s.request r
+            LEFT JOIN r.candidate c
+            WHERE s.status = com.nemal.enums.InterviewStatus.SCHEDULED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            """)
+    long countScheduledInRangeForHr(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("hrId") Long hrId);
+
+    /** Non-cancelled interviews starting in [from, to) per candidate department: (departmentId, count). */
+    @Query("""
+            SELECT d.id, COUNT(s) FROM InterviewSchedule s
+            JOIN s.request r
+            JOIN r.candidate c
+            JOIN c.department d
+            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            GROUP BY d.id
+            """)
+    List<Object[]> countInterviewsByDepartmentBetween(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    /**
+     * Interviews still missing feedback that ended (or were completed) before {@code cutoff}:
+     * not cancelled, not assessments. Optionally scoped to one interviewer and/or one
+     * coordinating HR, oldest first. Paged in SQL.
+     */
+    @Query("""
+            SELECT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH c.coordinatedHr
+            LEFT JOIN FETCH s.interviewer i
+            WHERE s.assessmentPhase IS NULL
+              AND s.status IN (com.nemal.enums.InterviewStatus.COMPLETED, com.nemal.enums.InterviewStatus.SCHEDULED)
+              AND COALESCE(s.completedAt, s.endDateTime) < :cutoff
+              AND NOT EXISTS (
+                    SELECT 1 FROM FeedbackResponse fr WHERE fr.interviewSchedule.id = s.id
+              )
+              AND (:interviewerId IS NULL OR i.id = :interviewerId)
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            ORDER BY COALESCE(s.completedAt, s.endDateTime) ASC, s.id ASC
+            """)
+    List<InterviewSchedule> findFeedbackOverdue(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("interviewerId") Long interviewerId,
+            @Param("hrId") Long hrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            LEFT JOIN s.request r
+            LEFT JOIN r.candidate c
+            WHERE s.assessmentPhase IS NULL
+              AND s.status IN (com.nemal.enums.InterviewStatus.COMPLETED, com.nemal.enums.InterviewStatus.SCHEDULED)
+              AND COALESCE(s.completedAt, s.endDateTime) < :cutoff
+              AND NOT EXISTS (
+                    SELECT 1 FROM FeedbackResponse fr WHERE fr.interviewSchedule.id = s.id
+              )
+              AND (:interviewerId IS NULL OR s.interviewer.id = :interviewerId)
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            """)
+    long countFeedbackOverdue(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("interviewerId") Long interviewerId,
+            @Param("hrId") Long hrId);
+
+    @Query("""
+            SELECT DISTINCT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH c.coordinatedHr
+            LEFT JOIN FETCH s.interviewer
+            WHERE s.assessmentPhase IN :phases
+              AND s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            ORDER BY s.endDateTime ASC, s.id
+            """)
+    List<InterviewSchedule> findByAssessmentPhases(
+            @Param("phases") Collection<AssessmentPhase> phases,
+            @Param("hrId") Long hrId);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            """)
+    long countScheduledBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            WHERE s.status = com.nemal.enums.InterviewStatus.COMPLETED
+              AND s.interviewer.id = :interviewerId
+              AND COALESCE(s.completedAt, s.endDateTime) >= :from
+              AND COALESCE(s.completedAt, s.endDateTime) < :to
+            """)
+    long countCompletedByInterviewerBetween(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT s.interviewType, COUNT(s) FROM InterviewSchedule s
+            WHERE s.status = com.nemal.enums.InterviewStatus.COMPLETED
+              AND s.interviewer.id = :interviewerId
+              AND COALESCE(s.completedAt, s.endDateTime) >= :from
+            GROUP BY s.interviewType
+            """)
+    List<Object[]> countCompletedByTypeForInterviewer(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from);
+
+    @Query("""
+            SELECT s.interviewer.id, CONCAT(s.interviewer.firstName, ' ', s.interviewer.lastName), COUNT(s)
+            FROM InterviewSchedule s
+            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND s.startDateTime >= :from
+              AND s.interviewer IS NOT NULL
+            GROUP BY s.interviewer.id, s.interviewer.firstName, s.interviewer.lastName
+            """)
+    List<Object[]> countInterviewsByInterviewerSince(@Param("from") LocalDateTime from);
 }

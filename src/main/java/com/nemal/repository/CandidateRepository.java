@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -96,4 +98,127 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
 
     @Query("SELECT c FROM Candidate c LEFT JOIN FETCH c.coordinatedHr LEFT JOIN FETCH c.targetDesignation WHERE c.id = :id")
     Optional<Candidate> findByIdWithCoordinatedHr(@Param("id") Long id);
+
+    @Query("""
+            SELECT c FROM Candidate c
+            LEFT JOIN FETCH c.masterStep ms
+            LEFT JOIN FETCH c.department
+            LEFT JOIN FETCH c.targetDesignation
+            LEFT JOIN FETCH c.coordinatedHr
+            WHERE c.isActive = true
+              AND ms.statusKey = :statusKey
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            ORDER BY c.updatedAt ASC
+            """)
+    List<Candidate> findActiveByStatusKey(
+            @Param("statusKey") String statusKey,
+            @Param("coordinatedHrId") Long coordinatedHrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(c) FROM Candidate c
+            JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND ms.statusKey = :statusKey
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            """)
+    long countActiveByStatusKey(
+            @Param("statusKey") String statusKey,
+            @Param("coordinatedHrId") Long coordinatedHrId);
+
+    /**
+     * Light projection for "stalled" detection: (candidateId, lastPipelineEventAt, updatedAt, createdAt)
+     * for active, non-closed candidates — no entity graphs are loaded.
+     */
+    @Query("""
+            SELECT c.id, MAX(e.createdAt), c.updatedAt, c.createdAt
+            FROM Candidate c
+            LEFT JOIN c.masterStep ms
+            LEFT JOIN CandidatePipelineStatusEvent e ON e.candidate = c
+            WHERE c.isActive = true
+              AND (ms.isClosingStep = false OR ms.isClosingStep IS NULL)
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            GROUP BY c.id, c.updatedAt, c.createdAt
+            """)
+    List<Object[]> findActiveNonClosedLastChange(@Param("coordinatedHrId") Long coordinatedHrId);
+
+    @Query("""
+            SELECT c FROM Candidate c
+            LEFT JOIN FETCH c.masterStep
+            LEFT JOIN FETCH c.department
+            LEFT JOIN FETCH c.coordinatedHr
+            WHERE c.id IN :ids
+            """)
+    List<Candidate> findByIdInWithDetails(@Param("ids") Collection<Long> ids);
+
+    /** Inactive coordinators still owning active, non-closed candidates: (hrId, firstName, lastName, count). */
+    @Query("""
+            SELECT hr.id, hr.firstName, hr.lastName, COUNT(c)
+            FROM Candidate c
+            JOIN c.coordinatedHr hr
+            LEFT JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND hr.isActive = false
+              AND (ms.isClosingStep = false OR ms.isClosingStep IS NULL)
+            GROUP BY hr.id, hr.firstName, hr.lastName
+            ORDER BY COUNT(c) DESC
+            """)
+    List<Object[]> countActiveCandidatesOfInactiveCoordinators();
+
+    /** (candidateId, createdAt, departmentName, tierName) for any candidates, including closed ones. */
+    @Query("""
+            SELECT c.id, c.createdAt, d.name, t.name
+            FROM Candidate c
+            LEFT JOIN c.department d
+            LEFT JOIN c.targetDesignation td
+            LEFT JOIN td.tier t
+            WHERE c.id IN :ids
+            """)
+    List<Object[]> findCreatedAtDepartmentAndTier(@Param("ids") Collection<Long> ids);
+
+    @Query("""
+            SELECT ms.statusKey, ms.label, ms.stepOrder, COUNT(c)
+            FROM Candidate c
+            JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            GROUP BY ms.statusKey, ms.label, ms.stepOrder
+            ORDER BY ms.stepOrder
+            """)
+    List<Object[]> countPipelineFunnel(@Param("coordinatedHrId") Long coordinatedHrId);
+
+    @Query("""
+            SELECT COUNT(c) FROM Candidate c
+            WHERE c.createdAt >= :from AND c.createdAt < :to
+            """)
+    long countCreatedBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query("""
+            SELECT c.createdBy.id, CONCAT(c.createdBy.firstName, ' ', c.createdBy.lastName), COUNT(c)
+            FROM Candidate c
+            WHERE c.createdAt >= :from AND c.createdBy IS NOT NULL
+            GROUP BY c.createdBy.id, c.createdBy.firstName, c.createdBy.lastName
+            """)
+    List<Object[]> countCreatedByUserSince(@Param("from") LocalDateTime from);
+
+    @Query("""
+            SELECT c.coordinatedHr.id, CONCAT(c.coordinatedHr.firstName, ' ', c.coordinatedHr.lastName), COUNT(c)
+            FROM Candidate c
+            WHERE c.isActive = true AND c.coordinatedHr IS NOT NULL
+            GROUP BY c.coordinatedHr.id, c.coordinatedHr.firstName, c.coordinatedHr.lastName
+            """)
+    List<Object[]> countCoordinatedByHr();
+
+    @Query("""
+            SELECT c.department.id, c.department.name,
+                   COUNT(c),
+                   SUM(CASE WHEN ms.statusKey = 'OFFER_PENDING' OR ms.statusKey = 'SELECTED' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN ms.statusKey = 'SELECTED' THEN 1 ELSE 0 END)
+            FROM Candidate c
+            JOIN c.masterStep ms
+            LEFT JOIN c.department
+            WHERE c.isActive = true AND c.department IS NOT NULL
+            GROUP BY c.department.id, c.department.name
+            """)
+    List<Object[]> departmentFunnelCounts();
 }

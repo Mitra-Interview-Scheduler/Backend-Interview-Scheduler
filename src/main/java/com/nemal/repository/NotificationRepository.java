@@ -37,4 +37,41 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.createdAt < :cutoff")
     int deleteByCreatedAtBefore(@Param("cutoff") LocalDateTime cutoff);
+
+    long countByCreatedAtAfter(LocalDateTime createdAfter);
+
+    @Query("""
+            SELECT n.type, COUNT(n)
+            FROM Notification n
+            WHERE n.createdAt >= :from
+            GROUP BY n.type
+            ORDER BY COUNT(n) DESC
+            """)
+    List<Object[]> countByTypeSince(@Param("from") LocalDateTime from);
+
+    /** Unread notification counts of one type for several related entities: (relatedEntityId, count). */
+    @Query("""
+            SELECT n.relatedEntityId, COUNT(n) FROM Notification n
+            WHERE n.recipient.id = :recipientId
+              AND n.type = :type
+              AND n.relatedEntityId IN :relatedEntityIds
+              AND n.read = false
+            GROUP BY n.relatedEntityId
+            """)
+    List<Object[]> countUnreadByRecipientTypeAndEntities(
+            @Param("recipientId") Long recipientId,
+            @Param("type") String type,
+            @Param("relatedEntityIds") java.util.Collection<Long> relatedEntityIds);
+
+    @Query("""
+            SELECT COUNT(n) FROM Notification n
+            WHERE n.recipient.id = :recipientId
+              AND n.type = :type
+              AND n.relatedEntityId = :relatedEntityId
+              AND n.read = false
+            """)
+    long countUnreadByRecipientTypeAndEntity(
+            @Param("recipientId") Long recipientId,
+            @Param("type") String type,
+            @Param("relatedEntityId") Long relatedEntityId);
 }

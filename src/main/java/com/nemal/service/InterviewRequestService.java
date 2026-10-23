@@ -471,8 +471,22 @@ public class InterviewRequestService {
 
     @Transactional(readOnly = true)
     public List<InterviewRequestDto> getRequestsByCandidate(Long candidateId) {
-        return interviewRequestRepository.findByCandidateIdWithSchedule(candidateId)
-                .stream().map(InterviewRequestDto::from).collect(Collectors.toList());
+        List<InterviewRequest> requests = interviewRequestRepository.findByCandidateIdWithSchedule(candidateId);
+        Set<Long> scheduleIds = requests.stream()
+                .map(InterviewRequest::getInterviewSchedule)
+                .filter(Objects::nonNull)
+                .map(InterviewSchedule::getId)
+                .collect(Collectors.toSet());
+        Set<Long> withFeedback = scheduleIds.isEmpty()
+                ? Set.of()
+                : new HashSet<>(feedbackResponseRepository.findScheduleIdsWithFeedback(scheduleIds));
+        return requests.stream()
+                .map(request -> {
+                    InterviewSchedule schedule = request.getInterviewSchedule();
+                    boolean submitted = schedule != null && withFeedback.contains(schedule.getId());
+                    return InterviewRequestDto.from(request, submitted);
+                })
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)

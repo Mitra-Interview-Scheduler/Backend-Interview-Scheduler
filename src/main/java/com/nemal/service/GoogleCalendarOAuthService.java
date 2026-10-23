@@ -56,10 +56,13 @@ public class GoogleCalendarOAuthService {
     public String buildAuthorizationUrl(User user, String returnTo) {
         try {
             String state = generateStateToken(user, sanitizeReturnTo(returnTo));
+            // Force consent so reconnect always re-issues tokens / resets the grant clock.
             return tokenService.buildAuthorizationFlow()
                     .newAuthorizationUrl()
                     .setRedirectUri(tokenService.getRedirectUri())
                     .setState(state)
+                    .setAccessType("offline")
+                    .setApprovalPrompt("force")
                     .build();
         } catch (Exception e) {
             throw new RuntimeException("Failed to build Google Calendar authorization URL", e);

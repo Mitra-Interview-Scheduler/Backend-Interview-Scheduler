@@ -141,7 +141,8 @@ public final class TimeZoneMapper {
                 dto.hasAssessmentFile(),
                 dto.assessmentFileName(),
                 dto.assessmentFileSize(),
-                fromUtc(dto.assessmentUploadedAt(), targetZone)
+                fromUtc(dto.assessmentUploadedAt(), targetZone),
+                dto.feedbackSubmitted()
         );
     }
 

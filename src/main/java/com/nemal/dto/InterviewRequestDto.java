@@ -48,9 +48,14 @@ public record InterviewRequestDto(
         boolean hasAssessmentFile,
         String assessmentFileName,
         Long assessmentFileSize,
-        LocalDateTime assessmentUploadedAt
+        LocalDateTime assessmentUploadedAt,
+        boolean feedbackSubmitted
 ) {
     public static InterviewRequestDto from(InterviewRequest request) {
+        return from(request, false);
+    }
+
+    public static InterviewRequestDto from(InterviewRequest request, boolean feedbackSubmitted) {
         InterviewSchedule schedule = request.getInterviewSchedule();
         return new InterviewRequestDto(
                 request.getId(),
@@ -106,7 +111,8 @@ public record InterviewRequestDto(
                 schedule != null && schedule.getAssessmentFileName() != null,
                 schedule != null ? schedule.getAssessmentFileName() : null,
                 schedule != null ? schedule.getAssessmentFileSize() : null,
-                schedule != null ? schedule.getAssessmentUploadedAt() : null
+                schedule != null ? schedule.getAssessmentUploadedAt() : null,
+                feedbackSubmitted
         );
     }
 

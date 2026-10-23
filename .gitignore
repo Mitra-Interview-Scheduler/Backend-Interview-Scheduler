@@ -39,3 +39,6 @@ deploy/railway-dryrun.env
 deploy/railway-paste.env
 src/main/resources/application.properties
 !src/main/resources/application.properties.example
+
+# Local run logs
+*.log

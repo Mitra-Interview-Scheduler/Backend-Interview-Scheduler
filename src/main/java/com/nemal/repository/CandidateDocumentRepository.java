@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -24,4 +25,23 @@ public interface CandidateDocumentRepository extends JpaRepository<CandidateDocu
             """)
     List<CandidateDocument> findProfilePictureCandidatesByCandidateIds(
             @Param("candidateIds") Collection<Long> candidateIds);
+
+    long countByCreatedAtAfter(LocalDateTime createdAt);
+
+    @Query("""
+            SELECT d FROM CandidateDocument d
+            WHERE d.candidate.id = :candidateId
+              AND UPPER(d.documentType) IN ('CV', 'RESUME')
+            ORDER BY d.updatedAt DESC
+            """)
+    List<CandidateDocument> findCvDocumentsByCandidateId(@Param("candidateId") Long candidateId);
+
+    /** CV document ids for several candidates, newest first: (candidateId, documentId). No file data loaded. */
+    @Query("""
+            SELECT d.candidate.id, d.id FROM CandidateDocument d
+            WHERE d.candidate.id IN :candidateIds
+              AND UPPER(d.documentType) IN ('CV', 'RESUME')
+            ORDER BY d.updatedAt DESC
+            """)
+    List<Object[]> findCvDocumentIdsByCandidateIds(@Param("candidateIds") Collection<Long> candidateIds);
 }
