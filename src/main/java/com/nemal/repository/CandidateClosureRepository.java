@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,4 +33,23 @@ public interface CandidateClosureRepository extends JpaRepository<CandidateClosu
             ORDER BY COUNT(c) DESC
             """)
     List<Object[]> countByCloseReasonSince(@Param("from") LocalDateTime from);
+
+    /** (candidateId, closedStatusKey) for closures since {@code from}. */
+    @Query("""
+            SELECT c.candidate.id, c.closedStatusKey
+            FROM CandidateClosure c
+            WHERE c.closedAt >= :from
+            """)
+    List<Object[]> findCandidateStatusClosedSince(@Param("from") LocalDateTime from);
+
+    /** Of the given candidates, those closed with {@code closedStatusKey} (at any time). */
+    @Query("""
+            SELECT DISTINCT c.candidate.id
+            FROM CandidateClosure c
+            WHERE c.closedStatusKey = :closedStatusKey
+              AND c.candidate.id IN :candidateIds
+            """)
+    List<Long> findCandidateIdsClosedWithStatus(
+            @Param("closedStatusKey") String closedStatusKey,
+            @Param("candidateIds") Collection<Long> candidateIds);
 }

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -126,4 +127,19 @@ public interface InterviewRequestRepository extends JpaRepository<InterviewReque
             @Param("now") LocalDateTime now,
             @Param("windowEnd") LocalDateTime windowEnd
     );
+
+    /**
+     * Current panel members for several panels: (panelId, firstName, lastName).
+     * Members whose request was cancelled or rejected are left out.
+     */
+    @Query("""
+            SELECT pr.panel.id, u.firstName, u.lastName
+            FROM InterviewRequest pr
+            JOIN pr.assignedInterviewer u
+            WHERE pr.panel.id IN :panelIds
+              AND pr.status <> com.nemal.enums.RequestStatus.CANCELLED
+              AND pr.status <> com.nemal.enums.RequestStatus.REJECTED
+            ORDER BY pr.id ASC
+            """)
+    List<Object[]> findActivePanelMemberNames(@Param("panelIds") Collection<Long> panelIds);
 }

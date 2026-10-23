@@ -2,6 +2,7 @@ package com.nemal.repository;
 
 import com.nemal.entity.Candidate;
 import com.nemal.entity.CandidateScreening;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,6 +28,19 @@ public interface CandidateScreeningRepository extends JpaRepository<CandidateScr
             ORDER BY c.appliedAt ASC NULLS LAST
             """)
     List<Candidate> findCandidatesNeedingScreening(
+            @Param("statusKeys") Collection<String> statusKeys,
+            @Param("coordinatedHrId") Long coordinatedHrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(c) FROM Candidate c
+            LEFT JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND ms.statusKey IN :statusKeys
+              AND NOT EXISTS (SELECT 1 FROM CandidateScreening cs WHERE cs.candidate.id = c.id)
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            """)
+    long countCandidatesNeedingScreening(
             @Param("statusKeys") Collection<String> statusKeys,
             @Param("coordinatedHrId") Long coordinatedHrId);
 }

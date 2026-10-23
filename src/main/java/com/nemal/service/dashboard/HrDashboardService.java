@@ -62,6 +62,7 @@ public class HrDashboardService {
     private final HRAvailabilityService hrAvailabilityService;
     private final FeedbackNudgeLogRepository feedbackNudgeLogRepository;
     private final InterviewTypeService interviewTypeService;
+    private final InterviewRequestRepository interviewRequestRepository;
 
     public HrDashboardService(
             InterviewPostponeRequestRepository postponeRequestRepository,
@@ -77,8 +78,10 @@ public class HrDashboardService {
             NotificationService notificationService,
             HRAvailabilityService hrAvailabilityService,
             FeedbackNudgeLogRepository feedbackNudgeLogRepository,
-            InterviewTypeService interviewTypeService
+            InterviewTypeService interviewTypeService,
+            InterviewRequestRepository interviewRequestRepository
     ) {
+        this.interviewRequestRepository = interviewRequestRepository;
         this.postponeRequestRepository = postponeRequestRepository;
         this.interviewScheduleRepository = interviewScheduleRepository;
         this.feedbackResponseRepository = feedbackResponseRepository;
@@ -378,35 +381,36 @@ public class HrDashboardService {
 
     private CountedList<StalledCandidateItem> buildStalledCandidates(
             Long hrId, int stalledDays, ZoneId zone, LocalDateTime now, int page, int size) {
-        List<Candidate> active = candidateRepository.findActiveNonClosed(hrId);
-        if (active.isEmpty()) {
-            return CountedList.empty();
-        }
-        List<Long> ids = active.stream().map(Candidate::getId).toList();
-        Map<Long, LocalDateTime> latest = new HashMap<>();
-        for (Object[] row : pipelineEventRepository.findLatestEventAtByCandidateIds(ids)) {
-            if (row[0] != null && row[1] != null) {
-                latest.put((Long) row[0], (LocalDateTime) row[1]);
+        // Light (id, last change) rows for every active candidate; full entities only for the page.
+        record LastChange(Long candidateId, LocalDateTime at, long days) {}
+        int threshold = Math.max(1, stalledDays);
+        List<LastChange> matched = new ArrayList<>();
+        for (Object[] row : candidateRepository.findActiveNonClosedLastChange(hrId)) {
+            LocalDateTime lastChange = row[1] != null ? (LocalDateTime) row[1]
+                    : (row[2] != null ? (LocalDateTime) row[2] : (LocalDateTime) row[3]);
+            if (lastChange == null) lastChange = now;
+            long days = DashboardClock.localDaysBetween(lastChange, now, zone);
+            if (days >= threshold) {
+                matched.add(new LastChange((Long) row[0], lastChange, days));
             }
         }
-        int threshold = Math.max(1, stalledDays);
-        List<AbstractMap.SimpleEntry<Candidate, AbstractMap.SimpleEntry<LocalDateTime, Long>>> matched = active.stream()
-                .map(c -> {
-                    LocalDateTime lastChange = latest.getOrDefault(c.getId(),
-                            c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt());
-                    if (lastChange == null) lastChange = now;
-                    long days = DashboardClock.localDaysBetween(lastChange, now, zone);
-                    return new AbstractMap.SimpleEntry<>(c, new AbstractMap.SimpleEntry<>(lastChange, days));
-                })
-                .filter(e -> e.getValue().getValue() >= threshold)
-                .sorted((a, b) -> Long.compare(b.getValue().getValue(), a.getValue().getValue()))
-                .toList();
-        List<StalledCandidateItem> items = DashboardPaging.slice(matched, page, size)
-                .stream()
-                .map(e -> {
-                    Candidate c = e.getKey();
-                    LocalDateTime lastChange = e.getValue().getKey();
-                    long days = e.getValue().getValue();
+        if (matched.isEmpty()) {
+            return CountedList.fromPage(List.of(), 0, page, size);
+        }
+        matched.sort(Comparator.comparingLong(LastChange::days).reversed()
+                .thenComparing(LastChange::candidateId));
+        List<LastChange> pageRows = DashboardPaging.slice(matched, page, size);
+        Map<Long, Candidate> pageCandidates = new HashMap<>();
+        for (Candidate c : candidateRepository.findByIdInWithDetails(
+                pageRows.stream().map(LastChange::candidateId).toList())) {
+            pageCandidates.put(c.getId(), c);
+        }
+        List<StalledCandidateItem> items = pageRows.stream()
+                .filter(r -> pageCandidates.containsKey(r.candidateId()))
+                .map(r -> {
+                    Candidate c = pageCandidates.get(r.candidateId());
+                    LocalDateTime lastChange = r.at();
+                    long days = r.days();
                     MasterStep step = c.getMasterStep();
                     return new StalledCandidateItem(
                             c.getId(),
@@ -424,40 +428,48 @@ public class HrDashboardService {
     }
 
     private AssessmentsWaiting buildAssessmentsWaiting(Long hrId, ZoneId zone, LocalDateTime now, int page, int size) {
+        // HR scope is applied in SQL; reviewer counts and missing reviews come from two batch queries.
         List<InterviewSchedule> assessments = interviewScheduleRepository.findByAssessmentPhases(
-                List.of(AssessmentPhase.AWAITING, AssessmentPhase.RECEIVED, AssessmentPhase.UNDER_REVIEW));
-        List<AssessmentWaitingItem> awaiting = new ArrayList<>();
-        List<AssessmentWaitingItem> awaitingReviewer = new ArrayList<>();
-        List<AssessmentWaitingItem> incomplete = new ArrayList<>();
+                List.of(AssessmentPhase.AWAITING, AssessmentPhase.RECEIVED, AssessmentPhase.UNDER_REVIEW), hrId);
+        List<Long> ids = assessments.stream().map(InterviewSchedule::getId).toList();
+        Map<Long, Integer> reviewerCounts = new HashMap<>();
+        Set<Long> missingReviews = new HashSet<>();
+        if (!ids.isEmpty()) {
+            for (Object[] row : assessmentReviewerRepository.countByScheduleIds(ids)) {
+                reviewerCounts.put((Long) row[0], ((Number) row[1]).intValue());
+            }
+            missingReviews.addAll(assessmentReviewerRepository.findScheduleIdsWithMissingReviews(ids));
+        }
 
+        List<InterviewSchedule> awaiting = new ArrayList<>();
+        List<InterviewSchedule> awaitingReviewer = new ArrayList<>();
+        List<InterviewSchedule> incomplete = new ArrayList<>();
         for (InterviewSchedule s : assessments) {
-            if (!matchesHrSchedule(s, hrId)) continue;
-            List<AssessmentReviewer> reviewers = assessmentReviewerRepository
-                    .findByInterviewScheduleIdOrderByAssignedAtAsc(s.getId());
-            AssessmentWaitingItem item = toAssessmentItem(s, reviewers.size(), zone, now);
+            int reviewers = reviewerCounts.getOrDefault(s.getId(), 0);
             if (s.getAssessmentPhase() == AssessmentPhase.AWAITING) {
-                awaiting.add(item);
-            } else if (s.getAssessmentPhase() == AssessmentPhase.RECEIVED && reviewers.isEmpty()) {
-                awaitingReviewer.add(item);
-            } else if (s.getAssessmentPhase() == AssessmentPhase.UNDER_REVIEW
-                    || (s.getAssessmentPhase() == AssessmentPhase.RECEIVED && !reviewers.isEmpty())) {
-                boolean anyMissing = reviewers.stream().anyMatch(r ->
-                        !feedbackResponseRepository.existsByInterviewScheduleIdAndInterviewerId(
-                                s.getId(), r.getReviewer().getId()));
-                if (anyMissing || reviewers.isEmpty()) {
-                    incomplete.add(item);
-                }
+                awaiting.add(s);
+            } else if (s.getAssessmentPhase() == AssessmentPhase.RECEIVED && reviewers == 0) {
+                awaitingReviewer.add(s);
+            } else if (reviewers == 0 || missingReviews.contains(s.getId())) {
+                // UNDER_REVIEW, or RECEIVED with reviewers, where a review is still missing
+                incomplete.add(s);
             }
         }
-        return new AssessmentsWaiting(
-                CountedList.page(awaiting, page, size),
-                CountedList.page(awaitingReviewer, page, size),
-                CountedList.page(incomplete, page, size)
-        );
+
+        // Item DTOs (and interview-type labels) only for the rows on the requested page.
+        Map<String, String> typeLabels = new HashMap<>();
+        java.util.function.Function<List<InterviewSchedule>, CountedList<AssessmentWaitingItem>> toPage = list ->
+                CountedList.fromPage(
+                        DashboardPaging.slice(list, page, size).stream()
+                                .map(s -> toAssessmentItem(s, reviewerCounts.getOrDefault(s.getId(), 0),
+                                        zone, now, typeLabels))
+                                .toList(),
+                        list.size(), page, size);
+        return new AssessmentsWaiting(toPage.apply(awaiting), toPage.apply(awaitingReviewer), toPage.apply(incomplete));
     }
 
     private AssessmentWaitingItem toAssessmentItem(
-            InterviewSchedule s, int reviewerCount, ZoneId zone, LocalDateTime now) {
+            InterviewSchedule s, int reviewerCount, ZoneId zone, LocalDateTime now, Map<String, String> typeLabels) {
         Candidate c = s.getRequest() != null ? s.getRequest().getCandidate() : null;
         LocalDateTime due = s.getEndDateTime() != null ? s.getEndDateTime() : s.getStartDateTime();
         long aging = due != null ? Math.max(0, DashboardClock.localDaysBetween(due, now, zone)) : 0;
@@ -471,7 +483,7 @@ public class HrDashboardService {
         }
         String typeCode = s.getInterviewType();
         String assessmentName = typeCode != null && !typeCode.isBlank()
-                ? interviewTypeService.labelForCode(typeCode)
+                ? typeLabels.computeIfAbsent(typeCode, interviewTypeService::labelForCode)
                 : "Assessment";
         return new AssessmentWaitingItem(
                 s.getId(),
@@ -490,9 +502,10 @@ public class HrDashboardService {
     private CountedList<OfferPendingItem> buildOffersPending(
             Long hrId, ZoneId zone, LocalDateTime now, int page, int size) {
         List<Candidate> offers = candidateRepository.findActiveByStatusKey(
-                MasterStatus.OFFER_PENDING.name(), hrId);
+                MasterStatus.OFFER_PENDING.name(), hrId, PageRequest.of(page, size));
+        long offersTotal = candidateRepository.countActiveByStatusKey(MasterStatus.OFFER_PENDING.name(), hrId);
         Map<Long, LocalDateTime> latest = latestEvents(offers);
-        List<OfferPendingItem> items = DashboardPaging.slice(offers, page, size).stream()
+        List<OfferPendingItem> items = offers.stream()
                 .map(c -> {
                     LocalDateTime entered = latest.getOrDefault(c.getId(),
                             c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt());
@@ -508,14 +521,16 @@ public class HrDashboardService {
                     );
                 })
                 .toList();
-        return CountedList.fromPage(items, offers.size(), page, size);
+        return CountedList.fromPage(items, (int) offersTotal, page, size);
     }
 
     private CountedList<ScreeningBacklogItem> buildScreeningBacklog(
             Long hrId, ZoneId zone, LocalDateTime now, int page, int size) {
+        List<String> screeningKeys = List.of(MasterStatus.NEW.name(), MasterStatus.SCREENING.name());
         List<Candidate> backlog = candidateScreeningRepository.findCandidatesNeedingScreening(
-                List.of(MasterStatus.NEW.name(), MasterStatus.SCREENING.name()), hrId);
-        List<ScreeningBacklogItem> items = DashboardPaging.slice(backlog, page, size).stream()
+                screeningKeys, hrId, PageRequest.of(page, size));
+        long backlogTotal = candidateScreeningRepository.countCandidatesNeedingScreening(screeningKeys, hrId);
+        List<ScreeningBacklogItem> items = backlog.stream()
                 .map(c -> {
                     LocalDateTime applied = c.getAppliedAt() != null ? c.getAppliedAt() : c.getCreatedAt();
                     long days = applied != null
@@ -530,35 +545,47 @@ public class HrDashboardService {
                     );
                 })
                 .toList();
-        return CountedList.fromPage(items, backlog.size(), page, size);
+        return CountedList.fromPage(items, (int) backlogTotal, page, size);
     }
 
     private CountedList<UpcomingInterviewItem> buildUpcomingInterviews(
             Long hrId, ZoneId zone, LocalDateTime now, int upcomingDays, int page, int size) {
         LocalDateTime from = DashboardClock.startOfLocalDayUtc(now, zone, 0);
         LocalDateTime to = DashboardPaging.upcomingWindowEnd(now, upcomingDays, zone);
-        List<InterviewSchedule> all = interviewScheduleRepository.findUpcomingInRange(from, to).stream()
-                .filter(s -> matchesHrSchedule(s, hrId))
-                .filter(s -> s.getStatus() == InterviewStatus.SCHEDULED)
+        // Scheduled-only, HR-scoped and paged in SQL.
+        List<InterviewSchedule> pageRows = interviewScheduleRepository.findScheduledInRangeForHr(
+                from, to, hrId, PageRequest.of(page, size));
+        long total = interviewScheduleRepository.countScheduledInRangeForHr(from, to, hrId);
+        Map<Long, List<String>> panelMembers = panelMemberNames(pageRows);
+        List<UpcomingInterviewItem> items = pageRows.stream()
+                .map(s -> toUpcoming(s, zone, panelMembers))
                 .toList();
-        List<UpcomingInterviewItem> items = DashboardPaging.slice(all, page, size).stream()
-                .map(s -> toUpcoming(s, zone))
-                .toList();
-        return CountedList.fromPage(items, all.size(), page, size);
+        return CountedList.fromPage(items, (int) total, page, size);
     }
 
-    private UpcomingInterviewItem toUpcoming(InterviewSchedule s, ZoneId zone) {
+    /** Current member names for every panel on the page, in one query. */
+    private Map<Long, List<String>> panelMemberNames(List<InterviewSchedule> schedules) {
+        Set<Long> panelIds = schedules.stream()
+                .map(s -> s.getRequest() != null && s.getRequest().getPanel() != null
+                        ? s.getRequest().getPanel().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, List<String>> names = new HashMap<>();
+        if (panelIds.isEmpty()) return names;
+        for (Object[] row : interviewRequestRepository.findActivePanelMemberNames(panelIds)) {
+            names.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add(row[1] + " " + row[2]);
+        }
+        return names;
+    }
+
+    private UpcomingInterviewItem toUpcoming(InterviewSchedule s, ZoneId zone, Map<Long, List<String>> panelMembers) {
         InterviewRequest req = s.getRequest();
         Candidate c = req != null ? req.getCandidate() : null;
         Long panelId = req != null && req.getPanel() != null ? req.getPanel().getId() : null;
         boolean isPanel = panelId != null;
         List<String> names = new ArrayList<>();
-        if (isPanel && req.getPanel().getPanelRequests() != null) {
-            for (InterviewRequest pr : req.getPanel().getPanelRequests()) {
-                if (pr.getAssignedInterviewer() != null) {
-                    names.add(pr.getAssignedInterviewer().getFullName());
-                }
-            }
+        if (isPanel) {
+            names.addAll(panelMembers.getOrDefault(panelId, List.of()));
         } else if (s.getInterviewer() != null) {
             names.add(s.getInterviewer().getFullName());
         }
@@ -592,24 +619,18 @@ public class HrDashboardService {
     private List<CapacityDay> buildInterviewerCapacity(int capacityDays, LocalDateTime now, ZoneId zone) {
         LocalDateTime from = DashboardClock.startOfLocalDayUtc(now, zone, 0);
         LocalDateTime to = DashboardClock.startOfLocalDayUtc(now, zone, Math.max(1, capacityDays));
-        List<AvailabilitySlot> slots = availabilitySlotRepository.findAllActiveSlotsForHRByDateRange(from, to);
-        Map<String, CapacityDay> map = new LinkedHashMap<>();
-        for (AvailabilitySlot slot : slots) {
-            if (slot.getStartDateTime() == null) continue;
-            String date = DashboardClock.localDate(slot.getStartDateTime(), zone).toString();
-            Department dept = slot.getInterviewer() != null ? slot.getInterviewer().getDepartment() : null;
-            Long deptId = dept != null ? dept.getId() : null;
-            String deptName = dept != null ? dept.getName() : null;
-            String key = date + "|" + (deptId != null ? deptId : "null");
-            CapacityDay existing = map.getOrDefault(key,
-                    new CapacityDay(date, deptId, deptName, 0, 0));
-            long avail = existing.availableSlots();
-            long booked = existing.bookedSlots();
-            if (slot.getStatus() == SlotStatus.AVAILABLE) avail++;
-            else if (slot.getStatus() == SlotStatus.BOOKED) booked++;
-            map.put(key, new CapacityDay(date, deptId, deptName, avail, booked));
+        // Counted per viewer-local day and department in the database (no slot entities loaded).
+        int offsetMinutes = zone.getRules().getOffset(now.toInstant(java.time.ZoneOffset.UTC)).getTotalSeconds() / 60;
+        List<CapacityDay> days = new ArrayList<>();
+        for (Object[] row : availabilitySlotRepository.countCapacityByDayAndDepartment(from, to, offsetMinutes)) {
+            days.add(new CapacityDay(
+                    row[0] != null ? row[0].toString() : null,
+                    row[1] != null ? ((Number) row[1]).longValue() : null,
+                    (String) row[2],
+                    row[3] != null ? ((Number) row[3]).longValue() : 0,
+                    row[4] != null ? ((Number) row[4]).longValue() : 0));
         }
-        return new ArrayList<>(map.values());
+        return days;
     }
 
     private List<UnfilledNeedItem> buildUnfilledNeeds(Long hrId, LocalDateTime now) {
@@ -680,38 +701,32 @@ public class HrDashboardService {
 
     private Trends buildTrends(int trendDays, LocalDateTime now) {
         LocalDateTime from = now.minusDays(Math.max(1, trendDays));
+        // One light event query (no entity graphs), shared by time-in-stage and offer metrics.
+        List<Object[]> eventRows = pipelineEventRepository.findEventRowsSince(from);
         return new Trends(
-                buildTimeInStage(from),
+                buildTimeInStage(eventRows),
                 buildTimeToSchedule(from),
                 buildCloseReasons(from),
-                buildOfferMetrics(from),
+                buildOfferMetrics(from, eventRows),
                 buildCoordinatorWorkload(from),
                 buildRescheduleRate(from, now)
         );
     }
 
-    private List<TimeInStageItem> buildTimeInStage(LocalDateTime from) {
-        List<CandidatePipelineStatusEvent> events = pipelineEventRepository.findEventsSince(from);
-        // Group durations by previous step (time spent in previous status before leaving)
+    /** Time spent in each stage before moving on. Rows: (candidateId, statusKey, label, createdAt), per candidate oldest first. */
+    private List<TimeInStageItem> buildTimeInStage(List<Object[]> eventRows) {
         Map<String, List<Double>> durations = new HashMap<>();
         Map<String, String> labels = new HashMap<>();
-        Map<Long, List<CandidatePipelineStatusEvent>> byCandidate = events.stream()
-                .filter(e -> e.getCandidate() != null)
-                .collect(Collectors.groupingBy(e -> e.getCandidate().getId()));
-
-        for (List<CandidatePipelineStatusEvent> timeline : byCandidate.values()) {
-            timeline.sort(Comparator.comparing(CandidatePipelineStatusEvent::getCreatedAt,
-                    Comparator.nullsLast(Comparator.naturalOrder())));
-            for (int i = 1; i < timeline.size(); i++) {
-                CandidatePipelineStatusEvent prev = timeline.get(i - 1);
-                CandidatePipelineStatusEvent curr = timeline.get(i);
-                if (prev.getCreatedAt() == null || curr.getCreatedAt() == null) continue;
-                MasterStep step = prev.getMasterStep();
-                if (step == null) continue;
-                double days = ChronoUnit.HOURS.between(prev.getCreatedAt(), curr.getCreatedAt()) / 24.0;
-                durations.computeIfAbsent(step.getStatusKey(), k -> new ArrayList<>()).add(days);
-                labels.put(step.getStatusKey(), step.getLabel());
+        Object[] prev = null;
+        for (Object[] row : eventRows) {
+            if (prev != null && Objects.equals(prev[0], row[0])
+                    && prev[1] != null && prev[3] != null && row[3] != null) {
+                String key = (String) prev[1];
+                double days = ChronoUnit.HOURS.between((LocalDateTime) prev[3], (LocalDateTime) row[3]) / 24.0;
+                durations.computeIfAbsent(key, k -> new ArrayList<>()).add(days);
+                labels.put(key, (String) prev[2]);
             }
+            prev = row;
         }
         List<TimeInStageItem> result = new ArrayList<>();
         for (Map.Entry<String, List<Double>> e : durations.entrySet()) {
@@ -728,38 +743,33 @@ public class HrDashboardService {
         return result;
     }
 
+    /**
+     * Hours from a candidate's creation to the first time they were ever scheduled, for candidates
+     * first scheduled inside the window. Closed and inactive candidates are included so the figure
+     * is not skewed towards the ones still in the pipeline.
+     */
     private TimeToSchedule buildTimeToSchedule(LocalDateTime from) {
-        // Approximate: hours from candidate createdAt to first SCHEDULED interview start
-        List<Candidate> active = candidateRepository.findActiveNonClosed(null);
+        Map<Long, LocalDateTime> firstSchedule = new HashMap<>();
+        for (Object[] row : pipelineEventRepository.findFirstEntryIntoStatusSince(
+                MasterStatus.INTERVIEW_SCHEDULES.name(), from)) {
+            if (row[0] != null && row[1] != null) {
+                firstSchedule.put((Long) row[0], (LocalDateTime) row[1]);
+            }
+        }
         List<Double> overall = new ArrayList<>();
         Map<String, List<Double>> byDept = new HashMap<>();
         Map<String, List<Double>> byTier = new HashMap<>();
-        for (Candidate c : active) {
-            if (c.getCreatedAt() == null || c.getCreatedAt().isBefore(from)) continue;
-            // skip heavy per-candidate queries; use appliedAt -> first event INTERVIEW_SCHEDULES if present
-        }
-        List<CandidatePipelineStatusEvent> events = pipelineEventRepository.findEventsSince(from);
-        Map<Long, LocalDateTime> firstSchedule = new HashMap<>();
-        for (CandidatePipelineStatusEvent e : events) {
-            if (e.getMasterStep() == null || e.getCandidate() == null) continue;
-            if (MasterStatus.INTERVIEW_SCHEDULES.name().equals(e.getMasterStep().getStatusKey())
-                    || "INTERVIEW_SCHEDULES".equals(e.getMasterStep().getStatusKey())) {
-                firstSchedule.putIfAbsent(e.getCandidate().getId(), e.getCreatedAt());
+        for (List<Long> chunk : chunks(new ArrayList<>(firstSchedule.keySet()), 1000)) {
+            for (Object[] row : candidateRepository.findCreatedAtDepartmentAndTier(chunk)) {
+                LocalDateTime created = (LocalDateTime) row[1];
+                LocalDateTime scheduled = firstSchedule.get((Long) row[0]);
+                if (created == null || scheduled == null) continue;
+                double hours = hoursBetween(created, scheduled);
+                if (hours < 0) continue;
+                overall.add(hours);
+                byDept.computeIfAbsent(row[2] != null ? (String) row[2] : "Unknown", k -> new ArrayList<>()).add(hours);
+                byTier.computeIfAbsent(row[3] != null ? (String) row[3] : "Unknown", k -> new ArrayList<>()).add(hours);
             }
-        }
-        Map<Long, Candidate> candMap = active.stream()
-                .collect(Collectors.toMap(Candidate::getId, c -> c, (a, b) -> a));
-        for (Map.Entry<Long, LocalDateTime> e : firstSchedule.entrySet()) {
-            Candidate c = candMap.get(e.getKey());
-            if (c == null || c.getCreatedAt() == null || e.getValue() == null) continue;
-            double hours = hoursBetween(c.getCreatedAt(), e.getValue());
-            if (hours < 0) continue;
-            overall.add(hours);
-            String dept = c.getDepartment() != null ? c.getDepartment().getName() : "Unknown";
-            byDept.computeIfAbsent(dept, k -> new ArrayList<>()).add(hours);
-            String tier = c.getTargetDesignation() != null && c.getTargetDesignation().getTier() != null
-                    ? c.getTargetDesignation().getTier().getName() : "Unknown";
-            byTier.computeIfAbsent(tier, k -> new ArrayList<>()).add(hours);
         }
         return new TimeToSchedule(
                 overall.isEmpty() ? null : percentile(overall.stream().sorted().toList(), 0.5),
@@ -787,33 +797,46 @@ public class HrDashboardService {
                 .toList();
     }
 
-    private OfferMetrics buildOfferMetrics(LocalDateTime from) {
-        List<CandidateClosure> closures = candidateClosureRepository.findByClosedAtAfter(from);
-        long offersMade = closures.stream()
-                .filter(c -> c.getClosedStatusKey() != null
-                        && (c.getClosedStatusKey().contains("OFFER")
-                        || MasterStatus.SELECTED.name().equals(c.getClosedStatusKey())
-                        || MasterStatus.OFFER_PENDING.name().equals(c.getClosedStatusKey())))
-                .count();
-        // Also count candidates currently/ever in offer via pipeline events
-        long offerEvents = pipelineEventRepository.findEventsSince(from).stream()
-                .filter(e -> e.getMasterStep() != null
-                        && MasterStatus.OFFER_PENDING.name().equals(e.getMasterStep().getStatusKey()))
-                .map(e -> e.getCandidate() != null ? e.getCandidate().getId() : null)
-                .filter(Objects::nonNull)
-                .distinct()
-                .count();
-        offersMade = Math.max(offersMade, offerEvents);
+    /**
+     * Offer acceptance compares like with like: the cohort is every candidate who got an offer in the
+     * window (entered OFFER_PENDING, or was closed with an offer/selected status); accepted is the
+     * part of that same cohort that was selected. The rate can therefore never exceed 100%.
+     */
+    private OfferMetrics buildOfferMetrics(LocalDateTime from, List<Object[]> eventRows) {
+        Set<Long> offered = new HashSet<>();
+        for (Object[] row : eventRows) {
+            if (row[0] != null && MasterStatus.OFFER_PENDING.name().equals(row[1])) {
+                offered.add((Long) row[0]);
+            }
+        }
+        for (Object[] row : candidateClosureRepository.findCandidateStatusClosedSince(from)) {
+            String key = (String) row[1];
+            if (row[0] != null && key != null
+                    && (key.contains("OFFER") || MasterStatus.SELECTED.name().equals(key))) {
+                offered.add((Long) row[0]);
+            }
+        }
+        if (offered.isEmpty()) {
+            return new OfferMetrics(0.0, null, 0, 0);
+        }
+        Set<Long> accepted = new HashSet<>();
+        for (List<Long> chunk : chunks(new ArrayList<>(offered), 1000)) {
+            accepted.addAll(pipelineEventRepository.findCandidateIdsThatEnteredStatus(
+                    MasterStatus.SELECTED.name(), chunk));
+            accepted.addAll(candidateClosureRepository.findCandidateIdsClosedWithStatus(
+                    MasterStatus.SELECTED.name(), chunk));
+        }
+        accepted.retainAll(offered);
+        double rate = (double) accepted.size() / offered.size();
+        return new OfferMetrics(rate, null, offered.size(), accepted.size());
+    }
 
-        long accepted = closures.stream()
-                .filter(c -> MasterStatus.SELECTED.name().equals(c.getClosedStatusKey()))
-                .count();
-        long activeSelected = candidateRepository
-                .findActiveByStatusKey(MasterStatus.SELECTED.name(), null).size();
-        long offersAccepted = accepted + activeSelected;
-
-        double rate = offersMade > 0 ? (double) offersAccepted / offersMade : 0.0;
-        return new OfferMetrics(rate, null, offersMade, offersAccepted);
+    private static <T> List<List<T>> chunks(List<T> list, int size) {
+        List<List<T>> out = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size) {
+            out.add(list.subList(i, Math.min(list.size(), i + size)));
+        }
+        return out;
     }
 
     private List<CoordinatorWorkloadItem> buildCoordinatorWorkload(LocalDateTime from) {

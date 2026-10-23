@@ -126,6 +126,54 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
+    /** Scheduled interviews starting in [from, to), optionally for one coordinating HR. Paged in SQL. */
+    @Query("""
+            SELECT s FROM InterviewSchedule s
+            LEFT JOIN FETCH s.request r
+            LEFT JOIN FETCH r.candidate c
+            LEFT JOIN FETCH s.interviewer
+            LEFT JOIN FETCH r.panel
+            WHERE s.status = com.nemal.enums.InterviewStatus.SCHEDULED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            ORDER BY s.startDateTime ASC, s.id ASC
+            """)
+    List<InterviewSchedule> findScheduledInRangeForHr(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("hrId") Long hrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            LEFT JOIN s.request r
+            LEFT JOIN r.candidate c
+            WHERE s.status = com.nemal.enums.InterviewStatus.SCHEDULED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            """)
+    long countScheduledInRangeForHr(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("hrId") Long hrId);
+
+    /** Non-cancelled interviews starting in [from, to) per candidate department: (departmentId, count). */
+    @Query("""
+            SELECT d.id, COUNT(s) FROM InterviewSchedule s
+            JOIN s.request r
+            JOIN r.candidate c
+            JOIN c.department d
+            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND s.startDateTime >= :from
+              AND s.startDateTime < :to
+            GROUP BY d.id
+            """)
+    List<Object[]> countInterviewsByDepartmentBetween(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
     /**
      * Interviews still missing feedback that ended (or were completed) before {@code cutoff}:
      * not cancelled, not assessments. Optionally scoped to one interviewer and/or one
@@ -179,10 +227,12 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
             LEFT JOIN FETCH s.interviewer
             WHERE s.assessmentPhase IN :phases
               AND s.status <> com.nemal.enums.InterviewStatus.CANCELLED
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
             ORDER BY s.endDateTime ASC, s.id
             """)
     List<InterviewSchedule> findByAssessmentPhases(
-            @Param("phases") Collection<AssessmentPhase> phases);
+            @Param("phases") Collection<AssessmentPhase> phases,
+            @Param("hrId") Long hrId);
 
     @Query("""
             SELECT COUNT(s) FROM InterviewSchedule s

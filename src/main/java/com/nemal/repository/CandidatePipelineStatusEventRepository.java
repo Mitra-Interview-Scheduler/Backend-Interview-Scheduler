@@ -42,6 +42,47 @@ public interface CandidatePipelineStatusEventRepository extends JpaRepository<Ca
             """)
     List<CandidatePipelineStatusEvent> findEventsSince(@Param("from") LocalDateTime from);
 
+    /**
+     * Light projection of events since {@code from}: (candidateId, statusKey, stepLabel, createdAt),
+     * ordered per candidate oldest first. No candidate/step entity graphs are loaded.
+     */
+    @Query("""
+            SELECT e.candidate.id, ms.statusKey, ms.label, e.createdAt
+            FROM CandidatePipelineStatusEvent e
+            JOIN e.masterStep ms
+            WHERE e.createdAt >= :from
+            ORDER BY e.candidate.id ASC, e.createdAt ASC
+            """)
+    List<Object[]> findEventRowsSince(@Param("from") LocalDateTime from);
+
+    /**
+     * First time each candidate entered {@code statusKey}, only for candidates whose first entry
+     * happened on/after {@code from}: (candidateId, firstAt).
+     */
+    @Query("""
+            SELECT e.candidate.id, MIN(e.createdAt)
+            FROM CandidatePipelineStatusEvent e
+            JOIN e.masterStep ms
+            WHERE ms.statusKey = :statusKey
+            GROUP BY e.candidate.id
+            HAVING MIN(e.createdAt) >= :from
+            """)
+    List<Object[]> findFirstEntryIntoStatusSince(
+            @Param("statusKey") String statusKey,
+            @Param("from") LocalDateTime from);
+
+    /** Of the given candidates, those that ever entered {@code statusKey}. */
+    @Query("""
+            SELECT DISTINCT e.candidate.id
+            FROM CandidatePipelineStatusEvent e
+            JOIN e.masterStep ms
+            WHERE ms.statusKey = :statusKey
+              AND e.candidate.id IN :candidateIds
+            """)
+    List<Long> findCandidateIdsThatEnteredStatus(
+            @Param("statusKey") String statusKey,
+            @Param("candidateIds") Collection<Long> candidateIds);
+
     @Query("""
             SELECT e.candidate.id, MAX(e.createdAt)
             FROM CandidatePipelineStatusEvent e

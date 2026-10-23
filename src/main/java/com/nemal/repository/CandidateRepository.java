@@ -127,7 +127,69 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             """)
     List<Candidate> findActiveByStatusKey(
             @Param("statusKey") String statusKey,
+            @Param("coordinatedHrId") Long coordinatedHrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(c) FROM Candidate c
+            JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND ms.statusKey = :statusKey
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            """)
+    long countActiveByStatusKey(
+            @Param("statusKey") String statusKey,
             @Param("coordinatedHrId") Long coordinatedHrId);
+
+    /**
+     * Light projection for "stalled" detection: (candidateId, lastPipelineEventAt, updatedAt, createdAt)
+     * for active, non-closed candidates — no entity graphs are loaded.
+     */
+    @Query("""
+            SELECT c.id, MAX(e.createdAt), c.updatedAt, c.createdAt
+            FROM Candidate c
+            LEFT JOIN c.masterStep ms
+            LEFT JOIN CandidatePipelineStatusEvent e ON e.candidate = c
+            WHERE c.isActive = true
+              AND (ms.isClosingStep = false OR ms.isClosingStep IS NULL)
+              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
+            GROUP BY c.id, c.updatedAt, c.createdAt
+            """)
+    List<Object[]> findActiveNonClosedLastChange(@Param("coordinatedHrId") Long coordinatedHrId);
+
+    @Query("""
+            SELECT c FROM Candidate c
+            LEFT JOIN FETCH c.masterStep
+            LEFT JOIN FETCH c.department
+            LEFT JOIN FETCH c.coordinatedHr
+            WHERE c.id IN :ids
+            """)
+    List<Candidate> findByIdInWithDetails(@Param("ids") Collection<Long> ids);
+
+    /** Inactive coordinators still owning active, non-closed candidates: (hrId, firstName, lastName, count). */
+    @Query("""
+            SELECT hr.id, hr.firstName, hr.lastName, COUNT(c)
+            FROM Candidate c
+            JOIN c.coordinatedHr hr
+            LEFT JOIN c.masterStep ms
+            WHERE c.isActive = true
+              AND hr.isActive = false
+              AND (ms.isClosingStep = false OR ms.isClosingStep IS NULL)
+            GROUP BY hr.id, hr.firstName, hr.lastName
+            ORDER BY COUNT(c) DESC
+            """)
+    List<Object[]> countActiveCandidatesOfInactiveCoordinators();
+
+    /** (candidateId, createdAt, departmentName, tierName) for any candidates, including closed ones. */
+    @Query("""
+            SELECT c.id, c.createdAt, d.name, t.name
+            FROM Candidate c
+            LEFT JOIN c.department d
+            LEFT JOIN c.targetDesignation td
+            LEFT JOIN td.tier t
+            WHERE c.id IN :ids
+            """)
+    List<Object[]> findCreatedAtDepartmentAndTier(@Param("ids") Collection<Long> ids);
 
     @Query("""
             SELECT ms.statusKey, ms.label, ms.stepOrder, COUNT(c)

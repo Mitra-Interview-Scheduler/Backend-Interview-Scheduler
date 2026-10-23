@@ -1,5 +1,6 @@
 package com.nemal.repository;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.nemal.entity.FeedbackResponse;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -97,4 +98,62 @@ public interface FeedbackResponseRepository extends JpaRepository<FeedbackRespon
             WHERE fr.submittedAt >= :from
             """)
     List<FeedbackResponse> findAllSubmittedSince(@Param("from") LocalDateTime from);
+
+    /** Median hours from interview end to feedback submission, all interviewers, since {@code from}. */
+    @Query(value = """
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY EXTRACT(EPOCH FROM (fr.submitted_at - COALESCE(s.completed_at, s.end_date_time))) / 3600.0)
+            FROM feedback_responses fr
+            JOIN interview_schedules s ON s.id = fr.interview_schedule_id
+            WHERE fr.submitted_at >= :from
+              AND COALESCE(s.completed_at, s.end_date_time) IS NOT NULL
+              AND fr.submitted_at >= COALESCE(s.completed_at, s.end_date_time)
+            """, nativeQuery = true)
+    Double medianTurnaroundHoursSince(@Param("from") LocalDateTime from);
+
+    /** Median turnaround hours for one interviewer since {@code from}. */
+    @Query(value = """
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY EXTRACT(EPOCH FROM (fr.submitted_at - COALESCE(s.completed_at, s.end_date_time))) / 3600.0)
+            FROM feedback_responses fr
+            JOIN interview_schedules s ON s.id = fr.interview_schedule_id
+            WHERE fr.submitted_at >= :from
+              AND fr.interviewer_id = :interviewerId
+              AND COALESCE(s.completed_at, s.end_date_time) IS NOT NULL
+              AND fr.submitted_at >= COALESCE(s.completed_at, s.end_date_time)
+            """, nativeQuery = true)
+    Double medianTurnaroundHoursForInterviewerSince(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from);
+
+    /** Average turnaround hours, all interviewers, since {@code from}. */
+    @Query(value = """
+            SELECT AVG(EXTRACT(EPOCH FROM (fr.submitted_at - COALESCE(s.completed_at, s.end_date_time))) / 3600.0)
+            FROM feedback_responses fr
+            JOIN interview_schedules s ON s.id = fr.interview_schedule_id
+            WHERE fr.submitted_at >= :from
+              AND COALESCE(s.completed_at, s.end_date_time) IS NOT NULL
+              AND fr.submitted_at >= COALESCE(s.completed_at, s.end_date_time)
+            """, nativeQuery = true)
+    Double averageTurnaroundHoursSince(@Param("from") LocalDateTime from);
+
+    /** One interviewer's submitted answers since {@code from} (for the recommendation mix). */
+    @Query("""
+            SELECT fr.responsesJson FROM FeedbackResponse fr
+            WHERE fr.interviewer.id = :interviewerId
+              AND fr.submittedAt >= :from
+            """)
+    List<JsonNode> findResponsesJsonByInterviewerSince(
+            @Param("interviewerId") Long interviewerId,
+            @Param("from") LocalDateTime from);
+
+    /** Panel feedback answers since {@code from}: (panelId, responsesJson). */
+    @Query("""
+            SELECT p.id, fr.responsesJson FROM FeedbackResponse fr
+            JOIN fr.interviewSchedule s
+            JOIN s.request r
+            JOIN r.panel p
+            WHERE fr.submittedAt >= :from
+            """)
+    List<Object[]> findPanelResponsesJsonSince(@Param("from") LocalDateTime from);
 }

@@ -2,6 +2,7 @@ package com.nemal.repository;
 
 import com.nemal.entity.User;
 import com.nemal.enums.Role;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,6 +52,21 @@ public interface UserRepository extends JpaRepository<User, Long> {
             ORDER BY u.createdAt DESC
             """)
     List<User> findCreatedSince(@Param("from") LocalDateTime from);
+
+    @Query("""
+            SELECT u FROM User u
+            WHERE u.createdAt >= :from
+            ORDER BY u.createdAt DESC
+            """)
+    List<User> findCreatedSince(@Param("from") LocalDateTime from, Pageable pageable);
+
+    /** User counts per role and active flag in one query: (role, isActive, count). */
+    @Query("""
+            SELECT r, u.isActive, COUNT(u) FROM User u
+            JOIN u.roles r
+            GROUP BY r, u.isActive
+            """)
+    List<Object[]> countByRoleAndActiveGrouped();
 
     @Query("""
             SELECT u FROM User u

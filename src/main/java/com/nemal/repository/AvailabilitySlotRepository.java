@@ -277,25 +277,31 @@ public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySl
             String recurrenceGroupId,
             LocalDateTime startDateTime);
 
-    @Query("""
-            SELECT FUNCTION('DATE', s.startDateTime),
-                   i.department.id,
-                   i.department.name,
-                   SUM(CASE WHEN s.status = com.nemal.enums.SlotStatus.AVAILABLE THEN 1 ELSE 0 END),
-                   SUM(CASE WHEN s.status = com.nemal.enums.SlotStatus.BOOKED THEN 1 ELSE 0 END)
-            FROM AvailabilitySlot s
-            JOIN s.interviewer i
-            LEFT JOIN i.department
-            WHERE s.isActive = true
-              AND s.startDateTime >= :from
-              AND s.startDateTime < :to
-              AND (s.status = com.nemal.enums.SlotStatus.AVAILABLE OR s.status = com.nemal.enums.SlotStatus.BOOKED)
-            GROUP BY FUNCTION('DATE', s.startDateTime), i.department.id, i.department.name
-            ORDER BY FUNCTION('DATE', s.startDateTime)
-            """)
+    /**
+     * Available/booked slot counts per local day and interviewer department:
+     * (localDate, departmentId, departmentName, available, booked). Times are stored in UTC;
+     * {@code offsetMinutes} shifts them to the viewer's timezone before taking the date.
+     */
+    @Query(value = """
+            SELECT CAST(s.start_date_time + (:offsetMinutes * INTERVAL '1 minute') AS date) AS local_day,
+                   u.department_id,
+                   d.name,
+                   SUM(CASE WHEN s.status = 'AVAILABLE' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN s.status = 'BOOKED' THEN 1 ELSE 0 END)
+            FROM availability_slots s
+            JOIN users u ON u.id = s.interviewer_id
+            LEFT JOIN departments d ON d.id = u.department_id
+            WHERE s.is_active = true
+              AND s.status IN ('AVAILABLE', 'BOOKED')
+              AND s.start_date_time >= :from
+              AND s.start_date_time < :to
+            GROUP BY local_day, u.department_id, d.name
+            ORDER BY local_day, d.name
+            """, nativeQuery = true)
     List<Object[]> countCapacityByDayAndDepartment(
             @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to);
+            @Param("to") LocalDateTime to,
+            @Param("offsetMinutes") int offsetMinutes);
 
     @Query("""
             SELECT COUNT(s) FROM AvailabilitySlot s
