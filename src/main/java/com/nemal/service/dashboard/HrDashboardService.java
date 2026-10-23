@@ -23,6 +23,8 @@ import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -326,13 +328,10 @@ public class HrDashboardService {
     private CountedList<FeedbackOverdueItem> buildFeedbackOverdue(
             Long hrId, int feedbackOverdueHours, ZoneId zone, LocalDateTime now, int page, int size) {
         LocalDateTime cutoff = now.minusHours(Math.max(1, feedbackOverdueHours));
-        List<InterviewSchedule> overdueAll = interviewScheduleRepository.findFeedbackOverdue(cutoff).stream()
-                .sorted(Comparator.comparing(
-                        (InterviewSchedule s) -> s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime(),
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .filter(s -> matchesHrSchedule(s, hrId))
-                .toList();
-        List<InterviewSchedule> overdue = DashboardPaging.slice(overdueAll, page, size);
+        // Filtered to the HR's candidates, ordered and paged in the database.
+        List<InterviewSchedule> overdue = interviewScheduleRepository.findFeedbackOverdue(
+                cutoff, null, hrId, PageRequest.of(page, size));
+        long overdueTotal = interviewScheduleRepository.countFeedbackOverdue(cutoff, null, hrId);
 
         List<Long> scheduleIds = overdue.stream().map(InterviewSchedule::getId).toList();
         Map<Long, Long> nudgeCounts = new HashMap<>();
@@ -374,7 +373,7 @@ public class HrDashboardService {
                     );
                 })
                 .toList();
-        return CountedList.fromPage(items, overdueAll.size(), page, size);
+        return CountedList.fromPage(items, (int) overdueTotal, page, size);
     }
 
     private CountedList<StalledCandidateItem> buildStalledCandidates(

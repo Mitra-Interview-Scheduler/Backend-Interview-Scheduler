@@ -50,6 +50,17 @@ public interface FeedbackResponseRepository extends JpaRepository<FeedbackRespon
             """)
     List<FeedbackResponse> findByPanelIdOrderBySubmittedAtDesc(@Param("panelId") Long panelId);
 
+    /** Panel feedback for several panels at once: (panelId, response) pairs, newest first. */
+    @Query("""
+            SELECT r.panel.id, fr FROM FeedbackResponse fr
+            JOIN fr.interviewSchedule s
+            JOIN s.request r
+            JOIN FETCH fr.interviewer
+            WHERE r.panel.id IN :panelIds
+            ORDER BY fr.submittedAt DESC
+            """)
+    List<Object[]> findByPanelIdsOrderBySubmittedAtDesc(@Param("panelIds") Collection<Long> panelIds);
+
     List<FeedbackResponse> findByInterviewerIdOrderBySubmittedAtDesc(Long interviewerId);
 
     @Query("""

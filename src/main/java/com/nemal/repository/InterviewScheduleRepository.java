@@ -3,6 +3,7 @@ package com.nemal.repository;
 import com.nemal.entity.InterviewSchedule;
 import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.InterviewStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -125,23 +126,50 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
+    /**
+     * Interviews still missing feedback that ended (or were completed) before {@code cutoff}:
+     * not cancelled, not assessments. Optionally scoped to one interviewer and/or one
+     * coordinating HR, oldest first. Paged in SQL.
+     */
     @Query("""
-            SELECT DISTINCT s FROM InterviewSchedule s
+            SELECT s FROM InterviewSchedule s
             LEFT JOIN FETCH s.request r
             LEFT JOIN FETCH r.candidate c
             LEFT JOIN FETCH c.coordinatedHr
             LEFT JOIN FETCH s.interviewer i
             WHERE s.assessmentPhase IS NULL
-              AND (
-                    s.status = com.nemal.enums.InterviewStatus.COMPLETED
-                 OR (s.status = com.nemal.enums.InterviewStatus.SCHEDULED AND s.endDateTime < :cutoff)
-              )
+              AND s.status IN (com.nemal.enums.InterviewStatus.COMPLETED, com.nemal.enums.InterviewStatus.SCHEDULED)
+              AND COALESCE(s.completedAt, s.endDateTime) < :cutoff
               AND NOT EXISTS (
                     SELECT 1 FROM FeedbackResponse fr WHERE fr.interviewSchedule.id = s.id
               )
-            ORDER BY s.id
+              AND (:interviewerId IS NULL OR i.id = :interviewerId)
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            ORDER BY COALESCE(s.completedAt, s.endDateTime) ASC, s.id ASC
             """)
-    List<InterviewSchedule> findFeedbackOverdue(@Param("cutoff") LocalDateTime cutoff);
+    List<InterviewSchedule> findFeedbackOverdue(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("interviewerId") Long interviewerId,
+            @Param("hrId") Long hrId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(s) FROM InterviewSchedule s
+            LEFT JOIN s.request r
+            LEFT JOIN r.candidate c
+            WHERE s.assessmentPhase IS NULL
+              AND s.status IN (com.nemal.enums.InterviewStatus.COMPLETED, com.nemal.enums.InterviewStatus.SCHEDULED)
+              AND COALESCE(s.completedAt, s.endDateTime) < :cutoff
+              AND NOT EXISTS (
+                    SELECT 1 FROM FeedbackResponse fr WHERE fr.interviewSchedule.id = s.id
+              )
+              AND (:interviewerId IS NULL OR s.interviewer.id = :interviewerId)
+              AND (:hrId IS NULL OR c.coordinatedHr.id = :hrId)
+            """)
+    long countFeedbackOverdue(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("interviewerId") Long interviewerId,
+            @Param("hrId") Long hrId);
 
     @Query("""
             SELECT DISTINCT s FROM InterviewSchedule s

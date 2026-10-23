@@ -9,8 +9,13 @@ public record InterviewerDashboardResponse(
         Trends trends,
         LocalDateTime generatedAt
 ) {
+    /**
+     * @param feedbackOverdueCount all of this interviewer's interviews more than 24h past without
+     *                             feedback (not just the ones in the {@code feedbackDue} preview)
+     */
     public record ActionQueue(
             CountedList<FeedbackDueItem> feedbackDue,
+            long feedbackOverdueCount,
             CountedList<AssessmentWaitingItem> assessmentsToReview,
             CountedList<MyPostponeItem> myPostponeProposals,
             CountedList<PanelFeedbackSharedItem> panelFeedbackShared

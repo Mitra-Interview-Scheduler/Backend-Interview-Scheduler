@@ -14,6 +14,8 @@ import com.nemal.enums.Role;
 import com.nemal.repository.*;
 import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,6 +84,8 @@ public class InterviewerDashboardService {
 
         ActionQueue actionQueue = new ActionQueue(
                 buildFeedbackDue(interviewerId, zone, now, 0, preview),
+                interviewScheduleRepository.countFeedbackOverdue(
+                        now.minusHours(DashboardPaging.DEFAULT_FEEDBACK_OVERDUE_HOURS), interviewerId, null),
                 buildAssessmentsToReview(interviewerId, zone, now, 0, preview),
                 buildMyPostponeProposals(interviewerId, zone, 0, preview),
                 CountedList.empty()
@@ -132,34 +136,33 @@ public class InterviewerDashboardService {
 
     private CountedList<FeedbackDueItem> buildFeedbackDue(
             Long interviewerId, ZoneId zone, LocalDateTime now, int page, int size) {
+        // Feedback becomes "due" an hour after the interview; only this interviewer's, paged in SQL.
         LocalDateTime cutoff = now.minusHours(1);
-        List<InterviewSchedule> due = interviewScheduleRepository.findFeedbackOverdue(cutoff).stream()
-                .sorted(Comparator.comparing(
-                        (InterviewSchedule s) -> s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime(),
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .filter(s -> s.getInterviewer() != null && interviewerId.equals(s.getInterviewer().getId()))
-                .filter(s -> s.getAssessmentPhase() == null)
-                .toList();
-        List<FeedbackDueItem> items = DashboardPaging.slice(due, page, size).stream()
+        List<InterviewSchedule> due = interviewScheduleRepository.findFeedbackOverdue(
+                cutoff, interviewerId, null, PageRequest.of(page, size));
+        long dueTotal = interviewScheduleRepository.countFeedbackOverdue(cutoff, interviewerId, null);
+        // One form lookup per distinct (department, designation, type) on the page, not per item.
+        Map<String, String> formNames = new HashMap<>();
+        List<FeedbackDueItem> items = due.stream()
                 .map(s -> {
                     LocalDateTime ended = s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime();
-                    String formName = null;
-                    try {
-                        Long deptId = s.getRequest() != null && s.getRequest().getCandidate() != null
-                                && s.getRequest().getCandidate().getDepartment() != null
-                                ? s.getRequest().getCandidate().getDepartment().getId() : null;
-                        Long desigId = s.getRequest() != null && s.getRequest().getCandidate() != null
-                                && s.getRequest().getCandidate().getTargetDesignation() != null
-                                ? s.getRequest().getCandidate().getTargetDesignation().getId() : null;
-                        List<FeedbackForm> forms = feedbackFormRepository
-                                .findActiveFormsByDepartmentDesignationAndInterviewType(
-                                        deptId, desigId, s.getInterviewType());
-                        if (!forms.isEmpty()) {
-                            formName = forms.get(0).getName();
+                    Long deptId = s.getRequest() != null && s.getRequest().getCandidate() != null
+                            && s.getRequest().getCandidate().getDepartment() != null
+                            ? s.getRequest().getCandidate().getDepartment().getId() : null;
+                    Long desigId = s.getRequest() != null && s.getRequest().getCandidate() != null
+                            && s.getRequest().getCandidate().getTargetDesignation() != null
+                            ? s.getRequest().getCandidate().getTargetDesignation().getId() : null;
+                    String formKey = deptId + "|" + desigId + "|" + s.getInterviewType();
+                    String formName = formNames.computeIfAbsent(formKey, k -> {
+                        try {
+                            List<FeedbackForm> forms = feedbackFormRepository
+                                    .findActiveFormsByDepartmentDesignationAndInterviewType(
+                                            deptId, desigId, s.getInterviewType());
+                            return forms.isEmpty() ? null : forms.get(0).getName();
+                        } catch (Exception ignored) {
+                            return null; // best-effort
                         }
-                    } catch (Exception ignored) {
-                        // best-effort
-                    }
+                    });
                     return new FeedbackDueItem(
                             s.getId(),
                             resolveCandidateName(s),
@@ -171,7 +174,7 @@ public class InterviewerDashboardService {
                     );
                 })
                 .toList();
-        return CountedList.fromPage(items, due.size(), page, size);
+        return CountedList.fromPage(items, (int) dueTotal, page, size);
     }
 
     private CountedList<AssessmentWaitingItem> buildAssessmentsToReview(
@@ -245,43 +248,61 @@ public class InterviewerDashboardService {
                 mySchedulesByPanel.put(panelId, s);
             }
         }
-        List<InterviewSchedule> overdue = interviewScheduleRepository.findFeedbackOverdue(DashboardClock.nowUtc());
+        // Only this interviewer's own panels with feedback still outstanding (scoped in SQL).
+        List<InterviewSchedule> overdue = interviewScheduleRepository.findFeedbackOverdue(
+                DashboardClock.nowUtc(), interviewerId, null, Pageable.unpaged());
         for (InterviewSchedule s : overdue) {
-            if (s.getInterviewer() != null && interviewerId.equals(s.getInterviewer().getId())
-                    && s.getRequest() != null && s.getRequest().getPanel() != null) {
+            if (s.getRequest() != null && s.getRequest().getPanel() != null) {
                 Long panelId = s.getRequest().getPanel().getId();
                 panelIds.add(panelId);
                 mySchedulesByPanel.putIfAbsent(panelId, s);
             }
         }
+        if (panelIds.isEmpty()) {
+            return CountedList.empty();
+        }
+
+        // One query for every panel's feedback, one grouped query for unread flags.
+        List<Object[]> panelFeedback = feedbackResponseRepository.findByPanelIdsOrderBySubmittedAtDesc(panelIds);
+        Set<Long> candidateIds = new HashSet<>();
+        for (InterviewSchedule mine : mySchedulesByPanel.values()) {
+            if (mine.getRequest() != null && mine.getRequest().getCandidate() != null) {
+                candidateIds.add(mine.getRequest().getCandidate().getId());
+            }
+        }
+        Set<Long> unreadCandidates = new HashSet<>();
+        if (!candidateIds.isEmpty()) {
+            for (Object[] row : notificationRepository.countUnreadByRecipientTypeAndEntities(
+                    interviewerId, "FEEDBACK_SUBMITTED", candidateIds)) {
+                if (row[0] != null && row[1] != null && ((Number) row[1]).longValue() > 0) {
+                    unreadCandidates.add((Long) row[0]);
+                }
+            }
+        }
 
         List<PanelFeedbackSharedItem> items = new ArrayList<>();
-        for (Long panelId : panelIds) {
-            List<FeedbackResponse> feedbacks =
-                    feedbackResponseRepository.findByPanelIdOrderBySubmittedAtDesc(panelId);
-            for (FeedbackResponse fr : feedbacks) {
-                if (fr.getInterviewer() != null && interviewerId.equals(fr.getInterviewer().getId())) {
-                    continue;
-                }
-                InterviewSchedule mySchedule = mySchedulesByPanel.get(panelId);
-                Long scheduleId = fr.getInterviewSchedule() != null
-                        ? fr.getInterviewSchedule().getId()
-                        : (mySchedule != null ? mySchedule.getId() : null);
-                String candidateName = mySchedule != null ? resolveCandidateName(mySchedule) : null;
-                Long candidateId = mySchedule != null && mySchedule.getRequest() != null
-                        && mySchedule.getRequest().getCandidate() != null
-                        ? mySchedule.getRequest().getCandidate().getId() : null;
-                boolean unread = candidateId != null && notificationRepository
-                        .countUnreadByRecipientTypeAndEntity(interviewerId, "FEEDBACK_SUBMITTED", candidateId) > 0;
-                items.add(new PanelFeedbackSharedItem(
-                        scheduleId,
-                        panelId,
-                        candidateName,
-                        fr.getInterviewer() != null ? fr.getInterviewer().getFullName() : null,
-                        TimeZoneMapper.fromUtc(fr.getSubmittedAt(), zone),
-                        unread
-                ));
+        for (Object[] row : panelFeedback) {
+            Long panelId = (Long) row[0];
+            FeedbackResponse fr = (FeedbackResponse) row[1];
+            if (fr.getInterviewer() != null && interviewerId.equals(fr.getInterviewer().getId())) {
+                continue;
             }
+            InterviewSchedule mySchedule = mySchedulesByPanel.get(panelId);
+            Long scheduleId = fr.getInterviewSchedule() != null
+                    ? fr.getInterviewSchedule().getId()
+                    : (mySchedule != null ? mySchedule.getId() : null);
+            String candidateName = mySchedule != null ? resolveCandidateName(mySchedule) : null;
+            Long candidateId = mySchedule != null && mySchedule.getRequest() != null
+                    && mySchedule.getRequest().getCandidate() != null
+                    ? mySchedule.getRequest().getCandidate().getId() : null;
+            items.add(new PanelFeedbackSharedItem(
+                    scheduleId,
+                    panelId,
+                    candidateName,
+                    fr.getInterviewer() != null ? fr.getInterviewer().getFullName() : null,
+                    TimeZoneMapper.fromUtc(fr.getSubmittedAt(), zone),
+                    candidateId != null && unreadCandidates.contains(candidateId)
+            ));
         }
         return CountedList.page(items, page, size);
     }
