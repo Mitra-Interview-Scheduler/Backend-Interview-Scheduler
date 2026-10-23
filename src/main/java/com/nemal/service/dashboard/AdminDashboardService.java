@@ -11,6 +11,7 @@ import com.nemal.enums.Role;
 import com.nemal.repository.*;
 import com.nemal.util.DashboardClock;
 import com.nemal.util.TimeZoneMapper;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -92,21 +93,22 @@ public class AdminDashboardService {
     public DashboardItemsResponse getDashboardItems(String section, Integer pageRaw, Integer sizeRaw) {
         int page = DashboardPaging.page(pageRaw);
         int size = DashboardPaging.size(sizeRaw);
-        AlertLists alerts = collectAlerts(DashboardClock.nowUtc());
+        LocalDateTime now = DashboardClock.nowUtc();
         String key = section == null ? "" : section.trim();
+        // Only the requested section is computed (was: every alert on every page click).
         return switch (key) {
             case "interviewersWithoutCalendar" ->
-                    DashboardItemsResponse.of(key, CountedList.page(alerts.withoutCalendar(), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(interviewerAlerts(now).withoutCalendar(), page, size));
             case "interviewersNoAvailability" ->
-                    DashboardItemsResponse.of(key, CountedList.page(alerts.noAvailability(), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(interviewerAlerts(now).noAvailability(), page, size));
             case "usersNoRoles" ->
-                    DashboardItemsResponse.of(key, CountedList.page(alerts.noRoles(), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(usersWithoutRoles(), page, size));
             case "inactiveCoordinators" ->
-                    DashboardItemsResponse.of(key, CountedList.page(alerts.inactiveCoords(), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(inactiveCoordinators(), page, size));
             case "interviewTypesMissingForms" ->
-                    DashboardItemsResponse.of(key, CountedList.page(alerts.missingForms(), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(interviewTypesMissingForms(), page, size));
             case "catalogGaps" ->
-                    DashboardItemsResponse.of(key, CountedList.page(flattenCatalogGaps(alerts.catalogGaps()), page, size));
+                    DashboardItemsResponse.of(key, CountedList.page(flattenCatalogGaps(catalogGaps()), page, size));
             default -> throw new IllegalArgumentException("Unknown dashboard section");
         };
     }
@@ -158,6 +160,21 @@ public class AdminDashboardService {
     }
 
     private AlertLists collectAlerts(LocalDateTime now) {
+        InterviewerAlerts interviewerAlerts = interviewerAlerts(now);
+        return new AlertLists(
+                interviewTypesMissingForms(),
+                interviewerAlerts.withoutCalendar(),
+                interviewerAlerts.noAvailability(),
+                usersWithoutRoles(),
+                inactiveCoordinators(),
+                emailDeliveryLogRepository.countByStatusAndSentAtAfter("FAILED", now.minusHours(24)),
+                catalogGaps()
+        );
+    }
+
+    private record InterviewerAlerts(List<UserAlert> withoutCalendar, List<UserAlert> noAvailability) {}
+
+    private List<MissingFormAlert> interviewTypesMissingForms() {
         List<MissingFormAlert> missingForms = new ArrayList<>();
         List<FeedbackForm> activeForms = feedbackFormRepository.findAllByIsActiveTrue();
         for (InterviewType type : interviewTypeRepository.findByActiveTrueOrderByDisplayOrderAscLabelAsc()) {
@@ -170,7 +187,10 @@ public class AdminDashboardService {
                 ));
             }
         }
+        return missingForms;
+    }
 
+    private InterviewerAlerts interviewerAlerts(LocalDateTime now) {
         List<User> interviewers = userRepository.findActiveByRole(Role.INTERVIEWER);
         Set<Long> connectedIds = new HashSet<>(calendarCredentialsRepository.findAllConnectedUserIds());
         LocalDateTime to = now.plusDays(14);
@@ -186,28 +206,26 @@ public class AdminDashboardService {
                 noAvailability.add(new UserAlert(u.getId(), u.getFullName(), u.getEmail()));
             }
         }
+        return new InterviewerAlerts(withoutCalendar, noAvailability);
+    }
 
-        List<UserAlert> noRoles = userRepository.findUsersWithNoRoles().stream()
+    private List<UserAlert> usersWithoutRoles() {
+        return userRepository.findUsersWithNoRoles().stream()
                 .map(u -> new UserAlert(u.getId(), u.getFullName(), u.getEmail()))
                 .toList();
+    }
 
-        Map<Long, Long> inactiveCoordCounts = new LinkedHashMap<>();
-        Map<Long, String> inactiveCoordNames = new HashMap<>();
-        for (Candidate c : candidateRepository.findActiveNonClosed(null)) {
-            User hr = c.getCoordinatedHr();
-            if (hr != null && !hr.isActive()) {
-                inactiveCoordCounts.merge(hr.getId(), 1L, Long::sum);
-                inactiveCoordNames.put(hr.getId(), hr.getFullName());
-            }
-        }
-        List<InactiveCoordinatorAlert> inactiveCoords = inactiveCoordCounts.entrySet().stream()
-                .map(e -> new InactiveCoordinatorAlert(
-                        e.getKey(), inactiveCoordNames.get(e.getKey()), e.getValue()))
+    /** Counted in the database (was: every active candidate loaded to check its coordinator). */
+    private List<InactiveCoordinatorAlert> inactiveCoordinators() {
+        return candidateRepository.countActiveCandidatesOfInactiveCoordinators().stream()
+                .map(row -> new InactiveCoordinatorAlert(
+                        (Long) row[0],
+                        row[1] + " " + row[2],
+                        ((Number) row[3]).longValue()))
                 .toList();
+    }
 
-        long emailFailures = emailDeliveryLogRepository.countByStatusAndSentAtAfter(
-                "FAILED", now.minusHours(24));
-
+    private CatalogGaps catalogGaps() {
         List<String> designationsWithout = designationRepository.findActiveWithoutInterviewers().stream()
                 .map(d -> {
                     String dept = d.getDepartment() != null ? d.getDepartment().getName() + " / " : "";
@@ -229,15 +247,7 @@ public class AdminDashboardService {
                 .map(Domain::getName)
                 .toList();
 
-        return new AlertLists(
-                missingForms,
-                withoutCalendar,
-                noAvailability,
-                noRoles,
-                inactiveCoords,
-                emailFailures,
-                new CatalogGaps(designationsWithout, orphans, unusedDomains)
-        );
+        return new CatalogGaps(designationsWithout, orphans, unusedDomains);
     }
 
     private boolean formCoversType(FeedbackForm form, String typeCode) {
@@ -267,8 +277,7 @@ public class AdminDashboardService {
         );
 
         LocalDateTime recentFrom = now.minusDays(30);
-        List<RecentUser> recentlyAdded = userRepository.findCreatedSince(recentFrom).stream()
-                .limit(10)
+        List<RecentUser> recentlyAdded = userRepository.findCreatedSince(recentFrom, PageRequest.of(0, 10)).stream()
                 .map(u -> new RecentUser(
                         u.getId(),
                         u.getFullName(),
@@ -276,13 +285,18 @@ public class AdminDashboardService {
                         TimeZoneMapper.fromUtc(u.getCreatedAt(), zone)))
                 .toList();
 
+        // One grouped query instead of six counts: key "ROLE|active".
+        Map<String, Long> roleCounts = new HashMap<>();
+        for (Object[] row : userRepository.countByRoleAndActiveGrouped()) {
+            roleCounts.put(row[0] + "|" + row[1], ((Number) row[2]).longValue());
+        }
         UsersByRole usersByRole = new UsersByRole(
-                userRepository.countByRoleAndActive(Role.ADMIN, true),
-                userRepository.countByRoleAndActive(Role.ADMIN, false),
-                userRepository.countByRoleAndActive(Role.HR, true),
-                userRepository.countByRoleAndActive(Role.HR, false),
-                userRepository.countByRoleAndActive(Role.INTERVIEWER, true),
-                userRepository.countByRoleAndActive(Role.INTERVIEWER, false),
+                roleCounts.getOrDefault(Role.ADMIN + "|true", 0L),
+                roleCounts.getOrDefault(Role.ADMIN + "|false", 0L),
+                roleCounts.getOrDefault(Role.HR + "|true", 0L),
+                roleCounts.getOrDefault(Role.HR + "|false", 0L),
+                roleCounts.getOrDefault(Role.INTERVIEWER + "|true", 0L),
+                roleCounts.getOrDefault(Role.INTERVIEWER + "|false", 0L),
                 userRepository.countMultiRoleUsers(),
                 recentlyAdded
         );
@@ -343,15 +357,10 @@ public class AdminDashboardService {
                 })
                 .toList();
 
+        // Interviews in the trend window per candidate department, counted in the database.
         Map<Long, long[]> interviewByDept = new HashMap<>();
-        // interviews from schedules since trend window
-        List<InterviewSchedule> recentSchedules = interviewScheduleRepository
-                .findUpcomingInRange(from, now.plusDays(1));
-        for (InterviewSchedule s : recentSchedules) {
-            Candidate c = s.getRequest() != null ? s.getRequest().getCandidate() : null;
-            if (c == null || c.getDepartment() == null) continue;
-            Long deptId = c.getDepartment().getId();
-            interviewByDept.computeIfAbsent(deptId, k -> new long[1])[0]++;
+        for (Object[] row : interviewScheduleRepository.countInterviewsByDepartmentBetween(from, now.plusDays(1))) {
+            interviewByDept.put((Long) row[0], new long[]{((Number) row[1]).longValue()});
         }
 
         List<DepartmentFunnel> funnels = new ArrayList<>();
@@ -379,35 +388,22 @@ public class AdminDashboardService {
         );
     }
 
+    /** Average hours from interview end to feedback, computed by the database. */
     private Double computeAvgTurnaround(LocalDateTime from) {
-        List<FeedbackResponse> responses = feedbackResponseRepository.findAllSubmittedSince(from);
-        List<Double> hours = new ArrayList<>();
-        for (FeedbackResponse fr : responses) {
-            InterviewSchedule s = fr.getInterviewSchedule();
-            if (s == null || fr.getSubmittedAt() == null) continue;
-            LocalDateTime ended = s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime();
-            if (ended == null) continue;
-            double h = Duration.between(ended, fr.getSubmittedAt()).toMinutes() / 60.0;
-            if (h >= 0) hours.add(h);
-        }
-        if (hours.isEmpty()) return null;
-        double avg = hours.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        return Math.round(avg * 100.0) / 100.0;
+        Double avg = feedbackResponseRepository.averageTurnaroundHoursSince(from);
+        return avg == null ? null : Math.round(avg * 100.0) / 100.0;
     }
 
     private Double computePanelDisagreement(LocalDateTime from) {
         // Best-effort: compare recommendation values across panel feedback responses.
         // If unreliable/insufficient data, return null.
         try {
-            List<FeedbackResponse> responses = feedbackResponseRepository.findAllSubmittedSince(from);
+            // Only (panelId, answers) for panel feedback — no schedule/request entity graphs.
             Map<Long, List<String>> byPanel = new HashMap<>();
-            for (FeedbackResponse fr : responses) {
-                InterviewSchedule s = fr.getInterviewSchedule();
-                if (s == null || s.getRequest() == null || s.getRequest().getPanel() == null) continue;
-                Long panelId = s.getRequest().getPanel().getId();
-                String rec = extractRecommendation(fr.getResponsesJson());
-                if (rec == null) continue;
-                byPanel.computeIfAbsent(panelId, k -> new ArrayList<>()).add(rec);
+            for (Object[] row : feedbackResponseRepository.findPanelResponsesJsonSince(from)) {
+                String rec = extractRecommendation((JsonNode) row[1]);
+                if (row[0] == null || rec == null) continue;
+                byPanel.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add(rec);
             }
             if (byPanel.isEmpty()) return null;
             long panelsWithMultiple = 0;
