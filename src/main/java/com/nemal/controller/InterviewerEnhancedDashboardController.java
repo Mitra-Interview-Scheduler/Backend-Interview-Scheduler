@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.dashboard.InterviewerDashboardResponse;
 import com.nemal.entity.User;
 import com.nemal.service.dashboard.InterviewerDashboardService;
@@ -48,7 +49,7 @@ public class InterviewerEnhancedDashboardController {
             logger.error("Failed to build interviewer dashboard for {}: {}",
                     user != null ? user.getId() : null, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -67,11 +68,11 @@ public class InterviewerEnhancedDashboardController {
                     user, section, page, size, upcomingDays, zone));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (Exception e) {
             logger.error("Failed to load interviewer dashboard section {}: {}", section, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard items"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -88,7 +89,7 @@ public class InterviewerEnhancedDashboardController {
             logger.error("Failed to load interviewer coverage for {}: {}",
                     user != null ? user.getId() : null, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load coverage"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

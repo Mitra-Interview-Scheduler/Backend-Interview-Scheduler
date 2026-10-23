@@ -386,8 +386,11 @@ public class EmailService {
             return base;
         }
         String path = ctaPath.trim();
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-            return path;
+        // Links in our emails must always point at our own app: an absolute URL is only kept
+        // when it is on the frontend origin, otherwise we fall back to the app home page.
+        if (path.regionMatches(true, 0, "http://", 0, 7) || path.regionMatches(true, 0, "https://", 0, 8)
+                || path.startsWith("//") || path.contains("\\")) {
+            return !base.isEmpty() && (path.equals(base) || path.startsWith(base + "/")) ? path : base;
         }
         if (!path.startsWith("/")) {
             path = "/" + path;

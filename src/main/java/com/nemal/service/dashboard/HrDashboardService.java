@@ -13,6 +13,7 @@ import com.nemal.enums.AssessmentPhase;
 import com.nemal.enums.InterviewStatus;
 import com.nemal.enums.MasterStatus;
 import com.nemal.enums.PostponeRequestStatus;
+import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
 import com.nemal.service.HRAvailabilityService;
@@ -21,8 +22,10 @@ import com.nemal.service.NotificationService;
 import com.nemal.util.TimeZoneMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -105,6 +108,10 @@ public class HrDashboardService {
         LocalDateTime now = LocalDateTime.now();
         int preview = DashboardPaging.previewSize(previewSize);
         int upcomingWindow = DashboardPaging.upcomingDays(upcomingDays);
+        stalledDays = DashboardPaging.stalledDays(stalledDays);
+        feedbackOverdueHours = DashboardPaging.feedbackOverdueHours(feedbackOverdueHours);
+        capacityDays = DashboardPaging.capacityDays(capacityDays);
+        trendDays = DashboardPaging.trendDays(trendDays);
 
         ActionQueue actionQueue = new ActionQueue(
                 buildPostponeRequests(hrId, zone, now, 0, preview),
@@ -142,6 +149,8 @@ public class HrDashboardService {
         int page = DashboardPaging.page(pageRaw);
         int size = DashboardPaging.size(sizeRaw);
         int upcomingWindow = DashboardPaging.upcomingDays(upcomingDays);
+        stalledDays = DashboardPaging.stalledDays(stalledDays);
+        feedbackOverdueHours = DashboardPaging.feedbackOverdueHours(feedbackOverdueHours);
         Long hrId = mineOnly && user != null ? user.getId() : null;
         LocalDateTime now = LocalDateTime.now();
         String key = section == null ? "" : section.trim();
@@ -165,9 +174,12 @@ public class HrDashboardService {
                     DashboardItemsResponse.of(key, buildAssessmentsWaiting(hrId, zone, now, page, size).reviewIncomplete());
             case "upcomingInterviews" ->
                     DashboardItemsResponse.of(key, buildUpcomingInterviews(hrId, zone, now, upcomingWindow, page, size));
-            default -> throw new IllegalArgumentException("Unknown dashboard section: " + section);
+            default -> throw new IllegalArgumentException("Unknown dashboard section");
         };
     }
+
+    /** Minimum time between two reminders to the same interviewer for the same interview. */
+    static final Duration NUDGE_COOLDOWN = Duration.ofHours(4);
 
     @Transactional
     public DashboardActionResponse nudgeFeedbackOverdue(User nudgedBy, Long scheduleId) {
@@ -175,38 +187,92 @@ public class HrDashboardService {
             throw new IllegalArgumentException("Authenticated user required to send ping");
         }
         InterviewSchedule schedule = interviewScheduleRepository.findByIdWithPostponeDetails(scheduleId)
-                .orElseThrow(() -> new IllegalArgumentException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Interview not found"));
 
-        String candidateName = resolveCandidateName(schedule);
-        Set<User> interviewers = new LinkedHashSet<>();
-        if (schedule.getInterviewer() != null) {
-            interviewers.add(schedule.getInterviewer());
+        // HR (non-admin) only works with the candidates they coordinate, same as the dashboard lists.
+        if (!nudgedBy.hasRole(Role.ADMIN) && !matchesHrSchedule(schedule, nudgedBy.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You can only send reminders for candidates you coordinate");
         }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime cutoff = now.minusHours(DashboardPaging.DEFAULT_FEEDBACK_OVERDUE_HOURS);
+        if (!isFeedbackOverdue(schedule, cutoff)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This interview is not overdue for feedback");
+        }
+
+        // Each recipient is paired with their own schedule: panel members each have one.
+        Map<User, InterviewSchedule> candidates = new LinkedHashMap<>();
         InterviewRequest request = schedule.getRequest();
-        if (request != null && request.getAssignedInterviewer() != null) {
-            interviewers.add(request.getAssignedInterviewer());
-        }
         if (request != null && request.getPanel() != null) {
-            Long panelId = request.getPanel().getId();
-            for (InterviewSchedule panelSchedule : interviewScheduleRepository.findByPanelId(panelId)) {
-                if (panelSchedule.getInterviewer() != null) {
-                    interviewers.add(panelSchedule.getInterviewer());
+            for (InterviewSchedule panelSchedule : interviewScheduleRepository.findByPanelId(request.getPanel().getId())) {
+                if (panelSchedule.getInterviewer() != null
+                        && panelSchedule.getStatus() != InterviewStatus.CANCELLED
+                        && panelSchedule.getAssessmentPhase() == null) {
+                    candidates.putIfAbsent(panelSchedule.getInterviewer(), panelSchedule);
                 }
             }
+        } else if (schedule.getInterviewer() != null) {
+            candidates.put(schedule.getInterviewer(), schedule);
+        } else if (request != null && request.getAssignedInterviewer() != null) {
+            candidates.put(request.getAssignedInterviewer(), schedule);
         }
-        if (interviewers.isEmpty()) {
-            throw new IllegalArgumentException("No interviewer found for schedule " + scheduleId);
+        if (candidates.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No interviewer is assigned to this interview");
         }
-        for (User interviewer : interviewers) {
-            notificationService.sendFeedbackNudgeNotification(interviewer, candidateName, scheduleId);
+
+        // Skip anyone who already submitted feedback for their schedule.
+        Set<Long> submitted = new HashSet<>(feedbackResponseRepository.findScheduleIdsWithFeedback(
+                candidates.values().stream().map(InterviewSchedule::getId).toList()));
+        candidates.entrySet().removeIf(e -> submitted.contains(e.getValue().getId()));
+        if (candidates.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback has already been submitted");
+        }
+
+        String candidateName = resolveCandidateName(schedule);
+        int sent = 0;
+        LocalDateTime lastReminder = null;
+        for (Map.Entry<User, InterviewSchedule> entry : candidates.entrySet()) {
+            User interviewer = entry.getKey();
+            InterviewSchedule own = entry.getValue();
+            Optional<FeedbackNudgeLog> previous = feedbackNudgeLogRepository
+                    .findTopByInterviewScheduleIdAndRecipientIdOrderByCreatedAtDesc(own.getId(), interviewer.getId());
+            if (previous.isPresent() && previous.get().getCreatedAt() != null
+                    && previous.get().getCreatedAt().isAfter(now.minus(NUDGE_COOLDOWN))) {
+                if (lastReminder == null || previous.get().getCreatedAt().isAfter(lastReminder)) {
+                    lastReminder = previous.get().getCreatedAt();
+                }
+                continue;
+            }
+            notificationService.sendFeedbackNudgeNotification(interviewer, candidateName, own.getId());
             feedbackNudgeLogRepository.save(FeedbackNudgeLog.builder()
-                    .interviewSchedule(schedule)
+                    .interviewSchedule(own)
                     .nudgedBy(nudgedBy)
                     .recipient(interviewer)
                     .build());
+            sent++;
         }
-        return DashboardActionResponse.ok(
-                "Feedback ping sent to " + interviewers.size() + " interviewer(s)");
+        if (sent == 0) {
+            long minutesAgo = lastReminder != null ? Math.max(1, Duration.between(lastReminder, now).toMinutes()) : 0;
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Already reminded " + formatAgo(minutesAgo) + ". You can remind again after "
+                            + NUDGE_COOLDOWN.toHours() + " hours.");
+        }
+        return DashboardActionResponse.ok("Reminder sent to " + sent + " interviewer(s)");
+    }
+
+    /** Same rule as the overdue list: not cancelled, not an assessment, ended before the cutoff. */
+    private boolean isFeedbackOverdue(InterviewSchedule s, LocalDateTime cutoff) {
+        if (s.getAssessmentPhase() != null) return false;
+        if (s.getStatus() != InterviewStatus.COMPLETED && s.getStatus() != InterviewStatus.SCHEDULED) return false;
+        LocalDateTime ended = s.getCompletedAt() != null ? s.getCompletedAt() : s.getEndDateTime();
+        return ended != null && ended.isBefore(cutoff);
+    }
+
+    private String formatAgo(long minutes) {
+        if (minutes < 60) return minutes + " minute(s) ago";
+        return (minutes / 60) + " hour(s) ago";
     }
 
     private CountedList<PostponeItem> buildPostponeRequests(

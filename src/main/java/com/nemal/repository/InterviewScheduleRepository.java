@@ -115,6 +115,8 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
                    OR EXISTS (
                         SELECT 1 FROM InterviewRequest pr
                         WHERE pr.panel = p AND pr.assignedInterviewer.id = :interviewerId
+                          AND pr.status <> com.nemal.enums.RequestStatus.CANCELLED
+                          AND pr.status <> com.nemal.enums.RequestStatus.REJECTED
                    ))
             ORDER BY s.startDateTime
             """)

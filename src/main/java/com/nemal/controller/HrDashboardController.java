@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.dashboard.DashboardActionResponse;
 import com.nemal.dto.dashboard.HrDashboardResponse;
 import com.nemal.entity.User;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.ZoneId;
 import java.util.Map;
@@ -57,7 +59,7 @@ public class HrDashboardController {
         } catch (Exception e) {
             logger.error("Failed to build HR dashboard: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -80,11 +82,11 @@ public class HrDashboardController {
                     user, section, page, size, scopedMineOnly, stalledDays, feedbackOverdueHours, upcomingDays, zone));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (Exception e) {
             logger.error("Failed to load HR dashboard section {}: {}", section, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard items"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -96,13 +98,16 @@ public class HrDashboardController {
         try {
             DashboardActionResponse response = hrDashboardService.nudgeFeedbackOverdue(user, scheduleId);
             return ResponseEntity.ok(response);
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode())
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (Exception e) {
             logger.error("Failed to ping feedback for schedule {}: {}", scheduleId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Ping failed"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

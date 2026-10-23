@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.exception.ApiErrors;
 import com.nemal.dto.dashboard.AdminDashboardResponse;
 import com.nemal.entity.User;
 import com.nemal.service.dashboard.AdminDashboardService;
@@ -45,7 +46,7 @@ public class AdminDashboardController {
         } catch (Exception e) {
             logger.error("Failed to build admin dashboard: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 
@@ -60,11 +61,11 @@ public class AdminDashboardController {
             return ResponseEntity.ok(adminDashboardService.getDashboardItems(section, page, size));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         } catch (Exception e) {
             logger.error("Failed to load admin dashboard section {}: {}", section, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage() != null ? e.getMessage() : "Failed to load dashboard items"));
+                    .body(Map.of("message", ApiErrors.safeMessage(e)));
         }
     }
 }

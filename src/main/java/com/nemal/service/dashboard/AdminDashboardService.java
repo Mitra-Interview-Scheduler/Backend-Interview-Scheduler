@@ -75,7 +75,7 @@ public class AdminDashboardService {
     @Transactional(readOnly = true)
     public AdminDashboardResponse getDashboard(int trendDays, int previewSize, ZoneId zone) {
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime trendFrom = now.minusDays(Math.max(1, trendDays));
+        LocalDateTime trendFrom = now.minusDays(DashboardPaging.trendDays(trendDays));
         int preview = DashboardPaging.previewSize(previewSize);
         AlertLists alerts = collectAlerts(now);
 
@@ -106,7 +106,7 @@ public class AdminDashboardService {
                     DashboardItemsResponse.of(key, CountedList.page(alerts.missingForms(), page, size));
             case "catalogGaps" ->
                     DashboardItemsResponse.of(key, CountedList.page(flattenCatalogGaps(alerts.catalogGaps()), page, size));
-            default -> throw new IllegalArgumentException("Unknown dashboard section: " + section);
+            default -> throw new IllegalArgumentException("Unknown dashboard section");
         };
     }
 

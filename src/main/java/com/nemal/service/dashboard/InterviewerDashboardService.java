@@ -125,7 +125,7 @@ public class InterviewerDashboardService {
                     DashboardItemsResponse.of(key, buildPanelFeedbackShared(interviewerId, zone, page, size));
             case "upcomingInterviews" ->
                     DashboardItemsResponse.of(key, buildUpcomingWithPrep(user, zone, now, upcomingWindow, page, size));
-            default -> throw new IllegalArgumentException("Unknown dashboard section: " + section);
+            default -> throw new IllegalArgumentException("Unknown dashboard section");
         };
     }
 

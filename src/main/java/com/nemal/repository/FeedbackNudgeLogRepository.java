@@ -15,6 +15,10 @@ public interface FeedbackNudgeLogRepository extends JpaRepository<FeedbackNudgeL
 
     Optional<FeedbackNudgeLog> findTopByInterviewScheduleIdOrderByCreatedAtDesc(Long interviewScheduleId);
 
+    /** Most recent nudge sent to one interviewer for one schedule (used for the nudge cooldown). */
+    Optional<FeedbackNudgeLog> findTopByInterviewScheduleIdAndRecipientIdOrderByCreatedAtDesc(
+            Long interviewScheduleId, Long recipientId);
+
     @Query("""
             SELECT n.interviewSchedule.id, COUNT(n)
             FROM FeedbackNudgeLog n
