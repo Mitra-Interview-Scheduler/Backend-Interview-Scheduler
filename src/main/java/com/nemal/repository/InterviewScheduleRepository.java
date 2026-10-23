@@ -89,23 +89,6 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
             LEFT JOIN FETCH s.request r
             LEFT JOIN FETCH r.candidate c
             LEFT JOIN FETCH c.coordinatedHr
-            LEFT JOIN FETCH c.department
-            LEFT JOIN FETCH s.interviewer
-            LEFT JOIN FETCH r.panel
-            WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED
-              AND s.startDateTime >= :from
-              AND s.startDateTime < :to
-            ORDER BY s.startDateTime
-            """)
-    List<InterviewSchedule> findUpcomingInRange(
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to);
-
-    @Query("""
-            SELECT DISTINCT s FROM InterviewSchedule s
-            LEFT JOIN FETCH s.request r
-            LEFT JOIN FETCH r.candidate c
-            LEFT JOIN FETCH c.coordinatedHr
             LEFT JOIN FETCH s.interviewer
             LEFT JOIN FETCH r.panel p
             WHERE s.status <> com.nemal.enums.InterviewStatus.CANCELLED

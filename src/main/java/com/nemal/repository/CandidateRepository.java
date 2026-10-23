@@ -105,21 +105,6 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             LEFT JOIN FETCH c.department
             LEFT JOIN FETCH c.targetDesignation
             LEFT JOIN FETCH c.coordinatedHr
-            LEFT JOIN FETCH c.createdBy
-            WHERE c.isActive = true
-              AND (ms.isClosingStep = false OR ms.isClosingStep IS NULL)
-              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
-            ORDER BY c.updatedAt DESC
-            """)
-    List<Candidate> findActiveNonClosed(
-            @Param("coordinatedHrId") Long coordinatedHrId);
-
-    @Query("""
-            SELECT c FROM Candidate c
-            LEFT JOIN FETCH c.masterStep ms
-            LEFT JOIN FETCH c.department
-            LEFT JOIN FETCH c.targetDesignation
-            LEFT JOIN FETCH c.coordinatedHr
             WHERE c.isActive = true
               AND ms.statusKey = :statusKey
               AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
@@ -236,19 +221,4 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
             GROUP BY c.department.id, c.department.name
             """)
     List<Object[]> departmentFunnelCounts();
-
-    @Query("""
-            SELECT c FROM Candidate c
-            LEFT JOIN FETCH c.masterStep ms
-            LEFT JOIN FETCH c.department
-            LEFT JOIN FETCH c.targetDesignation
-            LEFT JOIN FETCH c.coordinatedHr
-            WHERE c.isActive = true
-              AND ms.statusKey IN :statusKeys
-              AND (:coordinatedHrId IS NULL OR c.coordinatedHr.id = :coordinatedHrId)
-            ORDER BY c.updatedAt ASC
-            """)
-    List<Candidate> findActiveByStatusKeys(
-            @Param("statusKeys") Collection<String> statusKeys,
-            @Param("coordinatedHrId") Long coordinatedHrId);
 }

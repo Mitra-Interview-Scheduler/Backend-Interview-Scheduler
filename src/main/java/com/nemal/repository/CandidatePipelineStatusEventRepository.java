@@ -32,16 +32,6 @@ public interface CandidatePipelineStatusEventRepository extends JpaRepository<Ca
             """)
     List<CandidatePipelineStatusEvent> findByCandidateIdIn(@Param("candidateIds") Collection<Long> candidateIds);
 
-    @Query("""
-            SELECT e FROM CandidatePipelineStatusEvent e
-            LEFT JOIN FETCH e.candidate c
-            LEFT JOIN FETCH e.masterStep
-            LEFT JOIN FETCH e.previousMasterStep
-            WHERE e.createdAt >= :from
-            ORDER BY e.createdAt DESC
-            """)
-    List<CandidatePipelineStatusEvent> findEventsSince(@Param("from") LocalDateTime from);
-
     /**
      * Light projection of events since {@code from}: (candidateId, statusKey, stepLabel, createdAt),
      * ordered per candidate oldest first. No candidate/step entity graphs are loaded.

@@ -1,7 +1,5 @@
 package com.nemal.service.dashboard;
 
-import com.nemal.dto.InterviewerMatchRequestDto;
-import com.nemal.dto.InterviewerMatchResponseDto;
 import com.nemal.dto.dashboard.CountedList;
 import com.nemal.dto.dashboard.DashboardActionResponse;
 import com.nemal.dto.dashboard.DashboardItemsResponse;
@@ -16,7 +14,6 @@ import com.nemal.enums.PostponeRequestStatus;
 import com.nemal.enums.Role;
 import com.nemal.enums.SlotStatus;
 import com.nemal.repository.*;
-import com.nemal.service.HRAvailabilityService;
 import com.nemal.service.InterviewTypeService;
 import com.nemal.service.NotificationService;
 import com.nemal.util.DashboardClock;
@@ -41,12 +38,6 @@ import java.util.stream.Collectors;
 public class HrDashboardService {
 
     private static final Logger log = LoggerFactory.getLogger(HrDashboardService.class);
-    private static final Set<String> SCHEDULING_STATUS_KEYS = Set.of(
-            MasterStatus.INTERVIEW_SCHEDULES.name(),
-            MasterStatus.TECHNICAL_ROUND.name(),
-            MasterStatus.HR_ROUND.name(),
-            MasterStatus.DISPOSITION.name()
-    );
 
     private final InterviewPostponeRequestRepository postponeRequestRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
@@ -57,9 +48,7 @@ public class HrDashboardService {
     private final AssessmentReviewerRepository assessmentReviewerRepository;
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final CandidateClosureRepository candidateClosureRepository;
-    private final MasterStepRepository masterStepRepository;
     private final NotificationService notificationService;
-    private final HRAvailabilityService hrAvailabilityService;
     private final FeedbackNudgeLogRepository feedbackNudgeLogRepository;
     private final InterviewTypeService interviewTypeService;
     private final InterviewRequestRepository interviewRequestRepository;
@@ -74,9 +63,7 @@ public class HrDashboardService {
             AssessmentReviewerRepository assessmentReviewerRepository,
             AvailabilitySlotRepository availabilitySlotRepository,
             CandidateClosureRepository candidateClosureRepository,
-            MasterStepRepository masterStepRepository,
             NotificationService notificationService,
-            HRAvailabilityService hrAvailabilityService,
             FeedbackNudgeLogRepository feedbackNudgeLogRepository,
             InterviewTypeService interviewTypeService,
             InterviewRequestRepository interviewRequestRepository
@@ -91,9 +78,7 @@ public class HrDashboardService {
         this.assessmentReviewerRepository = assessmentReviewerRepository;
         this.availabilitySlotRepository = availabilitySlotRepository;
         this.candidateClosureRepository = candidateClosureRepository;
-        this.masterStepRepository = masterStepRepository;
         this.notificationService = notificationService;
-        this.hrAvailabilityService = hrAvailabilityService;
         this.feedbackNudgeLogRepository = feedbackNudgeLogRepository;
         this.interviewTypeService = interviewTypeService;
     }
@@ -631,72 +616,6 @@ public class HrDashboardService {
                     row[4] != null ? ((Number) row[4]).longValue() : 0));
         }
         return days;
-    }
-
-    private List<UnfilledNeedItem> buildUnfilledNeeds(Long hrId, LocalDateTime now) {
-        List<String> scheduleKeys = new ArrayList<>(SCHEDULING_STATUS_KEYS);
-        masterStepRepository.findByIsActiveTrueOrderByStepOrderAscDisplayOrderAsc().stream()
-                .filter(ms -> !ms.isClosingStep())
-                .filter(ms -> !MasterStatus.NEW.name().equals(ms.getStatusKey()))
-                .filter(ms -> !MasterStatus.SCREENING.name().equals(ms.getStatusKey()))
-                .filter(ms -> !MasterStatus.OFFER_PENDING.name().equals(ms.getStatusKey()))
-                .filter(ms -> !MasterStatus.ON_HOLD.name().equals(ms.getStatusKey()))
-                .map(MasterStep::getStatusKey)
-                .filter(k -> !scheduleKeys.contains(k))
-                .forEach(scheduleKeys::add);
-
-        List<Candidate> candidates = candidateRepository.findActiveByStatusKeys(scheduleKeys, hrId);
-        List<UnfilledNeedItem> needs = new ArrayList<>();
-        for (Candidate c : candidates) {
-            if (needs.size() >= DashboardPaging.MAX_PAGE_SIZE) break;
-            try {
-                InterviewerMatchResponseDto match = hrAvailabilityService.matchInterviewers(
-                        new InterviewerMatchRequestDto(c.getId(), null, null, null, null, null, 5));
-                boolean hasMatch = match != null && (
-                        (match.both() != null && !match.both().isEmpty())
-                                || (match.technologies() != null && !match.technologies().isEmpty())
-                                || (match.domains() != null && !match.domains().isEmpty()));
-                if (!hasMatch) {
-                    needs.add(new UnfilledNeedItem(
-                            c.getId(),
-                            c.getName(),
-                            c.getStatusKey(),
-                            c.getDepartment() != null ? c.getDepartment().getName() : null,
-                            c.getTargetDesignation() != null ? c.getTargetDesignation().getName() : null,
-                            "NO_MATCHING_INTERVIEWER"
-                    ));
-                    continue;
-                }
-                Set<Long> matcherIds = new LinkedHashSet<>();
-                if (match.both() != null) {
-                    match.both().forEach(m -> { if (m != null && m.interviewerId() != null) matcherIds.add(m.interviewerId()); });
-                }
-                if (match.technologies() != null) {
-                    match.technologies().forEach(m -> { if (m != null && m.interviewerId() != null) matcherIds.add(m.interviewerId()); });
-                }
-                if (match.domains() != null) {
-                    match.domains().forEach(m -> { if (m != null && m.interviewerId() != null) matcherIds.add(m.interviewerId()); });
-                }
-                LocalDateTime to = now.plusDays(14);
-                List<Long> withSlots = matcherIds.isEmpty()
-                        ? List.of()
-                        : availabilitySlotRepository.findInterviewerIdsWithAvailableSlotsBetween(
-                                matcherIds, now, to);
-                if (withSlots.isEmpty()) {
-                    needs.add(new UnfilledNeedItem(
-                            c.getId(),
-                            c.getName(),
-                            c.getStatusKey(),
-                            c.getDepartment() != null ? c.getDepartment().getName() : null,
-                            c.getTargetDesignation() != null ? c.getTargetDesignation().getName() : null,
-                            "NO_FREE_SLOT"
-                    ));
-                }
-            } catch (Exception ex) {
-                log.debug("Unfilled need check skipped for candidate {}: {}", c.getId(), ex.getMessage());
-            }
-        }
-        return needs;
     }
 
     private Trends buildTrends(int trendDays, LocalDateTime now) {

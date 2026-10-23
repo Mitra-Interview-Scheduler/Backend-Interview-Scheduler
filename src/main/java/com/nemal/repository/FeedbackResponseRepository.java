@@ -65,20 +65,6 @@ public interface FeedbackResponseRepository extends JpaRepository<FeedbackRespon
     List<FeedbackResponse> findByInterviewerIdOrderBySubmittedAtDesc(Long interviewerId);
 
     @Query("""
-            SELECT fr FROM FeedbackResponse fr
-            JOIN FETCH fr.form
-            JOIN FETCH fr.interviewSchedule s
-            JOIN FETCH s.request r
-            LEFT JOIN FETCH r.candidate
-            WHERE fr.interviewer.id = :interviewerId
-              AND fr.submittedAt >= :from
-            ORDER BY fr.submittedAt DESC
-            """)
-    List<FeedbackResponse> findByInterviewerSince(
-            @Param("interviewerId") Long interviewerId,
-            @Param("from") LocalDateTime from);
-
-    @Query("""
             SELECT COUNT(fr) FROM FeedbackResponse fr
             WHERE fr.submittedAt >= :from AND fr.submittedAt < :to
             """)
@@ -91,13 +77,6 @@ public interface FeedbackResponseRepository extends JpaRepository<FeedbackRespon
             ORDER BY COUNT(fr) DESC
             """)
     List<Object[]> countByForm();
-
-    @Query("""
-            SELECT fr FROM FeedbackResponse fr
-            JOIN FETCH fr.interviewSchedule s
-            WHERE fr.submittedAt >= :from
-            """)
-    List<FeedbackResponse> findAllSubmittedSince(@Param("from") LocalDateTime from);
 
     /** Median hours from interview end to feedback submission, all interviewers, since {@code from}. */
     @Query(value = """
