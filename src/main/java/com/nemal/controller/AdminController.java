@@ -1,5 +1,6 @@
 package com.nemal.controller;
 
+import com.nemal.dto.AdminCreateUserDto;
 import com.nemal.dto.AdminProfessionalDetailsUpdateDto;
 import com.nemal.dto.AdminUserBasicInfoUpdateDto;
 import com.nemal.dto.AdminUserDto;
@@ -13,7 +14,9 @@ import com.nemal.service.EmailDeliveryLogService;
 import com.nemal.service.EntityDomainService;
 import com.nemal.service.ProfileService;
 import com.nemal.service.RefreshTokenService;
+import com.nemal.service.UserService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -36,19 +39,22 @@ public class AdminController {
     private final EntityDomainService entityDomainService;
     private final EmailDeliveryLogService emailDeliveryLogService;
     private final RefreshTokenService refreshTokenService;
+    private final UserService userService;
 
     public AdminController(
             UserRepository userRepository,
             ProfileService profileService,
             EntityDomainService entityDomainService,
             EmailDeliveryLogService emailDeliveryLogService,
-            RefreshTokenService refreshTokenService
+            RefreshTokenService refreshTokenService,
+            UserService userService
     ) {
         this.userRepository = userRepository;
         this.profileService = profileService;
         this.entityDomainService = entityDomainService;
         this.emailDeliveryLogService = emailDeliveryLogService;
         this.refreshTokenService = refreshTokenService;
+        this.userService = userService;
     }
 
     // GET /api/admin/users
@@ -121,6 +127,13 @@ public class AdminController {
 
     private AdminUserDto toAdminUserDto(User user) {
         return AdminUserDto.from(user, entityDomainService.getUserDomains(user.getId()));
+    }
+
+    // POST /api/admin/users  — create a user without signing the admin out
+    @PostMapping("/users")
+    public ResponseEntity<AdminUserDto> createUser(@Valid @RequestBody AdminCreateUserDto request) {
+        User user = userService.createUserAsAdmin(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toAdminUserDto(user));
     }
 
     // PUT /api/admin/users/{id}/professional-details
