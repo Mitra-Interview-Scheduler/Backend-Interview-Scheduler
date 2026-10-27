@@ -1,5 +1,6 @@
 package com.nemal.service;
 
+import com.nemal.dto.AdminCreateUserDto;
 import com.nemal.dto.LoginDto;
 import com.nemal.dto.LoginResponse;
 import com.nemal.dto.ProfileUpdateDto;
@@ -15,6 +16,7 @@ import com.nemal.repository.DesignationRepository;
 import com.nemal.repository.UserRepository;
 import com.nemal.security.JwtService;
 import com.nemal.security.WorkspaceDomainPolicy;
+import com.nemal.util.RoleUtils;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -97,6 +99,29 @@ public class UserService {
         return LoginResponse.from(token, user);
     }
 
+
+    // Admin-created account: no token or session is issued, so the admin stays signed in.
+    public User createUserAsAdmin(AdminCreateUserDto dto) {
+        String email = dto.email().trim();
+        if (!workspaceDomainPolicy.isAllowedEmail(email)) {
+            throw new IllegalArgumentException(
+                    "Users must have an @" + workspaceDomainPolicy.domain() + " email address");
+        }
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
+        User user = User.builder()
+                .email(email)
+                .passwordHash(passwordEncoder.encode(dto.password()))
+                .firstName(dto.firstName().trim())
+                .lastName(dto.lastName().trim())
+                .roles(RoleUtils.sortRoles(dto.roles()))
+                .authProvider(AuthProvider.LOCAL)
+                .build();
+        userRepository.save(user);
+        emailService.sendStaffWelcomeEmail(user, null);
+        return user;
+    }
 
     public UserDto createUser(UserDto dto, Role role) {
         User user = User.builder()
